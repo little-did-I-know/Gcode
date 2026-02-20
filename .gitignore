@@ -1,0 +1,6 @@
+package-lock.json
+package.json
+screenshots.mjs
+node_modules
+.idea
+.venv

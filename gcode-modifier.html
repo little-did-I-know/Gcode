@@ -1,0 +1,3206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>G-Code Modifier</title>
+<style>
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #111214; --surface: #1c1e22; --surface2: #252830;
+  --border: #33363d; --text: #e0e2e8; --text-dim: #8b8f9a;
+  --accent: #00c8ff; --accent-dim: rgba(0,200,255,0.12);
+  --green: #4ade80; --yellow: #facc15; --red: #f87171; --orange: #fb923c; --purple: #a78bfa;
+  --radius: 8px; --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
+}
+[data-theme="light"] {
+  --bg: #f5f5f7; --surface: #ffffff; --surface2: #f0f0f2;
+  --border: #d4d4d8; --text: #1c1e22; --text-dim: #6b7280;
+  --accent: #0088cc; --accent-dim: rgba(0,136,204,0.1);
+  --green: #16a34a; --yellow: #ca8a04; --red: #dc2626; --orange: #ea580c; --purple: #7c3aed;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #c4c4c8; }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #a0a0a8; }
+html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+input, select, textarea, button { font-family: inherit; font-size: inherit; color: inherit; }
+button { cursor: pointer; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+/* ===== LAYOUT ===== */
+#app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+/* HEADER */
+header { display: flex; align-items: center; gap: 16px; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 56px; }
+.logo { font-size: 16px; font-weight: 700; white-space: nowrap; }
+.logo span { color: var(--accent); }
+#dropZone { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 16px; border: 1.5px dashed var(--border); border-radius: var(--radius); color: var(--text-dim); font-size: 13px; transition: all .2s; cursor: pointer; min-height: 36px; }
+#dropZone:hover, #dropZone.dragover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+#dropZone svg { flex-shrink: 0; }
+#fileInput { display: none; }
+#fileInfo { display: none; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+#fileInfo .fname { color: var(--text); font-weight: 600; }
+#firmwareSelect { padding: 6px 28px 6px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; font-weight: 600; appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238b8f9a' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; cursor: pointer; }
+#firmwareSelect:focus { border-color: var(--accent); outline: none; }
+#exportBtn { display: none; padding: 8px 18px; background: var(--accent); color: #000; border: none; border-radius: var(--radius); font-weight: 600; font-size: 13px; transition: opacity .2s; }
+#exportBtn:hover { opacity: .85; }
+
+/* MAIN */
+main { display: flex; flex: 1; overflow: hidden; }
+
+/* LEFT PANEL — LAYERS */
+.panel-left { width: 260px; min-width: 200px; display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--border); }
+.panel-header { padding: 12px 14px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); }
+#layerSearch { margin: 0 10px 8px; padding: 7px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; outline: none; }
+#layerSearch:focus { border-color: var(--accent); }
+#layerList { flex: 1; overflow-y: auto; padding: 0 6px 6px; }
+.layer-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: background .15s; }
+.layer-item:hover { background: var(--surface2); }
+.layer-item.active { background: var(--accent-dim); color: var(--accent); }
+.layer-num { font-weight: 600; min-width: 24px; }
+.layer-z { color: var(--text-dim); font-size: 12px; }
+.layer-lines { margin-left: auto; color: var(--text-dim); font-size: 11px; }
+.layer-mod-badge { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); flex-shrink: 0; }
+
+/* CENTER PANEL — PREVIEW */
+.panel-center { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.preview-toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-dim); }
+.preview-toolbar .jump-input { width: 70px; padding: 4px 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; color: var(--text); text-align: center; }
+#gcodePreview { flex: 1; overflow: auto; padding: 0; font-family: var(--mono); font-size: 13px; line-height: 1.7; }
+.code-table { width: 100%; border-collapse: collapse; }
+.code-table td { padding: 0 12px; white-space: pre; vertical-align: top; }
+.code-table .ln { color: var(--text-dim); text-align: right; user-select: none; width: 50px; min-width: 50px; opacity: .5; padding-right: 8px; border-right: 1px solid var(--border); }
+.code-table tr.layer-start td { border-top: 1px solid var(--border); }
+.code-table tr.highlight td { background: rgba(250,204,21,.08); }
+.code-table tr.mod-line td { background: rgba(251,146,60,.12); }
+.code-table tr.mod-line td:last-child { color: var(--orange); font-weight: 600; }
+.syn-g { color: #60a5fa; }
+.syn-m { color: #4ade80; }
+.syn-comment { color: #6b7280; }
+.syn-param { color: #c4b5fd; }
+.syn-value { color: #fbbf24; }
+
+/* VIEWER */
+.viewer-wrap { position: relative; flex: 1; display: none; overflow: hidden; }
+.viewer-wrap.active { display: flex; flex-direction: column; }
+#gcodePreview.hidden { display: none; }
+.viewer-canvas-area { position: relative; flex: 1; overflow: hidden; }
+#viewerCanvas { width: 100%; height: 100%; background: var(--bg); cursor: grab; }
+#viewerCanvas:active { cursor: grabbing; }
+.layer-slider-wrap { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-top: 1px solid var(--border); background: var(--surface); }
+.layer-slider-wrap label { font-size: 12px; color: var(--text-dim); white-space: nowrap; min-width: 80px; }
+#layerSlider { flex: 1; accent-color: var(--accent); height: 6px; }
+.slider-ticks { position: relative; height: 8px; margin: 0 16px; }
+.slider-tick { position: absolute; width: 4px; height: 4px; border-radius: 50%; top: 2px; transform: translateX(-50%); }
+.view-toggle { display: flex; gap: 2px; background: var(--surface2); border-radius: 6px; padding: 2px; }
+.view-toggle button { padding: 4px 12px; border: none; background: none; color: var(--text-dim); border-radius: 4px; font-size: 12px; font-weight: 600; transition: all .15s; }
+.view-toggle button.active { background: var(--accent-dim); color: var(--accent); }
+.view-toggle button:hover:not(.active) { color: var(--text); }
+.viewer-overlay { position: absolute; top: 12px; left: 12px; right: 12px; pointer-events: none; }
+.viewer-info { display: inline-block; padding: 4px 10px; background: rgba(0,0,0,.7); border-radius: 4px; font-size: 12px; color: var(--text); font-family: var(--mono); }
+.viewer-mod-banner { margin-top: 8px; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; pointer-events: none; }
+.viewer-mod-banner.pause { background: rgba(250,204,21,.2); color: var(--yellow); border: 1px solid rgba(250,204,21,.3); }
+.viewer-mod-banner.filament { background: rgba(167,139,250,.2); color: var(--purple); border: 1px solid rgba(167,139,250,.3); }
+.viewer-mod-banner.custom { background: rgba(0,200,255,.15); color: var(--accent); border: 1px solid rgba(0,200,255,.25); }
+.viewer-legend { position: absolute; bottom: 12px; left: 12px; display: flex; flex-wrap: wrap; gap: 10px; pointer-events: none; }
+.legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-dim); }
+.legend-swatch { width: 14px; height: 3px; border-radius: 2px; }
+
+/* EMPTY STATES */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); text-align: center; padding: 40px; gap: 12px; }
+.empty-state svg { opacity: .3; }
+.empty-state p { max-width: 260px; line-height: 1.5; }
+
+/* PROGRESS BAR */
+.parse-progress { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; z-index: 10; }
+.parse-progress .bar-wrap { width: 300px; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+.parse-progress .bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.1s; }
+.parse-progress .bar-label { font-size: 12px; color: var(--text-dim); }
+
+/* RIGHT PANEL — TOOLS */
+.panel-right { width: 340px; min-width: 280px; display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--border); }
+.tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tab { flex: 1; padding: 10px 6px; text-align: center; font-size: 12px; font-weight: 600; color: var(--text-dim); border: none; background: none; border-bottom: 2px solid transparent; transition: all .2s; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-content { display: none; padding: 14px; overflow-y: auto; flex: 1; }
+.tab-content.active { display: block; }
+
+/* FORMS */
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-dim); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .05em; }
+.form-row { display: flex; gap: 10px; }
+.form-row .form-group { flex: 1; }
+.input, .select { width: 100%; padding: 8px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); outline: none; }
+.input:focus, .select:focus { border-color: var(--accent); }
+.select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238b8f9a' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 13px; }
+.checkbox-row input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 16px; border-radius: 6px; font-weight: 600; font-size: 13px; border: none; transition: all .2s; width: 100%; }
+.btn-primary { background: var(--accent); color: #000; }
+.btn-primary:hover { opacity: .85; }
+.btn-outline { background: none; border: 1px solid var(--border); color: var(--text); }
+.btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+.btn-danger { background: rgba(248,113,113,.12); color: var(--red); }
+.btn-danger:hover { background: rgba(248,113,113,.2); }
+.hint { font-size: 11px; color: var(--text-dim); margin-top: 4px; line-height: 1.4; }
+
+/* MODIFICATIONS LIST */
+.mods-section { border-top: 1px solid var(--border); margin-top: auto; flex-shrink: 0; }
+.mods-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
+.mods-count { background: var(--accent-dim); color: var(--accent); padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+#modsList { max-height: 220px; overflow-y: auto; padding: 0 8px 8px; }
+.mod-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--surface2); border-radius: 6px; margin-bottom: 4px; font-size: 12px; cursor: grab; }
+.mod-item:active { cursor: grabbing; }
+.mod-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.mod-badge.pause { background: rgba(250,204,21,.15); color: var(--yellow); }
+.mod-badge.filament { background: rgba(167,139,250,.15); color: var(--purple); }
+.mod-badge.eject { background: rgba(74,222,128,.15); color: var(--green); }
+.mod-badge.custom { background: rgba(0,200,255,.12); color: var(--accent); }
+.mod-badge.zoffset { background: rgba(251,146,60,.15); color: var(--orange); }
+.mod-desc { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mod-actions { display: flex; gap: 2px; }
+.mod-action { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-dim); border-radius: 4px; }
+.mod-action:hover { background: var(--border); color: var(--text); }
+.mod-action.delete:hover { color: var(--red); }
+.no-mods { text-align: center; padding: 16px; color: var(--text-dim); font-size: 12px; }
+
+/* RADIO GROUP */
+.radio-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.radio-opt { position: relative; }
+.radio-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.radio-opt label { display: block; padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; cursor: pointer; transition: all .15s; }
+.radio-opt input:checked + label { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+
+/* HOLE DETECTION */
+.hole-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--surface2); border-radius: 6px; margin-bottom: 4px; font-size: 12px; cursor: pointer; border: 1px solid transparent; transition: all .15s; }
+.hole-item:hover { border-color: var(--border); }
+.hole-item.selected { border-color: var(--accent); background: var(--accent-dim); }
+.hole-item .hole-id { font-weight: 700; color: var(--accent); min-width: 20px; }
+.hole-item .hole-info { flex: 1; }
+.hole-item .hole-info span { display: block; color: var(--text-dim); font-size: 11px; }
+.hole-list-wrap { max-height: 180px; overflow-y: auto; margin-bottom: 14px; }
+.insert-summary { padding: 8px 10px; background: var(--surface2); border-radius: 6px; margin-bottom: 10px; font-size: 12px; }
+.insert-summary .insert-item { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+.insert-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; background: rgba(0,200,255,.12); color: var(--accent); }
+#viewerCanvas.hole-mode { cursor: crosshair !important; }
+#viewerCanvas.hole-mode:active { cursor: crosshair !important; }
+.hole-detect-btn { padding: 4px 10px; border: 1px solid var(--border); background: none; border-radius: 4px; font-size: 11px; font-weight: 600; color: var(--text-dim); transition: all .15s; }
+.hole-detect-btn:hover { border-color: var(--accent); color: var(--accent); }
+.hole-detect-btn.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+.detect-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+.detect-controls .btn { width: auto; flex: 1; }
+.filter-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; }
+.filter-row input[type="range"] { flex: 1; accent-color: var(--accent); height: 4px; }
+.filter-row .filter-val { min-width: 32px; text-align: right; color: var(--accent); font-weight: 600; font-family: var(--mono); font-size: 11px; }
+.section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin-bottom: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.section-label:first-child { border-top: none; padding-top: 0; }
+.no-holes { text-align: center; padding: 16px; color: var(--text-dim); font-size: 12px; }
+.computed-layer { padding: 8px 10px; background: rgba(74,222,128,.08); border: 1px solid rgba(74,222,128,.2); border-radius: 6px; margin-bottom: 10px; font-size: 12px; color: var(--green); font-weight: 600; }
+.warning-msg { padding: 8px 10px; background: rgba(250,204,21,.08); border: 1px solid rgba(250,204,21,.2); border-radius: 6px; margin-bottom: 10px; font-size: 12px; color: var(--yellow); }
+
+/* SHORTCUTS OVERLAY */
+.shortcuts-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 100; justify-content: center; align-items: center; }
+.shortcuts-overlay.active { display: flex; }
+.shortcuts-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px 32px; max-width: 420px; width: 90%; max-height: 80vh; overflow-y: auto; }
+.shortcuts-card h3 { margin-bottom: 16px; font-size: 16px; }
+.shortcuts-card table { width: 100%; font-size: 13px; }
+.shortcuts-card td { padding: 4px 0; }
+.shortcuts-card kbd { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; font-family: var(--mono); font-size: 11px; }
+.shortcuts-card .close-btn { float: right; background: none; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer; }
+
+/* RESPONSIVE */
+@media (max-width: 1100px) {
+  .panel-left { width: 200px; min-width: 160px; }
+  .panel-right { width: 280px; min-width: 240px; }
+}
+
+@media (max-width: 800px) {
+  main { flex-direction: column; }
+  .panel-left {
+    width: 100%; max-height: 0; overflow: hidden; border: none;
+    border-bottom: 1px solid var(--border); transition: max-height .3s;
+  }
+  .panel-left.drawer-open { max-height: 200px; }
+  .panel-right {
+    width: 100%; max-height: 40vh; border: none;
+    border-top: 1px solid var(--border); overflow-y: auto;
+  }
+  .panel-center { min-height: 300px; }
+  .drawer-toggle { display: inline-flex; }
+}
+
+.drawer-toggle {
+  display: none; align-items: center; justify-content: center;
+  width: 32px; height: 32px; background: none; border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text-dim); font-size: 16px; cursor: pointer;
+}
+.drawer-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+/* TOAST NOTIFICATIONS */
+.toast-container { position: fixed; top: 12px; right: 12px; z-index: 200; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast { pointer-events: auto; padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px; animation: toastIn .3s ease; min-width: 200px; max-width: 400px; }
+.toast.success { background: rgba(74,222,128,.15); color: var(--green); border: 1px solid rgba(74,222,128,.3); }
+.toast.warning { background: rgba(250,204,21,.15); color: var(--yellow); border: 1px solid rgba(250,204,21,.3); }
+.toast.error { background: rgba(248,113,113,.15); color: var(--red); border: 1px solid rgba(248,113,113,.3); }
+.toast .toast-close { margin-left: auto; background: none; border: none; color: inherit; cursor: pointer; opacity: .6; font-size: 16px; }
+.toast .toast-close:hover { opacity: 1; }
+@keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* ONBOARDING HINTS */
+.onboard-hint { position: absolute; background: var(--accent); color: #000; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; z-index: 50; white-space: nowrap; cursor: pointer; animation: hintPulse 2s ease-in-out infinite; top: calc(100% + 8px); left: 0; }
+.onboard-hint::after { content: ''; position: absolute; border: 6px solid transparent; }
+.onboard-hint.below::after { bottom: 100%; left: 20px; border-bottom-color: var(--accent); }
+@keyframes hintPulse { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="toast-container" id="toastContainer"></div>
+  <!-- HEADER -->
+  <header>
+    <button class="drawer-toggle" onclick="document.getElementById('panelLeft').classList.toggle('drawer-open')" title="Toggle layers">&#9776;</button>
+    <div class="logo"><span>G</span>Code Modifier</div>
+    <select id="firmwareSelect" onchange="onFirmwareChange(this.value)">
+      <option value="bambu">Bambu Lab</option>
+      <option value="klipper">Klipper</option>
+      <option value="marlin">Marlin</option>
+      <option value="rrf">RepRapFirmware</option>
+    </select>
+    <div id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+      <span>Drop .gcode file here or click to upload</span>
+    </div>
+    <input type="file" id="fileInput" accept=".gcode,.gco,.g">
+    <div id="fileInfo">
+      <span class="fname" id="fileName"></span>&nbsp;&nbsp;
+      <span id="fileMeta"></span>
+    </div>
+    <button id="themeToggle" onclick="toggleTheme()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text-dim);font-size:14px;cursor:pointer" title="Toggle theme">
+      <span id="themeIcon">&#9789;</span>
+    </button>
+    <button style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text-dim);font-weight:700;font-size:14px;cursor:pointer" onclick="toggleShortcutsOverlay()" title="Keyboard shortcuts">?</button>
+    <button id="exportBtn" onclick="exportGcode()">Export G-Code</button>
+  </header>
+
+  <!-- MAIN -->
+  <main>
+    <!-- LEFT: LAYERS -->
+    <div class="panel-left" id="panelLeft">
+      <div class="panel-header">Layers</div>
+      <input type="text" id="layerSearch" placeholder="Search layers..." oninput="filterLayers(this.value)">
+      <div id="layerList">
+        <div class="empty-state" id="layerEmpty">
+          <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
+          <p>Upload a G-code file to see layers</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER: PREVIEW -->
+    <div class="panel-center">
+      <div class="parse-progress" id="parseProgress" style="display:none">
+        <div class="bar-label" id="parseLabel">Parsing...</div>
+        <div class="bar-wrap"><div class="bar-fill" id="parseBar" style="width:0%"></div></div>
+      </div>
+      <div class="preview-toolbar">
+        <div class="view-toggle">
+          <button class="active" onclick="setView('code')" id="viewCodeBtn">Code</button>
+          <button onclick="setView('visual')" id="viewVisualBtn">Visual</button>
+        </div>
+        <span>Go to layer:</span>
+        <input type="number" class="jump-input" id="jumpLayer" min="0" placeholder="#" onchange="jumpToLayer(+this.value)">
+        <button class="hole-detect-btn" id="holeDetectToggle" onclick="toggleHoleMode()" title="Toggle hole detection mode">Hole Detect</button>
+        <button class="hole-detect-btn" id="measureToggle" onclick="toggleMeasureMode()" title="Measure distance">Measure</button>
+        <span style="margin-left:auto" id="previewInfo"></span>
+      </div>
+      <div id="gcodePreview">
+        <div class="empty-state" id="previewEmpty">
+          <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>
+          <p>Upload a .gcode file to preview and modify it</p>
+        </div>
+      </div>
+      <div class="viewer-wrap" id="viewerWrap">
+        <div class="viewer-canvas-area">
+        <canvas id="viewerCanvas"></canvas>
+        <div class="viewer-overlay" id="viewerOverlay"></div>
+        <div class="viewer-legend" id="viewerLegend">
+          <div class="legend-item"><div class="legend-swatch" style="background:#60a5fa"></div>Outer Wall</div>
+          <div class="legend-item"><div class="legend-swatch" style="background:#93c5fd"></div>Inner Wall</div>
+          <div class="legend-item"><div class="legend-swatch" style="background:#4ade80"></div>Infill</div>
+          <div class="legend-item"><div class="legend-swatch" style="background:#facc15"></div>Support</div>
+          <div class="legend-item"><div class="legend-swatch" style="background:#fb923c"></div>Overhang</div>
+          <div class="legend-item"><div class="legend-swatch" style="background:#555;border-top:1px dashed #555"></div>Travel</div>
+        </div>
+        </div>
+        <div class="layer-slider-wrap">
+          <label id="sliderLabel">Layer 0</label>
+          <input type="range" id="layerSlider" min="0" max="0" value="0" oninput="onSliderChange(+this.value)">
+          <div class="slider-ticks" id="sliderTicks"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: TOOLS -->
+    <div class="panel-right" id="panelRight">
+      <div class="tabs">
+        <button class="tab active" data-tab="pause" onclick="switchTab('pause')">Pause</button>
+        <button class="tab" data-tab="filament" onclick="switchTab('filament')">Filament</button>
+        <button class="tab" data-tab="eject" onclick="switchTab('eject')">Eject</button>
+        <button class="tab" data-tab="zoffset" onclick="switchTab('zoffset')">Z-Offset</button>
+        <button class="tab" data-tab="custom" onclick="switchTab('custom')">Custom</button>
+        <button class="tab" data-tab="inserts" onclick="switchTab('inserts')">Inserts</button>
+      </div>
+
+      <!-- PAUSE TAB -->
+      <div class="tab-content active" id="tab-pause">
+        <div class="form-group">
+          <label>Layer Number</label>
+          <input type="number" class="input" id="pauseLayer" min="0" placeholder="e.g. 42">
+        </div>
+        <div class="form-group">
+          <label>Reminder Message (optional)</label>
+          <input type="text" class="input" id="pauseMsg" placeholder="e.g. Insert magnet here">
+        </div>
+        <div class="form-group">
+          <label>Pause Command</label>
+          <div class="radio-group" id="pauseTypeGroup"></div>
+          <div class="hint" id="pauseHint"></div>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="pauseMoveHead" checked>
+          <label for="pauseMoveHead">Move head away before pause</label>
+        </div>
+        <button class="btn btn-primary" onclick="addPause()">+ Add Pause</button>
+      </div>
+
+      <!-- FILAMENT TAB -->
+      <div class="tab-content" id="tab-filament">
+        <div class="form-group">
+          <label>Layer Number</label>
+          <input type="number" class="input" id="filamentLayer" min="0" placeholder="e.g. 10">
+        </div>
+        <div class="form-row" id="filamentRow">
+          <div class="form-group" id="filamentSlotGroup">
+            <label>Filament Slot (AMS)</label>
+            <select class="select" id="filamentSlot">
+              <option value="0">Slot 1 (S0)</option>
+              <option value="1">Slot 2 (S1)</option>
+              <option value="2">Slot 3 (S2)</option>
+              <option value="3">Slot 4 (S3)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Command</label>
+            <select class="select" id="filamentCmd"></select>
+          </div>
+        </div>
+        <div class="hint" id="filamentHint" style="margin-bottom:14px"></div>
+        <button class="btn btn-primary" onclick="addFilamentChange()">+ Add Filament Change</button>
+      </div>
+
+      <!-- EJECT TAB -->
+      <div class="tab-content" id="tab-eject">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Bed Y Position (mm)</label>
+            <input type="number" class="input" id="ejectY" value="220" min="0" max="300">
+          </div>
+          <div class="form-group">
+            <label>Head Z Clearance (mm)</label>
+            <input type="number" class="input" id="ejectZ" value="10" min="0" max="50">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Feed Rate (mm/min)</label>
+          <input type="number" class="input" id="ejectFeed" value="6000" min="1000" max="15000" step="500">
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="ejectHeatersOff" checked>
+          <label for="ejectHeatersOff">Turn off heaters after eject</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="ejectHomeZ">
+          <label for="ejectHomeZ">Home Z axis after eject</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="ejectLoop">
+          <label for="ejectLoop">Loop mode (restart print)</label>
+        </div>
+        <div class="hint" id="ejectHint" style="margin-bottom:14px"></div>
+        <button class="btn btn-primary" onclick="addEject()">+ Add Eject Sequence</button>
+      </div>
+
+      <!-- Z-OFFSET TAB -->
+      <div class="tab-content" id="tab-zoffset">
+        <div class="form-group">
+          <label>Start Layer</label>
+          <input type="number" class="input" id="zoffsetLayer" min="0" placeholder="e.g. 10">
+        </div>
+        <div class="form-group">
+          <label>End Layer (optional)</label>
+          <input type="text" class="input" id="zoffsetEndLayer" placeholder="Leave blank for all remaining">
+          <div class="hint">If blank, the offset applies from the start layer to the end of the print.</div>
+        </div>
+        <div class="form-group">
+          <label>Z-Offset (mm)</label>
+          <input type="number" class="input" id="zoffsetValue" step="0.01" placeholder="e.g. 0.1 or -0.05">
+          <div class="hint">Positive = raise nozzle, negative = lower nozzle. Adjusts all Z moves within the specified layer range.</div>
+        </div>
+        <div class="form-group">
+          <label>Note (optional)</label>
+          <input type="text" class="input" id="zoffsetNote" placeholder="e.g. Compensate for insert">
+        </div>
+        <button class="btn btn-primary" onclick="addZOffset()">+ Add Z-Offset</button>
+      </div>
+
+      <!-- CUSTOM TAB -->
+      <div class="tab-content" id="tab-custom">
+        <div class="form-group">
+          <label>Layer Number (or "end" for file end)</label>
+          <input type="text" class="input" id="customLayer" placeholder="e.g. 50 or end">
+        </div>
+        <div class="form-group">
+          <label>Custom G-Code</label>
+          <textarea class="input" id="customGcode" rows="6" style="font-family:var(--mono);font-size:12px;resize:vertical" placeholder="Enter custom G-code lines...&#10;e.g.&#10;G91&#10;G0 Z5&#10;G90"></textarea>
+        </div>
+        <div class="hint" style="margin-bottom:14px">Insert any custom G-code at a specific layer or at the end of the file. Each line will be inserted as-is.</div>
+        <button class="btn btn-primary" onclick="addCustom()">+ Add Custom G-Code</button>
+      </div>
+
+      <!-- INSERTS TAB -->
+      <div class="tab-content" id="tab-inserts">
+        <div class="section-label" style="border-top:none;padding-top:0">Detection</div>
+        <div class="detect-controls">
+          <button class="btn btn-primary" onclick="detectHolesOnLayer()" style="width:auto;flex:1">Detect Holes</button>
+        </div>
+        <div class="filter-row">
+          <label>Min diameter</label>
+          <input type="range" id="holeMinDia" min="1" max="20" value="4" step="0.5" oninput="document.getElementById('holeMinDiaVal').textContent=this.value+'mm'">
+          <span class="filter-val" id="holeMinDiaVal">4mm</span>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="holeIgnoreInfill" checked>
+          <label for="holeIgnoreInfill">Ignore infill regions</label>
+        </div>
+
+        <div class="section-label">Detected Holes</div>
+        <div class="hole-list-wrap" id="holeListWrap">
+          <div class="no-holes" id="noHoles">Click "Detect Holes" on a layer with the Visual view active</div>
+        </div>
+
+        <div class="section-label">Insert Configuration</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Insert Height</label>
+            <input type="number" class="input" id="insertHeight" min="0.1" step="0.1" value="3" placeholder="mm">
+          </div>
+          <div class="form-group">
+            <label>Unit</label>
+            <select class="select" id="insertHeightUnit">
+              <option value="mm">mm</option>
+              <option value="layers">layers</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Insert Diameter</label>
+            <input type="number" class="input" id="insertDiameter" min="0.5" step="0.5" value="6" placeholder="mm">
+          </div>
+          <div class="form-group">
+            <label>Label</label>
+            <input type="text" class="input" id="insertLabel" placeholder="e.g. Magnet">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Pause Command</label>
+          <div class="radio-group" id="insertPauseTypeGroup"></div>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="insertMoveHead" checked>
+          <label for="insertMoveHead">Move head away before pause</label>
+        </div>
+        <div id="computedPauseInfo"></div>
+        <button class="btn btn-primary" onclick="addInsertsForSelection()">+ Add Pause for Selected Holes</button>
+      </div>
+
+      <!-- MODIFICATIONS LIST -->
+      <div class="mods-section">
+        <div class="mods-header">
+          <span>Modifications</span>
+          <span class="mods-count" id="modsCount">0</span>
+        </div>
+        <div id="modsList">
+          <div class="no-mods" id="noMods">No modifications added yet</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="shortcuts-overlay" id="shortcutsOverlay" onclick="if(event.target===this)toggleShortcutsOverlay()">
+  <div class="shortcuts-card">
+    <button class="close-btn" onclick="toggleShortcutsOverlay()">&times;</button>
+    <h3>Keyboard Shortcuts</h3>
+    <table>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>Open file</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Export</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Undo</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td><td>Redo</td></tr>
+      <tr><td><kbd>Space</kbd></td><td>Toggle Code/Visual</td></tr>
+      <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Previous/Next layer</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>6</kbd></td><td>Switch tool tab</td></tr>
+      <tr><td><kbd>F</kbd></td><td>Reset camera</td></tr>
+      <tr><td><kbd>?</kbd></td><td>This help</td></tr>
+    </table>
+  </div>
+</div>
+
+<script>
+// ===== G-CODE PARSER =====
+class GcodeParser {
+  constructor() {
+    this.lines = [];
+    this.layers = [];
+    this.headerEnd = 0;
+    this.fileName = '';
+    this.warnings = [];
+    this.skippedLines = 0;
+  }
+
+  _detectSlicer(lines) {
+    const scanLines = Math.min(50, lines.length);
+    for (let i = 0; i < scanLines; i++) {
+      const line = lines[i];
+      if (line.includes('Generated with Cura_SteamEngine')) return 'cura';
+      if (line.includes('generated by PrusaSlicer')) return 'prusaslicer';
+      if (line.includes('generated by SuperSlicer')) return 'superslicer';
+      if (line.includes('generated by OrcaSlicer')) return 'orcaslicer';
+      if (line.includes('G-Code generated by Simplify3D')) return 'simplify3d';
+      if (line.includes('Sliced by ideaMaker')) return 'ideamaker';
+      if (line.includes('BambuStudio') || line.includes('Bambu Studio')) return 'bambu';
+    }
+    return 'unknown';
+  }
+
+  async parseAsync(text, fileName, onProgress) {
+    this.fileName = fileName;
+    this.lines = text.split(/\r?\n/);
+    this.slicerType = this._detectSlicer(this.lines);
+    this.layers = [];
+    this.layerMoves = {};
+    this.bounds = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+    this.headerEnd = 0;
+    this.warnings = [];
+    this.skippedLines = 0;
+
+    let currentLayer = null;
+    let foundFirstLayer = false;
+    // State machine for tracking head position
+    let curX = 0, curY = 0, curZ = 0, curE = 0;
+    let relativeE = false; // M83 = relative, M82 = absolute
+    let currentType = 'DEFAULT';
+    // Bambu Studio uses "; CHANGE_LAYER" as a marker, with layer number on a nearby line
+    let pendingChangeLayer = false;
+    let pendingZHeight = null;
+
+    const CHUNK = 50000;
+    const total = this.lines.length;
+
+    for (let start = 0; start < total; start += CHUNK) {
+      const end = Math.min(start + CHUNK, total);
+
+    for (let i = start; i < end; i++) {
+      const line = this.lines[i].trim();
+
+      // Detect header end
+      if (!foundFirstLayer && !this.headerEnd) {
+        const lm = line.match(/^;LAYER:(\d+)/i) || line.match(/^; CHANGE_LAYER/) || line.match(/^; layer \d+, Z = /i) || line === ';LAYER_CHANGE';
+        if (lm) { this.headerEnd = i; foundFirstLayer = true; }
+        else if (line && !line.startsWith(';') && (line.startsWith('G') || line.startsWith('M') || line.startsWith('T'))) {
+          if (!this.headerEnd) this.headerEnd = i;
+        }
+      }
+
+      // Parse layer markers — standard format: ;LAYER:N
+      const layerMatch = line.match(/^;LAYER:(\d+)/i);
+      if (layerMatch) {
+        foundFirstLayer = true;
+        if (currentLayer) {
+          currentLayer.endLine = i - 1;
+          currentLayer.lineCount = currentLayer.endLine - currentLayer.startLine + 1;
+        }
+        currentLayer = {
+          number: parseInt(layerMatch[1]),
+          startLine: i, endLine: null, zHeight: null,
+          sectionTypes: [], lineCount: 0
+        };
+        this.layers.push(currentLayer);
+        this.layerMoves[currentLayer.number] = [];
+        currentType = 'DEFAULT';
+      }
+
+      // Parse layer markers — Bambu Studio format: ; CHANGE_LAYER + ; Z_HEIGHT + ; layer num/total_layer_count
+      if (line === '; CHANGE_LAYER') {
+        pendingChangeLayer = true;
+        pendingZHeight = null;
+        // Mark the start line as this CHANGE_LAYER comment
+        foundFirstLayer = true;
+        if (currentLayer) {
+          currentLayer.endLine = i - 1;
+          currentLayer.lineCount = currentLayer.endLine - currentLayer.startLine + 1;
+        }
+        // Create a temporary layer — number will be updated when we find the layer num comment
+        currentLayer = {
+          number: this.layers.length, // temporary, updated below
+          startLine: i, endLine: null, zHeight: null,
+          sectionTypes: [], lineCount: 0,
+          _pending: true
+        };
+        currentType = 'DEFAULT';
+      }
+
+      // Bambu: ; Z_HEIGHT: 0.2
+      if (pendingChangeLayer) {
+        const zHMatch = line.match(/^; Z_HEIGHT:\s*([\d.]+)/);
+        if (zHMatch) {
+          pendingZHeight = parseFloat(zHMatch[1]);
+          if (currentLayer) currentLayer.zHeight = pendingZHeight;
+        }
+
+        // Bambu: ; layer num/total_layer_count: 1/525
+        const bambuLayerMatch = line.match(/^; layer num\/total_layer_count:\s*(\d+)\/(\d+)/);
+        if (bambuLayerMatch) {
+          const layerNum = parseInt(bambuLayerMatch[1]) - 1; // Bambu uses 1-based, convert to 0-based
+          if (currentLayer && currentLayer._pending) {
+            currentLayer.number = layerNum;
+            delete currentLayer._pending;
+            this.layers.push(currentLayer);
+            this.layerMoves[currentLayer.number] = [];
+          }
+          pendingChangeLayer = false;
+        }
+      }
+
+      // Simplify3D: "; layer N, Z = X.XX"
+      const s3dLayerMatch = line.match(/^; layer (\d+), Z = ([\d.]+)/i);
+      if (s3dLayerMatch) {
+        foundFirstLayer = true;
+        if (currentLayer) {
+          currentLayer.endLine = i - 1;
+          currentLayer.lineCount = currentLayer.endLine - currentLayer.startLine + 1;
+        }
+        currentLayer = {
+          number: parseInt(s3dLayerMatch[1]),
+          startLine: i, endLine: null,
+          zHeight: parseFloat(s3dLayerMatch[2]),
+          sectionTypes: [], lineCount: 0
+        };
+        this.layers.push(currentLayer);
+        this.layerMoves[currentLayer.number] = [];
+        currentType = 'DEFAULT';
+      }
+
+      // PrusaSlicer alternative: ;LAYER_CHANGE + ;Z:X.XX
+      if (line === ';LAYER_CHANGE') {
+        foundFirstLayer = true;
+        if (currentLayer) {
+          currentLayer.endLine = i - 1;
+          currentLayer.lineCount = currentLayer.endLine - currentLayer.startLine + 1;
+        }
+        currentLayer = {
+          number: this.layers.length,
+          startLine: i, endLine: null, zHeight: null,
+          sectionTypes: [], lineCount: 0
+        };
+        this.layers.push(currentLayer);
+        this.layerMoves[currentLayer.number] = [];
+        currentType = 'DEFAULT';
+      }
+      if (currentLayer && !currentLayer.zHeight) {
+        const zDirectMatch = line.match(/^;Z:([\d.]+)/);
+        if (zDirectMatch) currentLayer.zHeight = parseFloat(zDirectMatch[1]);
+      }
+
+      // Extract Z-height (fallback from G0/G1 moves)
+      if (currentLayer && !currentLayer.zHeight) {
+        const zMatch = line.match(/G[01]\s.*Z([\d.]+)/i);
+        if (zMatch) currentLayer.zHeight = parseFloat(zMatch[1]);
+      }
+
+      // Extract section types — standard: ;TYPE:X  or Bambu: ; FEATURE: X
+      if (currentLayer) {
+        const typeMatch = line.match(/^;TYPE:(.+)/i) || line.match(/^; FEATURE:\s*(.+)/i);
+        if (typeMatch) {
+          // Normalize PrusaSlicer/SuperSlicer type names
+          const typeNormalize = {
+            'External perimeter': 'WALL-OUTER',
+            'Perimeter': 'WALL-INNER',
+            'Solid infill': 'SOLID',
+            'Top solid infill': 'TOP',
+            'Bottom solid infill': 'BOTTOM',
+            'Bridge infill': 'BRIDGE',
+            'Gap fill': 'GAP INFILL',
+            'Overhang perimeter': 'OVERHANG',
+            'Internal infill': 'FILL',
+            'Sparse infill': 'FILL',
+            'Skirt': 'SKIRT',
+            'Skirt/Brim': 'SKIRT',
+            'Support material': 'SUPPORT',
+            'Support material interface': 'SUPPORT-INTERFACE',
+          };
+          const rawType = typeMatch[1].trim();
+          currentType = typeNormalize[rawType] || rawType.toUpperCase();
+          if (!currentLayer.sectionTypes.includes(currentType)) currentLayer.sectionTypes.push(currentType);
+        }
+
+        // Simplify3D: "; outer perimeter", "; inner perimeter", etc.
+        if (!typeMatch) {
+          const s3dType = line.match(/^; (outer perimeter|inner perimeter|solid layer|infill|support|raft|skirt|gap fill|bridge)/i);
+          if (s3dType) {
+            const typeMap = {
+              'outer perimeter': 'WALL-OUTER',
+              'inner perimeter': 'WALL-INNER',
+              'solid layer': 'SOLID',
+              'infill': 'FILL',
+              'support': 'SUPPORT',
+              'raft': 'SUPPORT',
+              'skirt': 'SKIRT',
+              'gap fill': 'GAP INFILL',
+              'bridge': 'BRIDGE',
+            };
+            currentType = typeMap[s3dType[1].toLowerCase()] || s3dType[1].toUpperCase();
+            if (!currentLayer.sectionTypes.includes(currentType)) currentLayer.sectionTypes.push(currentType);
+          }
+        }
+      }
+
+      // Track extrusion mode
+      if (line === 'M83') relativeE = true;
+      if (line === 'M82') relativeE = false;
+      if (line.startsWith('G92') && line.includes('E')) { curE = 0; } // Reset E position
+
+      // Parse G0/G1 linear moves for the viewer
+      if (currentLayer && this.layerMoves[currentLayer.number] && /^G[01]\s/.test(line)) {
+        try {
+        const params = {};
+        const matches = line.matchAll(/([XYZEF])([-\d.]+)/gi);
+        for (const m of matches) params[m[1].toUpperCase()] = parseFloat(m[2]);
+
+        const newX = params.X !== undefined ? params.X : curX;
+        const newY = params.Y !== undefined ? params.Y : curY;
+        const newZ = params.Z !== undefined ? params.Z : curZ;
+        const isG0 = line.startsWith('G0');
+        let isExtrude = false;
+        if (params.E !== undefined) {
+          isExtrude = relativeE ? params.E > 0 : params.E > curE;
+          curE = relativeE ? curE + params.E : params.E;
+        }
+
+        // Only record XY moves (skip pure Z moves)
+        if (newX !== curX || newY !== curY) {
+          this.layerMoves[currentLayer.number].push({
+            x1: curX, y1: curY, x2: newX, y2: newY,
+            type: currentType, extrude: isExtrude && !isG0
+          });
+          this.bounds.minX = Math.min(this.bounds.minX, curX, newX);
+          this.bounds.maxX = Math.max(this.bounds.maxX, curX, newX);
+          this.bounds.minY = Math.min(this.bounds.minY, curY, newY);
+          this.bounds.maxY = Math.max(this.bounds.maxY, curY, newY);
+        }
+
+        curX = newX; curY = newY; curZ = newZ;
+        } catch (err) {
+          this.skippedLines++;
+        }
+      }
+
+      // Parse G2/G3 arc moves (Bambu Studio uses arc fitting)
+      if (currentLayer && this.layerMoves[currentLayer.number] && /^G[23]\s/.test(line)) {
+        try {
+        const params = {};
+        const matches = line.matchAll(/([XYZEFIJ])([-\d.]+)/gi);
+        for (const m of matches) params[m[1].toUpperCase()] = parseFloat(m[2]);
+
+        const newX = params.X !== undefined ? params.X : curX;
+        const newY = params.Y !== undefined ? params.Y : curY;
+        let isExtrude = false;
+        if (params.E !== undefined) {
+          isExtrude = relativeE ? params.E > 0 : params.E > curE;
+          curE = relativeE ? curE + params.E : params.E;
+        }
+        const isG2 = line.startsWith('G2'); // clockwise
+
+        // Approximate arc with line segments
+        const cx = curX + (params.I || 0);
+        const cy = curY + (params.J || 0);
+        const r = Math.hypot(params.I || 0, params.J || 0);
+        if (r > 0.01) {
+          let startAngle = Math.atan2(curY - cy, curX - cx);
+          let endAngle = Math.atan2(newY - cy, newX - cx);
+          // Adjust sweep direction
+          if (isG2) { // CW
+            if (endAngle >= startAngle) endAngle -= 2 * Math.PI;
+          } else { // CCW
+            if (endAngle <= startAngle) endAngle += 2 * Math.PI;
+          }
+          const segments = Math.max(4, Math.ceil(Math.abs(endAngle - startAngle) / (Math.PI / 12)));
+          let prevAX = curX, prevAY = curY;
+          for (let s = 1; s <= segments; s++) {
+            const t = s / segments;
+            const angle = startAngle + (endAngle - startAngle) * t;
+            const ax = s === segments ? newX : cx + r * Math.cos(angle);
+            const ay = s === segments ? newY : cy + r * Math.sin(angle);
+            this.layerMoves[currentLayer.number].push({
+              x1: prevAX, y1: prevAY, x2: ax, y2: ay,
+              type: currentType, extrude: isExtrude
+            });
+            this.bounds.minX = Math.min(this.bounds.minX, ax);
+            this.bounds.maxX = Math.max(this.bounds.maxX, ax);
+            this.bounds.minY = Math.min(this.bounds.minY, ay);
+            this.bounds.maxY = Math.max(this.bounds.maxY, ay);
+            prevAX = ax; prevAY = ay;
+          }
+        }
+
+        curX = newX; curY = newY;
+        } catch (err) {
+          this.skippedLines++;
+        }
+      }
+    }
+
+      if (onProgress) onProgress(Math.min(end / total, 1));
+      if (end < total) await new Promise(r => setTimeout(r, 0));
+    }
+
+    // Finalize any pending Bambu layer that never got its layer num line
+    if (currentLayer && currentLayer._pending) {
+      delete currentLayer._pending;
+      this.layers.push(currentLayer);
+      this.layerMoves[currentLayer.number] = [];
+    }
+
+    // Close last layer
+    if (currentLayer) {
+      currentLayer.endLine = this.lines.length - 1;
+      currentLayer.lineCount = currentLayer.endLine - currentLayer.startLine + 1;
+    }
+
+    // Sanitize bounds
+    if (!isFinite(this.bounds.minX)) this.bounds = { minX: 0, maxX: 256, minY: 0, maxY: 256 };
+
+    return this.layers;
+  }
+
+  getLayerByNumber(num) {
+    return this.layers.find(l => l.number === num);
+  }
+}
+
+// ===== G-CODE MODIFIER =====
+class GcodeModifier {
+  constructor() {
+    this.modifications = [];
+    this._idCounter = 0;
+  }
+
+  _id() { return 'mod_' + (++this._idCounter) + '_' + Date.now(); }
+
+  addPause(layer, message, pauseType, moveHead) {
+    const mod = {
+      id: this._id(), type: 'pause', layer,
+      message: message || '', pauseType, moveHead
+    };
+    this.modifications.push(mod);
+    return mod;
+  }
+
+  addFilament(layer, slot, command) {
+    const mod = {
+      id: this._id(), type: 'filament', layer,
+      slot: parseInt(slot), command
+    };
+    this.modifications.push(mod);
+    return mod;
+  }
+
+  addEject(config) {
+    // Remove existing eject mods (only one eject sequence allowed)
+    this.modifications = this.modifications.filter(m => m.type !== 'eject');
+    const mod = {
+      id: this._id(), type: 'eject', layer: Infinity,
+      ...config
+    };
+    this.modifications.push(mod);
+    return mod;
+  }
+
+  addZOffset(layer, endLayer, offset, note) {
+    const mod = {
+      id: this._id(), type: 'zoffset', layer,
+      endLayer, offset, note: note || ''
+    };
+    this.modifications.push(mod);
+    return mod;
+  }
+
+  addCustom(layer, gcode) {
+    const mod = {
+      id: this._id(), type: 'custom', layer,
+      gcode
+    };
+    this.modifications.push(mod);
+    return mod;
+  }
+
+  remove(modId) {
+    this.modifications = this.modifications.filter(m => m.id !== modId);
+  }
+
+  moveUp(modId) {
+    const idx = this.modifications.findIndex(m => m.id === modId);
+    if (idx > 0) [this.modifications[idx - 1], this.modifications[idx]] = [this.modifications[idx], this.modifications[idx - 1]];
+  }
+
+  moveDown(modId) {
+    const idx = this.modifications.findIndex(m => m.id === modId);
+    if (idx < this.modifications.length - 1) [this.modifications[idx], this.modifications[idx + 1]] = [this.modifications[idx + 1], this.modifications[idx]];
+  }
+
+  getSnippet(mod) {
+    const lines = [];
+    switch (mod.type) {
+      case 'pause': {
+        lines.push(`; === PAUSE${mod.message ? ': ' + mod.message : ''} ===`);
+        if (mod.moveHead) {
+          lines.push('G91 ; Relative positioning');
+          lines.push('G1 Z5 F600 ; Lift Z');
+          lines.push('G90 ; Absolute positioning');
+          lines.push('G1 X5 Y5 F6000 ; Move head to front-left');
+        }
+        const profile = FIRMWARE[currentFirmware];
+        const pauseGcode = profile?.pauseGcode?.[mod.pauseType];
+        if (pauseGcode) lines.push(pauseGcode);
+        else lines.push(`${mod.pauseType} ; Pause`);
+        lines.push('; === END PAUSE ===');
+        break;
+      }
+      case 'filament': {
+        lines.push(`; === FILAMENT CHANGE${mod.command === 'M1020' ? ': Slot ' + (mod.slot + 1) : ''} ===`);
+        if (mod.command === 'M1020') lines.push(`M1020 S${mod.slot} ; Bambu AMS filament change`);
+        else lines.push(`${mod.command} ; Filament change`);
+        lines.push('; === END FILAMENT CHANGE ===');
+        break;
+      }
+      case 'eject': {
+        lines.push('; === AUTO-EJECT SEQUENCE ===');
+        lines.push(`G1 X5 Y${mod.bedY} Z${mod.headZ} F${mod.feedRate} ; Move to eject position`);
+        if (mod.heatersOff) {
+          lines.push('M104 S0 ; Extruder off');
+          lines.push('M140 S0 ; Bed off');
+        }
+        if (mod.homeZ) lines.push('G28 Z ; Home Z');
+        lines.push('M106 S0 ; Fan off');
+        if (mod.loop) {
+          lines.push('; === LOOP MODE ===');
+          lines.push('; Note: True automatic loop requires firmware support or external automation.');
+          lines.push('; The printer will stop here. Restart manually or via automation.');
+        }
+        lines.push('; === END AUTO-EJECT ===');
+        break;
+      }
+      case 'zoffset': {
+        const sign = mod.offset >= 0 ? '+' : '';
+        const range = mod.endLayer != null ? `layers ${mod.layer}–${mod.endLayer}` : `layer ${mod.layer} onward`;
+        lines.push(`; === Z-OFFSET: ${sign}${mod.offset}mm for ${range}${mod.note ? ' (' + mod.note + ')' : ''} ===`);
+        break;
+      }
+      case 'custom': {
+        lines.push('; === CUSTOM G-CODE ===');
+        mod.gcode.split('\n').forEach(l => lines.push(l));
+        lines.push('; === END CUSTOM ===');
+        break;
+      }
+    }
+    return lines;
+  }
+
+  applyAll(originalLines, parser) {
+    let result = [...originalLines];
+
+    // Separate mod types
+    const zoffsetMods = this.modifications.filter(m => m.type === 'zoffset');
+    const layerMods = this.modifications.filter(m => m.type !== 'eject' && m.type !== 'zoffset');
+    const ejectMods = this.modifications.filter(m => m.type === 'eject');
+
+    // Apply z-offset modifications by adjusting Z values in affected lines
+    if (zoffsetMods.length > 0) {
+      // Build a map: for each layer number, compute the total z-offset
+      const layerOffsets = new Map();
+      for (const layer of parser.layers) {
+        let totalOffset = 0;
+        for (const mod of zoffsetMods) {
+          const startL = mod.layer;
+          const endL = mod.endLayer;
+          if (layer.number >= startL && (endL == null || layer.number <= endL)) {
+            totalOffset += mod.offset;
+          }
+        }
+        if (totalOffset !== 0) layerOffsets.set(layer.number, totalOffset);
+      }
+
+      // Walk through lines and adjust Z values in G0/G1/G2/G3 commands
+      let currentLayerNum = null;
+      for (let i = 0; i < result.length; i++) {
+        const trimmed = result[i].trim();
+
+        // Track current layer
+        const layerMatch = trimmed.match(/^;LAYER:(\d+)/i);
+        if (layerMatch) {
+          currentLayerNum = parseInt(layerMatch[1]);
+          continue;
+        }
+        // Bambu format
+        const bambuMatch = trimmed.match(/^; layer num\/total_layer_count:\s*(\d+)\/(\d+)/);
+        if (bambuMatch) {
+          currentLayerNum = parseInt(bambuMatch[1]) - 1;
+          continue;
+        }
+
+        if (currentLayerNum == null) continue;
+        const offset = layerOffsets.get(currentLayerNum);
+        if (!offset) continue;
+
+        // Only modify G0/G1/G2/G3 lines that contain a Z parameter
+        if (/^G[0123]\s/i.test(trimmed) && /Z[-\d.]/i.test(trimmed)) {
+          result[i] = result[i].replace(
+            /([Zz])([-\d.]+)/g,
+            (match, letter, val) => {
+              const newZ = (parseFloat(val) + offset);
+              return letter + newZ.toFixed(3);
+            }
+          );
+        }
+      }
+    }
+
+    // Sort layer mods (including z-offset comments) by layer number (descending) to insert from bottom up
+    // This prevents line offset issues
+    const sorted = [...layerMods, ...zoffsetMods].sort((a, b) => {
+      const la = a.layer === 'end' ? Infinity : a.layer;
+      const lb = b.layer === 'end' ? Infinity : b.layer;
+      return lb - la;
+    });
+
+    for (const mod of sorted) {
+      const snippet = this.getSnippet(mod);
+      let insertLine;
+
+      if (mod.layer === 'end') {
+        insertLine = result.length;
+      } else {
+        const layer = parser.getLayerByNumber(mod.layer);
+        if (layer) {
+          insertLine = layer.startLine + 1; // After ;LAYER:X line
+        } else {
+          continue; // Skip if layer not found
+        }
+      }
+      result.splice(insertLine, 0, ...snippet);
+    }
+
+    // Append eject mods at the very end
+    for (const mod of ejectMods) {
+      const snippet = this.getSnippet(mod);
+      result.push(...snippet);
+    }
+
+    return result;
+  }
+}
+
+// ===== HOLE DETECTOR =====
+class HoleDetector {
+  constructor() {
+    this.resolution = 0.5; // mm per grid cell
+    this.lineWidth = 0.45; // extrusion width in mm
+    this.gridCache = new Map();
+    this.holes = new Map(); // layerNum -> HoleInfo[]
+    this.selectedHoles = [];
+  }
+
+  clearCache() {
+    this.gridCache.clear();
+    this.holes.clear();
+    this.selectedHoles = [];
+  }
+
+  _getGridDims() {
+    const b = parser.bounds;
+    const w = Math.ceil((b.maxX - b.minX) / this.resolution) + 2;
+    const h = Math.ceil((b.maxY - b.minY) / this.resolution) + 2;
+    return { w, h, offX: b.minX, offY: b.minY };
+  }
+
+  _toGrid(gcodeX, gcodeY, dims) {
+    return {
+      gx: Math.round((gcodeX - dims.offX) / this.resolution),
+      gy: Math.round((gcodeY - dims.offY) / this.resolution)
+    };
+  }
+
+  _toGcode(gx, gy, dims) {
+    return {
+      x: gx * this.resolution + dims.offX,
+      y: gy * this.resolution + dims.offY
+    };
+  }
+
+  rasterizeLayer(layerNum, ignoreInfill) {
+    const cacheKey = `${layerNum}_${ignoreInfill ? 1 : 0}`;
+    if (this.gridCache.has(cacheKey)) return this.gridCache.get(cacheKey);
+
+    const dims = this._getGridDims();
+    const grid = new Uint8Array(dims.w * dims.h); // 0 = empty, 1 = filled
+    const moves = parser.layerMoves[layerNum];
+    if (!moves) { this.gridCache.set(cacheKey, { grid, dims }); return { grid, dims }; }
+
+    const halfW = Math.ceil(this.lineWidth / 2 / this.resolution);
+
+    for (const move of moves) {
+      if (!move.extrude) continue;
+      // Optionally skip infill
+      if (ignoreInfill) {
+        const t = move.type.toUpperCase();
+        if (t.includes('INFILL') || t.includes('FILL') || t === 'SPARSE' || t === 'SOLID') continue;
+      }
+
+      const p0 = this._toGrid(move.x1, move.y1, dims);
+      const p1 = this._toGrid(move.x2, move.y2, dims);
+
+      // Bresenham's line with square stamp
+      let dx = Math.abs(p1.gx - p0.gx), dy = Math.abs(p1.gy - p0.gy);
+      let sx = p0.gx < p1.gx ? 1 : -1, sy = p0.gy < p1.gy ? 1 : -1;
+      let err = dx - dy;
+      let cx = p0.gx, cy = p0.gy;
+
+      while (true) {
+        // Square stamp around current point
+        for (let sy2 = -halfW; sy2 <= halfW; sy2++) {
+          for (let sx2 = -halfW; sx2 <= halfW; sx2++) {
+            const nx = cx + sx2, ny = cy + sy2;
+            if (nx >= 0 && nx < dims.w && ny >= 0 && ny < dims.h) {
+              grid[ny * dims.w + nx] = 1;
+            }
+          }
+        }
+        if (cx === p1.gx && cy === p1.gy) break;
+        const e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; cx += sx; }
+        if (e2 < dx) { err += dx; cy += sy; }
+      }
+    }
+
+    this.gridCache.set(cacheKey, { grid, dims });
+    return { grid, dims };
+  }
+
+  detectHoles(layerNum, minDiameterMm, ignoreInfill) {
+    minDiameterMm = minDiameterMm || 4;
+    const { grid, dims } = this.rasterizeLayer(layerNum, ignoreInfill);
+    const w = dims.w, h = dims.h;
+    const totalCells = w * h;
+
+    // Labels: 0 = unvisited empty, 1 = filled, 2 = exterior, 3+ = hole IDs
+    const labels = new Int32Array(totalCells);
+    for (let i = 0; i < totalCells; i++) labels[i] = grid[i] ? 1 : 0;
+
+    // BFS flood-fill from all border cells to mark exterior
+    // Use typed-array circular buffer for O(1) enqueue/dequeue
+    const queueBuf = new Int32Array(totalCells);
+    let qHead = 0, qTail = 0;
+    const enqueue = (idx) => { queueBuf[qTail++ % totalCells] = idx; };
+    const dequeue = () => queueBuf[qHead++ % totalCells];
+
+    // Seed border cells
+    for (let x = 0; x < w; x++) {
+      if (labels[x] === 0) { labels[x] = 2; enqueue(x); }
+      const botIdx = (h - 1) * w + x;
+      if (labels[botIdx] === 0) { labels[botIdx] = 2; enqueue(botIdx); }
+    }
+    for (let y = 1; y < h - 1; y++) {
+      if (labels[y * w] === 0) { labels[y * w] = 2; enqueue(y * w); }
+      const rIdx = y * w + w - 1;
+      if (labels[rIdx] === 0) { labels[rIdx] = 2; enqueue(rIdx); }
+    }
+
+    // BFS to mark all exterior
+    const dx4 = [1, -1, 0, 0], dy4 = [0, 0, 1, -1];
+    while (qHead < qTail) {
+      const idx = dequeue();
+      const cx = idx % w, cy = (idx - cx) / w;
+      for (let d = 0; d < 4; d++) {
+        const nx = cx + dx4[d], ny = cy + dy4[d];
+        if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+        const nIdx = ny * w + nx;
+        if (labels[nIdx] === 0) { labels[nIdx] = 2; enqueue(nIdx); }
+      }
+    }
+
+    // Find connected components of remaining empty cells (label === 0)
+    const holesFound = [];
+    let nextLabel = 3;
+    for (let i = 0; i < totalCells; i++) {
+      if (labels[i] !== 0) continue;
+      // BFS for this hole
+      const holeLabel = nextLabel++;
+      const cells = [];
+      qHead = 0; qTail = 0;
+      labels[i] = holeLabel;
+      enqueue(i);
+
+      while (qHead < qTail) {
+        const idx = dequeue();
+        cells.push(idx);
+        const cx = idx % w, cy = (idx - cx) / w;
+        for (let d = 0; d < 4; d++) {
+          const nx = cx + dx4[d], ny = cy + dy4[d];
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+          const nIdx = ny * w + nx;
+          if (labels[nIdx] === 0) { labels[nIdx] = holeLabel; enqueue(nIdx); }
+        }
+      }
+
+      // Compute bbox, centroid, area
+      let minGx = Infinity, maxGx = -Infinity, minGy = Infinity, maxGy = -Infinity;
+      let sumX = 0, sumY = 0;
+      for (const idx of cells) {
+        const cx = idx % w, cy = (idx - cx) / w;
+        if (cx < minGx) minGx = cx;
+        if (cx > maxGx) maxGx = cx;
+        if (cy < minGy) minGy = cy;
+        if (cy > maxGy) maxGy = cy;
+        sumX += cx; sumY += cy;
+      }
+
+      const areaMm2 = cells.length * this.resolution * this.resolution;
+      const diameterMm = 2 * Math.sqrt(areaMm2 / Math.PI); // equivalent circle diameter
+
+      if (diameterMm < minDiameterMm) continue; // Filter small holes
+
+      const centroid = this._toGcode(sumX / cells.length, sumY / cells.length, dims);
+      const bboxMin = this._toGcode(minGx, minGy, dims);
+      const bboxMax = this._toGcode(maxGx, maxGy, dims);
+
+      holesFound.push({
+        id: `hole_${layerNum}_${holesFound.length}`,
+        label: holeLabel,
+        layerNum,
+        cells,
+        cellSet: new Set(cells),
+        areaMm2,
+        diameterMm,
+        centroid,
+        bbox: { minX: bboxMin.x, minY: bboxMin.y, maxX: bboxMax.x, maxY: bboxMax.y },
+        gridDims: dims,
+        floorLayer: null,
+        depthMm: null
+      });
+    }
+
+    this.holes.set(layerNum, holesFound);
+    return holesFound;
+  }
+
+  findHoleAtPoint(gcodeX, gcodeY, layerNum) {
+    const holes = this.holes.get(layerNum);
+    if (!holes) return null;
+
+    for (const hole of holes) {
+      if (gcodeX >= hole.bbox.minX && gcodeX <= hole.bbox.maxX &&
+          gcodeY >= hole.bbox.minY && gcodeY <= hole.bbox.maxY) {
+        // Check if the actual grid cell is part of this hole
+        const { gx, gy } = this._toGrid(gcodeX, gcodeY, hole.gridDims);
+        const idx = gy * hole.gridDims.w + gx;
+        if (hole.cellSet.has(idx)) return hole;
+      }
+    }
+    return null;
+  }
+
+  analyzeHoleDepth(hole, startLayerNum) {
+    const ignoreInfill = document.getElementById('holeIgnoreInfill')?.checked ?? true;
+    const dims = hole.gridDims;
+
+    // Get footprint cells as a set of (gx, gy) pairs
+    const footprint = new Set(hole.cells);
+    let floorLayer = -1;
+
+    // Scan layers downward
+    for (let ln = startLayerNum - 1; ln >= 0; ln--) {
+      const layer = parser.getLayerByNumber(ln);
+      if (!layer) continue;
+
+      const { grid } = this.rasterizeLayer(ln, ignoreInfill);
+      // Check what % of footprint cells are filled in this layer
+      let filledCount = 0;
+      for (const idx of footprint) {
+        if (idx >= 0 && idx < grid.length && grid[idx] === 1) filledCount++;
+      }
+
+      const overlapRatio = filledCount / footprint.size;
+      if (overlapRatio >= 0.8) {
+        floorLayer = ln;
+        break;
+      }
+    }
+
+    hole.floorLayer = floorLayer;
+    if (floorLayer >= 0) {
+      const startLayer = parser.getLayerByNumber(startLayerNum);
+      const floorLayerData = parser.getLayerByNumber(floorLayer);
+      if (startLayer && floorLayerData && startLayer.zHeight != null && floorLayerData.zHeight != null) {
+        hole.depthMm = startLayer.zHeight - floorLayerData.zHeight;
+      } else {
+        hole.depthMm = null;
+      }
+    } else {
+      hole.depthMm = null; // through-hole
+    }
+
+    return hole;
+  }
+}
+
+// ===== INSERT MANAGER =====
+class InsertManager {
+  constructor() {
+    this.inserts = []; // track insert-to-modification links
+  }
+
+  clear() { this.inserts = []; }
+
+  calculatePauseLayer(hole, insertHeightMm) {
+    if (hole.floorLayer == null || hole.floorLayer < 0) return null;
+
+    const floorLayerData = parser.getLayerByNumber(hole.floorLayer);
+    if (!floorLayerData || floorLayerData.zHeight == null) return null;
+
+    const targetZ = floorLayerData.zHeight + insertHeightMm;
+
+    // Find first layer where zHeight >= targetZ
+    for (const layer of parser.layers) {
+      if (layer.zHeight != null && layer.zHeight >= targetZ) {
+        return layer.number;
+      }
+    }
+    return null; // insert taller than remaining print
+  }
+
+  createModification(hole, heightMm, diameterMm, label, pauseType, moveHead) {
+    const pauseLayer = this.calculatePauseLayer(hole, heightMm);
+    if (pauseLayer == null) return null;
+
+    const message = label
+      ? `Insert ${label} (${diameterMm}mm dia, ${heightMm}mm tall) at hole #${hole.id}`
+      : `Insert object (${diameterMm}mm dia, ${heightMm}mm tall) at hole #${hole.id}`;
+
+    const mod = modifier.addPause(pauseLayer, message, pauseType, moveHead);
+
+    this.inserts.push({
+      holeId: hole.id,
+      modId: mod.id,
+      pauseLayer,
+      heightMm,
+      diameterMm,
+      label
+    });
+
+    return { mod, pauseLayer };
+  }
+
+  applyToMultipleHoles(holes, config) {
+    const results = [];
+    for (const hole of holes) {
+      const result = this.createModification(
+        hole, config.heightMm, config.diameterMm,
+        config.label, config.pauseType, config.moveHead
+      );
+      if (result) results.push(result);
+    }
+    return results;
+  }
+}
+
+// ===== UNDO/REDO STACK =====
+class UndoStack {
+  constructor(maxSize = 50) {
+    this.stack = [];
+    this.index = -1;
+    this.maxSize = maxSize;
+  }
+
+  push(state) {
+    this.stack = this.stack.slice(0, this.index + 1);
+    this.stack.push(JSON.parse(JSON.stringify(state)));
+    if (this.stack.length > this.maxSize) this.stack.shift();
+    this.index = this.stack.length - 1;
+  }
+
+  undo() {
+    if (this.index <= 0) return null;
+    this.index--;
+    return JSON.parse(JSON.stringify(this.stack[this.index]));
+  }
+
+  redo() {
+    if (this.index >= this.stack.length - 1) return null;
+    this.index++;
+    return JSON.parse(JSON.stringify(this.stack[this.index]));
+  }
+
+  canUndo() { return this.index > 0; }
+  canRedo() { return this.index < this.stack.length - 1; }
+}
+
+// ===== FIRMWARE PROFILES =====
+const FIRMWARE = {
+  bambu: {
+    name: 'Bambu Lab',
+    pause: [
+      { value: 'M400U1', label: 'M400 U1 (Bambu)', default: true },
+      { value: 'M600', label: 'M600' },
+    ],
+    pauseHint: 'M400 U1 is recommended for Bambu Lab printers.',
+    pauseGcode: {
+      'M400U1': 'M400 U1 ; Bambu pause',
+      'M600': 'M600 ; Filament change pause',
+    },
+    filament: [
+      { value: 'M1020', label: 'M1020 (AMS)', default: true },
+      { value: 'M600', label: 'M600 (Standard)' },
+    ],
+    filamentHint: 'M1020 triggers AMS filament change with audio notification. M600 is the standard filament change command.',
+    hasAMS: true,
+    ejectHint: 'Eject commands are appended to the end of the G-code. Loop mode adds a note — true looping requires firmware support or external automation.',
+  },
+  klipper: {
+    name: 'Klipper',
+    pause: [
+      { value: 'PAUSE', label: 'PAUSE (Macro)', default: true },
+      { value: 'M600', label: 'M600' },
+      { value: 'M0', label: 'M0' },
+    ],
+    pauseHint: 'PAUSE calls the [pause_resume] macro. M600 works if defined in your printer.cfg.',
+    pauseGcode: {
+      'PAUSE': 'PAUSE ; Klipper pause macro',
+      'M600': 'M600 ; Filament change',
+      'M0': 'M0 ; Pause (unconditional stop)',
+    },
+    filament: [
+      { value: 'M600', label: 'M600', default: true },
+    ],
+    filamentHint: 'M600 must be defined as a gcode_macro in your printer.cfg. Klipper does not support M600 natively.',
+    hasAMS: false,
+    ejectHint: 'Eject commands are appended to the end of the G-code. Klipper macros can be used for automation.',
+  },
+  marlin: {
+    name: 'Marlin',
+    pause: [
+      { value: 'M0', label: 'M0 (Pause)', default: true },
+      { value: 'M600', label: 'M600 (Filament Change)' },
+      { value: 'M25', label: 'M25 (SD Pause)' },
+    ],
+    pauseHint: 'M0 pauses and waits for user input. M600 triggers the filament change routine. M25 pauses SD card prints.',
+    pauseGcode: {
+      'M0': 'M0 ; Pause (Marlin)',
+      'M600': 'M600 ; Filament change pause',
+      'M25': 'M25 ; Pause SD print',
+    },
+    filament: [
+      { value: 'M600', label: 'M600 (Standard)', default: true },
+    ],
+    filamentHint: 'M600 triggers the filament change sequence. Enable ADVANCED_PAUSE_FEATURE in Marlin configuration.',
+    hasAMS: false,
+    ejectHint: 'Eject commands are appended to the end of the G-code. Loop mode adds a note — true looping requires firmware support or external automation.',
+  },
+  rrf: {
+    name: 'RepRapFirmware',
+    pause: [
+      { value: 'M226', label: 'M226 (Pause)', default: true },
+      { value: 'M600', label: 'M600 (Filament Change)' },
+      { value: 'M0', label: 'M0 (Stop)' },
+    ],
+    pauseHint: 'M226 pauses the print and runs the pause.g macro. M0 ends the print and runs stop.g.',
+    pauseGcode: {
+      'M226': 'M226 ; Pause (RRF)',
+      'M600': 'M600 ; Filament change',
+      'M0': 'M0 ; Stop print (RRF)',
+    },
+    filament: [
+      { value: 'M600', label: 'M600 (Standard)', default: true },
+    ],
+    filamentHint: 'M600 triggers a filament change. Define the filament-change.g macro on your SD card.',
+    hasAMS: false,
+    ejectHint: 'Eject commands are appended to the end of the G-code.',
+  },
+};
+
+let currentFirmware = 'bambu';
+
+function onFirmwareChange(fw) {
+  currentFirmware = fw;
+  const profile = FIRMWARE[fw];
+
+  // Update pause radio buttons (main pause tab)
+  renderRadioGroup('pauseTypeGroup', 'pauseType', profile.pause);
+  document.getElementById('pauseHint').textContent = profile.pauseHint;
+
+  // Update insert pause radio buttons
+  renderRadioGroup('insertPauseTypeGroup', 'insertPauseType', profile.pause);
+
+  // Update filament command dropdown
+  const filamentCmd = document.getElementById('filamentCmd');
+  filamentCmd.innerHTML = profile.filament.map(f =>
+    `<option value="${f.value}"${f.default ? ' selected' : ''}>${f.label}</option>`
+  ).join('');
+  document.getElementById('filamentHint').textContent = profile.filamentHint;
+
+  // Show/hide AMS slot selector
+  document.getElementById('filamentSlotGroup').style.display = profile.hasAMS ? '' : 'none';
+
+  // Update eject hint
+  document.getElementById('ejectHint').textContent = profile.ejectHint;
+}
+
+function renderRadioGroup(containerId, radioName, options) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = options.map((opt, i) => {
+    const id = `${radioName}_${i}`;
+    return `<div class="radio-opt"><input type="radio" name="${radioName}" id="${id}" value="${opt.value}"${opt.default ? ' checked' : ''}><label for="${id}">${opt.label}</label></div>`;
+  }).join('');
+}
+
+// ===== APP STATE =====
+const parser = new GcodeParser();
+const modifier = new GcodeModifier();
+const holeDetector = new HoleDetector();
+const insertManager = new InsertManager();
+const undoStack = new UndoStack();
+let selectedLayer = null;
+let holeDetectMode = false;
+let measureMode = false;
+let measurePoints = [];
+
+function toggleMeasureMode() {
+  measureMode = !measureMode;
+  measurePoints = [];
+  document.getElementById('measureToggle').classList.toggle('active', measureMode);
+  document.getElementById('viewerCanvas').style.cursor = measureMode ? 'crosshair' : '';
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+
+// Initialize firmware UI
+onFirmwareChange('bambu');
+
+// ===== FILE HANDLING =====
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+// ===== ONBOARDING HINTS =====
+const onboardState = JSON.parse(localStorage.getItem('gcode_onboard') || '{}');
+
+function showOnboardHint(key, targetId, text) {
+  if (onboardState[key]) return;
+  const target = document.getElementById(targetId);
+  if (!target) return;
+  const hint = document.createElement('div');
+  hint.className = 'onboard-hint below';
+  hint.textContent = text;
+  hint.onclick = () => {
+    hint.remove();
+    onboardState[key] = true;
+    localStorage.setItem('gcode_onboard', JSON.stringify(onboardState));
+  };
+  target.style.position = 'relative';
+  target.appendChild(hint);
+}
+
+if (!onboardState.dropzone) {
+  setTimeout(() => showOnboardHint('dropzone', 'dropZone', 'Drop a .gcode file here to get started'), 500);
+}
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const text = e.target.result;
+
+    const progressEl = document.getElementById('parseProgress');
+    const barEl = document.getElementById('parseBar');
+    const labelEl = document.getElementById('parseLabel');
+    const lineCount = (text.match(/\n/g) || []).length;
+
+    if (lineCount > 50000) {
+      progressEl.style.display = '';
+      labelEl.textContent = 'Parsing...';
+      barEl.style.width = '0%';
+    }
+
+    await parser.parseAsync(text, file.name, pct => {
+      barEl.style.width = (pct * 100).toFixed(0) + '%';
+      labelEl.textContent = `Parsing... ${(pct * 100).toFixed(0)}%`;
+    });
+
+    progressEl.style.display = 'none';
+
+    if (parser.layers.length === 0) {
+      document.getElementById('gcodePreview').innerHTML =
+        '<div class="empty-state"><p style="color:var(--red)">No layers detected in this file. It may not be a valid G-code file, or the slicer format is not yet supported.</p></div>';
+      document.getElementById('parseProgress').style.display = 'none';
+      return;
+    }
+    if (parser.skippedLines > 0) {
+      showToast(parser.skippedLines + ' lines skipped during parsing', 'warning');
+    }
+
+    holeDetector.clearCache();
+    viewer.clearBuffers();
+    insertManager.clear();
+    modifier.modifications = [];
+    undoStack.push(modifier.modifications);
+    holeDetectMode = false;
+    document.getElementById('holeDetectToggle').classList.remove('active');
+    document.getElementById('viewerCanvas').classList.remove('hole-mode');
+
+    // Update UI
+    document.getElementById('fileName').textContent = file.name;
+    const slicerName = parser.slicerType !== 'unknown' ? ` · ${parser.slicerType}` : '';
+    document.getElementById('fileMeta').textContent =
+      `${parser.layers.length} layers  ·  ${parser.lines.length.toLocaleString()} lines${slicerName}`;
+    document.getElementById('fileInfo').style.display = 'inline';
+    document.getElementById('exportBtn').style.display = 'inline-flex';
+    dropZone.innerHTML = `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg><span>Replace file</span>`;
+
+    renderLayerList();
+    // Setup viewer
+    viewer.resize();
+    viewer.fitBounds();
+    updateSlider();
+    if (parser.layers.length > 0) selectLayer(parser.layers[0].number);
+    else renderFullPreview();
+
+    showOnboardHint('visual', 'viewVisualBtn', 'Try the 3D Visual view');
+  };
+  reader.readAsText(file);
+}
+
+// ===== LAYER LIST =====
+function getModdedLayers() {
+  const moddedLayers = new Set(modifier.modifications.filter(m => m.layer !== Infinity && m.layer !== 'end' && m.type !== 'zoffset').map(m => m.layer));
+  for (const mod of modifier.modifications.filter(m => m.type === 'zoffset')) {
+    for (const layer of parser.layers) {
+      if (layer.number >= mod.layer && (mod.endLayer == null || layer.number <= mod.endLayer)) {
+        moddedLayers.add(layer.number);
+      }
+    }
+  }
+  return moddedLayers;
+}
+
+function renderLayerList() {
+  const container = document.getElementById('layerList');
+  const moddedLayers = getModdedLayers();
+
+  if (parser.layers.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>No layers detected in this file</p></div>';
+    return;
+  }
+
+  let html = '';
+  for (const layer of parser.layers) {
+    const active = selectedLayer === layer.number ? ' active' : '';
+    const hasMod = moddedLayers.has(layer.number);
+    html += `<div class="layer-item${active}" data-layer="${layer.number}" onclick="selectLayer(${layer.number})">
+      ${hasMod ? '<div class="layer-mod-badge"></div>' : ''}
+      <span class="layer-num">${layer.number}</span>
+      <span class="layer-z">${layer.zHeight !== null ? 'Z' + layer.zHeight.toFixed(2) : ''}</span>
+      <span class="layer-lines">${layer.lineCount} ln</span>
+    </div>`;
+  }
+  container.innerHTML = html;
+}
+
+function filterLayers(query) {
+  const items = document.querySelectorAll('.layer-item');
+  const q = query.trim().toLowerCase();
+  items.forEach(item => {
+    const text = item.textContent.toLowerCase();
+    item.style.display = (!q || text.includes(q)) ? '' : 'none';
+  });
+}
+
+function selectLayer(num) {
+  selectedLayer = num;
+  renderLayerList();
+  renderPreview(num);
+  updateSlider();
+
+  // Update visual viewer if active
+  if (currentView === 'visual') {
+    viewer.maxVisibleLayer = num;
+    viewer.render(num);
+    updateViewerOverlay(num);
+  }
+
+  // Fill layer number into active tab's layer input
+  const activeTab = document.querySelector('.tab.active')?.dataset.tab;
+  if (activeTab === 'pause') document.getElementById('pauseLayer').value = num;
+  else if (activeTab === 'filament') document.getElementById('filamentLayer').value = num;
+  else if (activeTab === 'zoffset') document.getElementById('zoffsetLayer').value = num;
+
+  // Update hole list if holes were detected for this layer
+  if (holeDetector.holes.has(num)) {
+    renderHoleList(num);
+  }
+}
+
+function jumpToLayer(num) {
+  const layer = parser.getLayerByNumber(num);
+  if (layer) selectLayer(num);
+}
+
+// ===== PREVIEW =====
+function renderPreview(layerNum) {
+  const container = document.getElementById('gcodePreview');
+  const previewEmpty = document.getElementById('previewEmpty');
+  if (previewEmpty) previewEmpty.remove();
+
+  const layer = parser.getLayerByNumber(layerNum);
+  if (!layer) return;
+
+  const contextBefore = 5;
+  const contextAfter = 10;
+  const startLine = Math.max(0, layer.startLine - contextBefore);
+  const endLine = Math.min(parser.lines.length - 1, layer.endLine + contextAfter);
+
+  // Find modification lines for this layer
+  const modLayers = new Set(modifier.modifications.filter(m => {
+    if (m.type === 'zoffset') return layerNum >= m.layer && (m.endLayer == null || layerNum <= m.endLayer);
+    return m.layer === layerNum;
+  }).map(m => m.id));
+
+  let html = '<table class="code-table"><tbody>';
+  for (let i = startLine; i <= endLine; i++) {
+    const raw = parser.lines[i];
+    const isLayerStart = raw.trim().match(/^;LAYER:\d+/i);
+    const isHighlight = i >= layer.startLine && i <= layer.endLine;
+    const classes = [];
+    if (isLayerStart) classes.push('layer-start');
+    if (isHighlight) classes.push('highlight');
+
+    html += `<tr class="${classes.join(' ')}"><td class="ln">${i + 1}</td><td>${syntaxHighlight(raw)}</td></tr>`;
+  }
+
+  // Show modification preview snippets
+  if (modLayers.size > 0) {
+    html += '<tr class="layer-start"><td class="ln" style="color:var(--orange)">+</td><td style="color:var(--orange);font-weight:600">; ── Modifications to be inserted ──</td></tr>';
+    for (const mod of modifier.modifications.filter(m => {
+      if (m.type === 'zoffset') return layerNum >= m.layer && (m.endLayer == null || layerNum <= m.endLayer);
+      return m.layer === layerNum;
+    })) {
+      const snippet = modifier.getSnippet(mod);
+      for (const line of snippet) {
+        html += `<tr class="mod-line"><td class="ln">+</td><td>${syntaxHighlight(line)}</td></tr>`;
+      }
+    }
+  }
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+
+  document.getElementById('previewInfo').textContent =
+    `Layer ${layer.number}  ·  Z${layer.zHeight?.toFixed(2) || '?'}mm  ·  Lines ${layer.startLine + 1}–${layer.endLine + 1}`;
+}
+
+function renderFullPreview() {
+  const container = document.getElementById('gcodePreview');
+  const previewEmpty = document.getElementById('previewEmpty');
+  if (previewEmpty) previewEmpty.remove();
+
+  // Show first 200 lines (Bambu headers can be very long)
+  const end = Math.min(200, parser.lines.length);
+  let html = '<table class="code-table"><tbody>';
+  for (let i = 0; i < end; i++) {
+    html += `<tr><td class="ln">${i + 1}</td><td>${syntaxHighlight(parser.lines[i])}</td></tr>`;
+  }
+  if (parser.lines.length > 200) {
+    html += `<tr><td class="ln">...</td><td style="color:var(--text-dim)">... ${(parser.lines.length - 200).toLocaleString()} more lines ...</td></tr>`;
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function syntaxHighlight(line) {
+  if (!line) return '';
+  let escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // Comments
+  if (escaped.trim().startsWith(';')) {
+    return `<span class="syn-comment">${escaped}</span>`;
+  }
+
+  // Inline comments
+  const commentIdx = escaped.indexOf(';');
+  let main = commentIdx > -1 ? escaped.substring(0, commentIdx) : escaped;
+  let comment = commentIdx > -1 ? `<span class="syn-comment">${escaped.substring(commentIdx)}</span>` : '';
+
+  // G commands
+  main = main.replace(/\b(G\d+(\.\d+)?)/g, '<span class="syn-g">$1</span>');
+  // M commands
+  main = main.replace(/\b(M\d+)/g, '<span class="syn-m">$1</span>');
+  // Parameters (letters followed by numbers)
+  main = main.replace(/\b([XYZEFIJKRSTPQAB])([-\d.]+)/g, '<span class="syn-param">$1</span><span class="syn-value">$2</span>');
+
+  return main + comment;
+}
+
+// ===== TOAST NOTIFICATIONS =====
+function showToast(message, type = 'success', duration = 4000) {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `<span>${message}</span><button class="toast-close" onclick="this.parentElement.remove()">&times;</button>`;
+  container.appendChild(toast);
+  if (duration > 0) setTimeout(() => toast.remove(), duration);
+}
+
+// ===== TAB SWITCHING =====
+function switchTab(tabName) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
+  document.querySelectorAll('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === 'tab-' + tabName));
+}
+
+// ===== ADD MODIFICATIONS =====
+function addPause() {
+  const layer = parseInt(document.getElementById('pauseLayer').value);
+  if (isNaN(layer)) { showToast('Please enter a valid layer number.', 'error'); return; }
+  if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
+
+  const msg = document.getElementById('pauseMsg').value;
+  const pauseType = document.querySelector('input[name="pauseType"]:checked').value;
+  const moveHead = document.getElementById('pauseMoveHead').checked;
+
+  modifier.addPause(layer, msg, pauseType, moveHead);
+  refreshAfterMod();
+  showToast('Pause added at layer ' + layer, 'success');
+}
+
+function addFilamentChange() {
+  const layer = parseInt(document.getElementById('filamentLayer').value);
+  if (isNaN(layer)) { showToast('Please enter a valid layer number.', 'error'); return; }
+  if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
+
+  const slot = document.getElementById('filamentSlot').value;
+  const cmd = document.getElementById('filamentCmd').value;
+
+  modifier.addFilament(layer, slot, cmd);
+  refreshAfterMod();
+  showToast('Filament change added at layer ' + layer, 'success');
+}
+
+function addEject() {
+  const config = {
+    bedY: parseInt(document.getElementById('ejectY').value) || 220,
+    headZ: parseInt(document.getElementById('ejectZ').value) || 10,
+    feedRate: parseInt(document.getElementById('ejectFeed').value) || 6000,
+    heatersOff: document.getElementById('ejectHeatersOff').checked,
+    homeZ: document.getElementById('ejectHomeZ').checked,
+    loop: document.getElementById('ejectLoop').checked,
+  };
+  modifier.addEject(config);
+  refreshAfterMod();
+  showToast('Eject sequence added', 'success');
+}
+
+function addZOffset() {
+  const layer = parseInt(document.getElementById('zoffsetLayer').value);
+  if (isNaN(layer)) { showToast('Please enter a valid start layer number.', 'error'); return; }
+  if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
+
+  const endLayerInput = document.getElementById('zoffsetEndLayer').value.trim();
+  let endLayer = null;
+  if (endLayerInput !== '') {
+    endLayer = parseInt(endLayerInput);
+    if (isNaN(endLayer)) { showToast('Please enter a valid end layer number or leave blank.', 'error'); return; }
+    if (!parser.getLayerByNumber(endLayer)) { showToast(`Layer ${endLayer} not found in the file.`, 'error'); return; }
+    if (endLayer < layer) { showToast('End layer must be >= start layer.', 'error'); return; }
+  }
+
+  const offset = parseFloat(document.getElementById('zoffsetValue').value);
+  if (isNaN(offset) || offset === 0) { showToast('Please enter a non-zero Z-offset value.', 'error'); return; }
+
+  const note = document.getElementById('zoffsetNote').value.trim();
+
+  modifier.addZOffset(layer, endLayer, offset, note);
+  refreshAfterMod();
+  showToast('Z-offset added at layer ' + layer, 'success');
+}
+
+function addCustom() {
+  let layerInput = document.getElementById('customLayer').value.trim();
+  const gcode = document.getElementById('customGcode').value.trim();
+  if (!gcode) { showToast('Please enter some G-code.', 'error'); return; }
+
+  let layer;
+  if (layerInput.toLowerCase() === 'end') {
+    layer = 'end';
+  } else {
+    layer = parseInt(layerInput);
+    if (isNaN(layer)) { showToast('Please enter a valid layer number or "end".', 'error'); return; }
+    if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
+  }
+
+  modifier.addCustom(layer, gcode);
+  refreshAfterMod();
+  showToast('Custom G-code added at layer ' + layer, 'success');
+}
+
+function refreshAfterMod() {
+  undoStack.push(modifier.modifications);
+  renderModsList();
+  renderLayerList();
+  updateSliderTicks();
+  if (selectedLayer !== null) {
+    renderPreview(selectedLayer);
+    if (currentView === 'visual') {
+      viewer.maxVisibleLayer = selectedLayer;
+      viewer.render(selectedLayer);
+      updateViewerOverlay(selectedLayer);
+    }
+  }
+  if (modifier.modifications.length === 1) {
+    showOnboardHint('export', 'exportBtn', 'Export to save your changes');
+  }
+}
+
+// ===== MODIFICATIONS LIST =====
+function renderModsList() {
+  const container = document.getElementById('modsList');
+  const noMods = document.getElementById('noMods');
+  const count = modifier.modifications.length;
+  document.getElementById('modsCount').textContent = count;
+
+  if (count === 0) {
+    container.innerHTML = '<div class="no-mods" id="noMods">No modifications added yet</div>';
+    return;
+  }
+
+  let html = '';
+  for (const mod of modifier.modifications) {
+    const badge = mod.type;
+    let desc = '';
+    switch (mod.type) {
+      case 'pause':
+        desc = `Layer ${mod.layer}${mod.message ? ' – ' + mod.message : ''}`;
+        break;
+      case 'filament':
+        desc = mod.command === 'M1020' ? `Layer ${mod.layer} → Slot ${mod.slot + 1} (${mod.command})` : `Layer ${mod.layer} (${mod.command})`;
+        break;
+      case 'eject':
+        desc = `End of file${mod.loop ? ' (loop)' : ''}`;
+        break;
+      case 'zoffset': {
+        const sign = mod.offset >= 0 ? '+' : '';
+        const range = mod.endLayer != null ? `L${mod.layer}–${mod.endLayer}` : `L${mod.layer}+`;
+        desc = `${range}: ${sign}${mod.offset}mm${mod.note ? ' – ' + mod.note : ''}`;
+        break;
+      }
+      case 'custom':
+        desc = mod.layer === 'end' ? 'End of file' : `Layer ${mod.layer}`;
+        break;
+    }
+
+    html += `<div class="mod-item" data-id="${mod.id}" draggable="true"
+  ondragstart="onModDragStart(event,'${mod.id}')"
+  ondragover="onModDragOver(event)"
+  ondrop="onModDrop(event,'${mod.id}')"
+  ondragend="onModDragEnd()">
+      <span class="mod-badge ${badge}">${badge}</span>
+      <span class="mod-desc" title="${desc}">${desc}</span>
+      <div class="mod-actions">
+        <button class="mod-action delete" onclick="modifier.remove('${mod.id}');refreshAfterMod()" title="Delete">&times;</button>
+      </div>
+    </div>`;
+  }
+  container.innerHTML = html;
+}
+
+
+let dragModId = null;
+
+function onModDragStart(e, modId) {
+  dragModId = modId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.target.style.opacity = '0.4';
+}
+
+function onModDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const item = e.target.closest('.mod-item');
+  document.querySelectorAll('.mod-item').forEach(el => el.style.borderTop = '');
+  if (item) item.style.borderTop = '2px solid var(--accent)';
+}
+
+function onModDrop(e, targetId) {
+  e.preventDefault();
+  if (!dragModId || dragModId === targetId) return;
+
+  const mods = modifier.modifications;
+  const fromIdx = mods.findIndex(m => m.id === dragModId);
+  const toIdx = mods.findIndex(m => m.id === targetId);
+  if (fromIdx < 0 || toIdx < 0) return;
+
+  const [moved] = mods.splice(fromIdx, 1);
+  mods.splice(toIdx, 0, moved);
+
+  refreshAfterMod();
+}
+
+function onModDragEnd() {
+  dragModId = null;
+  document.querySelectorAll('.mod-item').forEach(el => {
+    el.style.opacity = '';
+    el.style.borderTop = '';
+  });
+}
+
+// ===== VIEW TOGGLE =====
+let currentView = 'code';
+
+function setView(view) {
+  currentView = view;
+  document.getElementById('viewCodeBtn').classList.toggle('active', view === 'code');
+  document.getElementById('viewVisualBtn').classList.toggle('active', view === 'visual');
+  document.getElementById('gcodePreview').classList.toggle('hidden', view === 'visual');
+  document.getElementById('viewerWrap').classList.toggle('active', view === 'visual');
+  if (view === 'visual' && selectedLayer !== null) {
+    viewer.resize();
+    viewer.fitBounds();
+    viewer.maxVisibleLayer = selectedLayer;
+    viewer.render(selectedLayer);
+    updateViewerOverlay(selectedLayer);
+  }
+}
+
+function onSliderChange(val) {
+  // Map slider index to layer number
+  if (parser.layers[val]) {
+    selectLayer(parser.layers[val].number);
+    document.getElementById('sliderLabel').textContent = `Layer ${parser.layers[val].number}`;
+  }
+}
+
+function updateSlider() {
+  const slider = document.getElementById('layerSlider');
+  slider.max = Math.max(0, parser.layers.length - 1);
+  const idx = parser.layers.findIndex(l => l.number === selectedLayer);
+  if (idx >= 0) slider.value = idx;
+  document.getElementById('sliderLabel').textContent = `Layer ${selectedLayer ?? 0}`;
+  updateSliderTicks();
+}
+
+function updateSliderTicks() {
+  const container = document.getElementById('sliderTicks');
+  const moddedLayers = getModdedLayers();
+  if (parser.layers.length === 0 || moddedLayers.size === 0) { container.innerHTML = ''; return; }
+  let html = '';
+  for (const mod of modifier.modifications) {
+    if (mod.layer === Infinity || mod.layer === 'end') continue;
+    const idx = parser.layers.findIndex(l => l.number === mod.layer);
+    if (idx < 0) continue;
+    const pct = (idx / Math.max(1, parser.layers.length - 1)) * 100;
+    const color = mod.type === 'pause' ? 'var(--yellow)' : mod.type === 'filament' ? 'var(--purple)' : mod.type === 'zoffset' ? 'var(--orange)' : 'var(--accent)';
+    html += `<div class="slider-tick" style="left:${pct}%;background:${color}"></div>`;
+  }
+  container.innerHTML = html;
+}
+
+function updateViewerOverlay(layerNum) {
+  const overlay = document.getElementById('viewerOverlay');
+  const layer = parser.getLayerByNumber(layerNum);
+  if (!layer) { overlay.innerHTML = ''; return; }
+
+  let html = `<div class="viewer-info">Layer ${layer.number} · Z${layer.zHeight?.toFixed(2) || '?'}mm · ${layer.lineCount} lines</div>`;
+
+  // Show modification banners
+  const mods = modifier.modifications.filter(m => {
+    if (m.type === 'zoffset') return layerNum >= m.layer && (m.endLayer == null || layerNum <= m.endLayer);
+    return m.layer === layerNum;
+  });
+  for (const mod of mods) {
+    if (mod.type === 'pause') {
+      html += `<div class="viewer-mod-banner pause">⏸ Pause at this layer${mod.message ? ': ' + mod.message : ''}</div>`;
+    } else if (mod.type === 'filament') {
+      html += `<div class="viewer-mod-banner filament">🔄 Filament change${mod.command === 'M1020' ? ' → Slot ' + (mod.slot + 1) : ''} (${mod.command})</div>`;
+    } else if (mod.type === 'zoffset') {
+      const sign = mod.offset >= 0 ? '+' : '';
+      html += `<div class="viewer-mod-banner pause">↕ Z-Offset: ${sign}${mod.offset}mm${mod.note ? ' – ' + mod.note : ''}</div>`;
+    } else if (mod.type === 'custom') {
+      html += `<div class="viewer-mod-banner custom">⚙ Custom G-code inserted</div>`;
+    }
+  }
+  overlay.innerHTML = html;
+}
+
+// ===== GCODE VIEWER (old Canvas 2D removed — now using GcodeViewer3D) =====
+
+class GcodeViewer3D {
+  constructor(canvasId) {
+    this.canvas = document.getElementById(canvasId);
+    this.gl = this.canvas.getContext('webgl2');
+    if (!this.gl) {
+      console.error('GcodeViewer3D: WebGL2 not supported');
+      this._broken = true;
+      return;
+    }
+
+    this.currentLayer = 0;
+    this.maxVisibleLayer = 0;
+    this.layerBuffers = new Map();
+    this.modMarkers = []; // Modification marker geometry for overlay rendering
+
+    // Camera state
+    this.cam = {
+      rotX: 0.6,
+      rotZ: 0.4,
+      panX: 0,
+      panY: 0,
+      zoom: 1.0,
+      target: [0, 0, 0],
+    };
+
+    this._dragging = false;
+    this._dragButton = -1;
+    this._lastMouse = { x: 0, y: 0 };
+    this._mouseMoved = false;
+    // Set by resize() — must be called before first render
+    this._w = 0;
+    this._h = 0;
+
+    this._initShaders();
+    if (this._broken) return;
+    this._setupInteraction();
+  }
+
+  // --- Shader source ---
+  static VS = `#version 300 es
+    uniform mat4 u_mvp;
+    uniform float u_alphaOverride;
+    in vec3 a_pos;
+    in vec3 a_color;
+    in float a_alpha;
+    out vec3 v_color;
+    out float v_alpha;
+    void main() {
+      gl_Position = u_mvp * vec4(a_pos, 1.0);
+      v_color = a_color;
+      v_alpha = u_alphaOverride > 0.0 ? u_alphaOverride : a_alpha;
+    }
+  `;
+
+  static FS = `#version 300 es
+    precision mediump float;
+    in vec3 v_color;
+    in float v_alpha;
+    out vec4 fragColor;
+    void main() {
+      fragColor = vec4(v_color, v_alpha);
+    }
+  `;
+
+  // Line shader for travel moves and grid
+  static LINE_VS = `#version 300 es
+    uniform mat4 u_mvp;
+    in vec3 a_pos;
+    in vec4 a_color;
+    out vec4 v_color;
+    void main() {
+      gl_Position = u_mvp * vec4(a_pos, 1.0);
+      v_color = a_color;
+    }
+  `;
+
+  static LINE_FS = `#version 300 es
+    precision mediump float;
+    in vec4 v_color;
+    out vec4 fragColor;
+    void main() {
+      fragColor = v_color;
+    }
+  `;
+
+  // --- Matrix math (column-major Float32Array) ---
+  static mat4Identity() {
+    return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+  }
+
+  static mat4Multiply(a, b) {
+    const r = new Float32Array(16);
+    for (let i = 0; i < 4; i++)
+      for (let j = 0; j < 4; j++) {
+        r[j * 4 + i] = a[i] * b[j * 4] + a[4 + i] * b[j * 4 + 1] + a[8 + i] * b[j * 4 + 2] + a[12 + i] * b[j * 4 + 3];
+      }
+    return r;
+  }
+
+  static mat4Perspective(fov, aspect, near, far) {
+    const f = 1 / Math.tan(fov / 2);
+    const nf = 1 / (near - far);
+    return new Float32Array([
+      f / aspect, 0, 0, 0,
+      0, f, 0, 0,
+      0, 0, (far + near) * nf, -1,
+      0, 0, 2 * far * near * nf, 0
+    ]);
+  }
+
+  static mat4LookAt(eye, center, up) {
+    let zx = eye[0] - center[0], zy = eye[1] - center[1], zz = eye[2] - center[2];
+    let len = Math.hypot(zx, zy, zz); zx /= len; zy /= len; zz /= len;
+    let xx = up[1] * zz - up[2] * zy, xy = up[2] * zx - up[0] * zz, xz = up[0] * zy - up[1] * zx;
+    len = Math.hypot(xx, xy, xz); xx /= len; xy /= len; xz /= len;
+    let yx = zy * xz - zz * xy, yy = zz * xx - zx * xz, yz = zx * xy - zy * xx;
+    return new Float32Array([
+      xx, yx, zx, 0, xy, yy, zy, 0, xz, yz, zz, 0,
+      -(xx * eye[0] + xy * eye[1] + xz * eye[2]),
+      -(yx * eye[0] + yy * eye[1] + yz * eye[2]),
+      -(zx * eye[0] + zy * eye[1] + zz * eye[2]), 1
+    ]);
+  }
+
+  _getMVP() {
+    const b = parser.bounds;
+    const cx = (b.minX + b.maxX) / 2;
+    const cy = (b.minY + b.maxY) / 2;
+    const maxLayer = parser.layers[parser.layers.length - 1];
+    const maxZ = maxLayer ? (maxLayer.zHeight || 0) : 0;
+    const cz = maxZ / 2;
+
+    const dist = Math.max(b.maxX - b.minX, b.maxY - b.minY, maxZ || 50) * 1.5 / this.cam.zoom;
+
+    const eyeX = cx + this.cam.panX + dist * Math.cos(this.cam.rotX) * Math.sin(this.cam.rotZ);
+    const eyeY = cy + this.cam.panY + dist * Math.cos(this.cam.rotX) * Math.cos(this.cam.rotZ);
+    const eyeZ = cz + dist * Math.sin(this.cam.rotX);
+
+    const target = [cx + this.cam.panX, cy + this.cam.panY, cz];
+    const aspect = this._w / (this._h || 1);
+    const proj = GcodeViewer3D.mat4Perspective(Math.PI / 4, aspect, 0.1, dist * 10);
+    const view = GcodeViewer3D.mat4LookAt([eyeX, eyeY, eyeZ], target, [0, 0, 1]);
+    return GcodeViewer3D.mat4Multiply(proj, view);
+  }
+
+  _compileShader(src, type) {
+    const gl = this.gl;
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, src);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+      gl.deleteShader(shader);
+      return null;
+    }
+    return shader;
+  }
+
+  _linkProgram(vs, fs) {
+    const gl = this.gl;
+    const prog = gl.createProgram();
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      console.error('Program link error:', gl.getProgramInfoLog(prog));
+      return null;
+    }
+    // Detach and delete intermediate shader objects to free GPU memory
+    gl.detachShader(prog, vs);
+    gl.detachShader(prog, fs);
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    return prog;
+  }
+
+  // --- Type colors for extrusion rendering ---
+  static TYPE_COLORS = {
+    'WALL-OUTER': [0.376, 0.647, 0.980],
+    'WALL-INNER': [0.576, 0.773, 0.992],
+    'OUTER WALL': [0.376, 0.647, 0.980],
+    'INNER WALL': [0.576, 0.773, 0.992],
+    'FILL': [0.290, 0.867, 0.502],
+    'SOLID': [0.290, 0.867, 0.502],
+    'SPARSE': [0.290, 0.867, 0.502],
+    'SOLID INFILL': [0.290, 0.867, 0.502],
+    'SPARSE INFILL': [0.290, 0.867, 0.502],
+    'INTERNAL SOLID INFILL': [0.290, 0.867, 0.502],
+    'TOP': [0.133, 0.827, 0.933],
+    'TOP SURFACE': [0.133, 0.827, 0.933],
+    'BOTTOM': [0.133, 0.827, 0.933],
+    'BOTTOM SURFACE': [0.133, 0.827, 0.933],
+    'SUPPORT': [0.980, 0.800, 0.082],
+    'SUPPORT-INTERFACE': [0.992, 0.910, 0.541],
+    'OVERHANG': [0.984, 0.573, 0.235],
+    'GAP INFILL': [0.984, 0.573, 0.235],
+    'BRIDGE': [0.976, 0.451, 0.086],
+    'SKIRT': [0.655, 0.545, 0.980],
+    'BRIM': [0.655, 0.545, 0.980],
+    'CUSTOM': [0.655, 0.545, 0.980],
+    'DEFAULT': [0.878, 0.886, 0.910],
+  };
+
+  _getTypeColor(type) {
+    const upper = type.toUpperCase();
+    for (const [key, color] of Object.entries(GcodeViewer3D.TYPE_COLORS)) {
+      if (upper.includes(key)) return color;
+    }
+    return GcodeViewer3D.TYPE_COLORS.DEFAULT;
+  }
+
+  _buildLayerGeometry(layerNum) {
+    if (this._broken) return null;
+    if (this.layerBuffers.has(layerNum)) return this.layerBuffers.get(layerNum);
+
+    const gl = this.gl;
+    const moves = parser.layerMoves[layerNum];
+    if (!moves || moves.length === 0) {
+      this.layerBuffers.set(layerNum, null);
+      return null;
+    }
+
+    const layer = parser.getLayerByNumber(layerNum);
+    const z = layer?.zHeight || 0;
+    const halfW = 0.2; // half ribbon width in mm
+
+    // Extrusion ribbons: x,y,z, r,g,b, alpha per vertex
+    const ribbonVerts = [];
+    // Travel lines: x,y,z, r,g,b,a per vertex
+    const travelVerts = [];
+
+    for (const move of moves) {
+      if (move.extrude) {
+        const color = this._getTypeColor(move.type);
+        const dx = move.x2 - move.x1;
+        const dy = move.y2 - move.y1;
+        const len = Math.hypot(dx, dy);
+        if (len < 0.001) continue;
+        // Perpendicular offset for ribbon width
+        const nx = -dy / len * halfW;
+        const ny = dx / len * halfW;
+
+        // Two triangles forming a ribbon
+        const verts = [
+          move.x1 + nx, move.y1 + ny, z,
+          move.x1 - nx, move.y1 - ny, z,
+          move.x2 + nx, move.y2 + ny, z,
+          move.x2 + nx, move.y2 + ny, z,
+          move.x1 - nx, move.y1 - ny, z,
+          move.x2 - nx, move.y2 - ny, z,
+        ];
+        for (let i = 0; i < 6; i++) {
+          ribbonVerts.push(
+            verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2],
+            color[0], color[1], color[2],
+            1.0
+          );
+        }
+      } else {
+        // Travel move as a line
+        travelVerts.push(
+          move.x1, move.y1, z, 0.3, 0.3, 0.3, 0.3,
+          move.x2, move.y2, z, 0.3, 0.3, 0.3, 0.3,
+        );
+      }
+    }
+
+    const result = { ribbonVao: null, ribbonCount: 0, travelVao: null, travelCount: 0 };
+
+    if (ribbonVerts.length > 0) {
+      const data = new Float32Array(ribbonVerts);
+      const stride = 7 * 4; // 7 floats per vertex
+      const vbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+
+      const vao = gl.createVertexArray();
+      gl.bindVertexArray(vao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+      gl.enableVertexAttribArray(this.a_pos);
+      gl.vertexAttribPointer(this.a_pos, 3, gl.FLOAT, false, stride, 0);
+      gl.enableVertexAttribArray(this.a_color);
+      gl.vertexAttribPointer(this.a_color, 3, gl.FLOAT, false, stride, 12);
+      gl.enableVertexAttribArray(this.a_alpha);
+      gl.vertexAttribPointer(this.a_alpha, 1, gl.FLOAT, false, stride, 24);
+      gl.bindVertexArray(null);
+
+      result.ribbonVao = vao;
+      result.ribbonCount = ribbonVerts.length / 7;
+    }
+
+    if (travelVerts.length > 0) {
+      const data = new Float32Array(travelVerts);
+      const stride = 7 * 4;
+      const vbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+
+      const vao = gl.createVertexArray();
+      gl.bindVertexArray(vao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+      gl.enableVertexAttribArray(this.line_a_pos);
+      gl.vertexAttribPointer(this.line_a_pos, 3, gl.FLOAT, false, stride, 0);
+      gl.enableVertexAttribArray(this.line_a_color);
+      gl.vertexAttribPointer(this.line_a_color, 4, gl.FLOAT, false, stride, 12);
+      gl.bindVertexArray(null);
+
+      result.travelVao = vao;
+      result.travelCount = travelVerts.length / 7;
+    }
+
+    this.layerBuffers.set(layerNum, result);
+    return result;
+  }
+
+  clearBuffers() {
+    if (this._broken) return;
+    const gl = this.gl;
+    for (const [, buf] of this.layerBuffers) {
+      if (!buf) continue;
+      if (buf.ribbonVao) gl.deleteVertexArray(buf.ribbonVao);
+      if (buf.travelVao) gl.deleteVertexArray(buf.travelVao);
+    }
+    this.layerBuffers.clear();
+  }
+
+  _initShaders() {
+    const gl = this.gl;
+    // Main ribbon shader
+    const vs = this._compileShader(GcodeViewer3D.VS, gl.VERTEX_SHADER);
+    const fs = this._compileShader(GcodeViewer3D.FS, gl.FRAGMENT_SHADER);
+    if (!vs || !fs) { this._broken = true; return; }
+    this.prog = this._linkProgram(vs, fs);
+    if (!this.prog) { this._broken = true; return; }
+    this.u_mvp = gl.getUniformLocation(this.prog, 'u_mvp');
+    // u_alphaOverride: set > 0 to override per-vertex alpha, set <= 0 to use vertex alpha
+    this.u_alphaOverride = gl.getUniformLocation(this.prog, 'u_alphaOverride');
+    this.a_pos = gl.getAttribLocation(this.prog, 'a_pos');
+    this.a_color = gl.getAttribLocation(this.prog, 'a_color');
+    this.a_alpha = gl.getAttribLocation(this.prog, 'a_alpha');
+
+    // Line shader (separate program for GL_LINES with vec4 color including alpha)
+    const lvs = this._compileShader(GcodeViewer3D.LINE_VS, gl.VERTEX_SHADER);
+    const lfs = this._compileShader(GcodeViewer3D.LINE_FS, gl.FRAGMENT_SHADER);
+    if (!lvs || !lfs) { this._broken = true; return; }
+    this.lineProg = this._linkProgram(lvs, lfs);
+    if (!this.lineProg) { this._broken = true; return; }
+    this.line_u_mvp = gl.getUniformLocation(this.lineProg, 'u_mvp');
+    this.line_a_pos = gl.getAttribLocation(this.lineProg, 'a_pos');
+    this.line_a_color = gl.getAttribLocation(this.lineProg, 'a_color');
+
+    // Enable blending for transparency
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+  }
+
+  resize() {
+    if (this._broken) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = this.canvas.parentElement.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    this.canvas.width = w * dpr;
+    this.canvas.height = h * dpr;
+    this.canvas.style.width = w + 'px';
+    this.canvas.style.height = h + 'px';
+    this._w = w;
+    this._h = h;
+    this.gl.viewport(0, 0, w * dpr, h * dpr);
+  }
+
+  _drawGrid(mvp) {
+    const gl = this.gl;
+    const b = parser.bounds;
+    const verts = [];
+    const step = 10; // 10mm grid
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    const gridColor = isLight ? [0.55, 0.56, 0.58, 0.5] : [0.16, 0.18, 0.21, 0.5];
+
+    for (let x = Math.floor(b.minX / step) * step; x <= b.maxX; x += step) {
+      verts.push(x, b.minY, 0, ...gridColor, x, b.maxY, 0, ...gridColor);
+    }
+    for (let y = Math.floor(b.minY / step) * step; y <= b.maxY; y += step) {
+      verts.push(b.minX, y, 0, ...gridColor, b.maxX, y, 0, ...gridColor);
+    }
+
+    if (verts.length === 0) return;
+    const data = new Float32Array(verts);
+    const stride = 7 * 4;
+
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STREAM_DRAW);
+
+    gl.useProgram(this.lineProg);
+    gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+    gl.enableVertexAttribArray(this.line_a_pos);
+    gl.vertexAttribPointer(this.line_a_pos, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(this.line_a_color);
+    gl.vertexAttribPointer(this.line_a_color, 4, gl.FLOAT, false, stride, 12);
+    gl.drawArrays(gl.LINES, 0, verts.length / 7);
+    gl.deleteBuffer(vbo);
+  }
+
+  render(layerNum) {
+    const gl = this.gl;
+    if (this._broken || !this._w || !this._h) return;
+
+    this.currentLayer = layerNum;
+
+    // Clear with theme-appropriate background
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    gl.clearColor(isDark ? 0.067 : 0.878, isDark ? 0.071 : 0.882, isDark ? 0.078 : 0.894, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    const mvp = this._getMVP();
+
+    // Draw bed grid
+    this._drawGrid(mvp);
+
+    // Draw layers 0..maxVisibleLayer
+    gl.useProgram(this.prog);
+    gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+
+    for (let ln = 0; ln <= this.maxVisibleLayer; ln++) {
+      const buf = this._buildLayerGeometry(ln);
+      if (!buf) continue;
+
+      const isCurrent = (ln === layerNum);
+
+      // Set alpha override: use per-vertex alpha for current layer, dim for others
+      const dimAlpha = document.documentElement.getAttribute('data-theme') === 'light' ? 0.45 : 0.25;
+      gl.uniform1f(this.u_alphaOverride, isCurrent ? -1.0 : dimAlpha);
+
+      // Draw extrusion ribbons
+      if (buf.ribbonVao && buf.ribbonCount > 0) {
+        gl.bindVertexArray(buf.ribbonVao);
+        gl.drawArrays(gl.TRIANGLES, 0, buf.ribbonCount);
+        gl.bindVertexArray(null);
+      }
+
+      // Draw travel lines (only for current layer)
+      if (isCurrent && buf.travelVao && buf.travelCount > 0) {
+        gl.useProgram(this.lineProg);
+        gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+        gl.bindVertexArray(buf.travelVao);
+        gl.drawArrays(gl.LINES, 0, buf.travelCount);
+        gl.bindVertexArray(null);
+        gl.useProgram(this.prog);
+        gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+      }
+    }
+
+    // Draw modification marker planes
+    this._drawModMarkers(mvp);
+    this._drawMeasurement(mvp);
+  }
+
+  _drawModMarkers(mvp) {
+    const gl = this.gl;
+    const b = parser.bounds;
+    const mods = modifier.modifications.filter(m => m.layer !== Infinity && m.layer !== 'end');
+    if (mods.length === 0) return;
+
+    const verts = [];
+    for (const mod of mods) {
+      const layer = parser.getLayerByNumber(mod.layer);
+      if (!layer || layer.zHeight == null) continue;
+      const z = layer.zHeight + 0.05;
+
+      let color;
+      switch (mod.type) {
+        case 'pause': color = [0.980, 0.800, 0.082, 0.15]; break;
+        case 'filament': color = [0.655, 0.545, 0.980, 0.15]; break;
+        case 'zoffset': color = [0.984, 0.573, 0.235, 0.15]; break;
+        case 'custom': color = [0.0, 0.784, 1.0, 0.15]; break;
+        default: color = [0.5, 0.5, 0.5, 0.15];
+      }
+
+      const margin = 2;
+      verts.push(
+        b.minX - margin, b.minY - margin, z, ...color,
+        b.maxX + margin, b.minY - margin, z, ...color,
+        b.maxX + margin, b.maxY + margin, z, ...color,
+        b.minX - margin, b.minY - margin, z, ...color,
+        b.maxX + margin, b.maxY + margin, z, ...color,
+        b.minX - margin, b.maxY + margin, z, ...color,
+      );
+    }
+
+    if (verts.length === 0) return;
+    const data = new Float32Array(verts);
+    const stride = 7 * 4;
+
+    gl.useProgram(this.lineProg);
+    gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STREAM_DRAW);
+    gl.enableVertexAttribArray(this.line_a_pos);
+    gl.vertexAttribPointer(this.line_a_pos, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(this.line_a_color);
+    gl.vertexAttribPointer(this.line_a_color, 4, gl.FLOAT, false, stride, 12);
+    gl.drawArrays(gl.TRIANGLES, 0, verts.length / 7);
+    gl.deleteBuffer(vbo);
+  }
+
+
+  _invertMatrix(m) {
+    const inv = new Float32Array(16);
+    inv[0] = m[5]*m[10]*m[15] - m[5]*m[11]*m[14] - m[9]*m[6]*m[15] + m[9]*m[7]*m[14] + m[13]*m[6]*m[11] - m[13]*m[7]*m[10];
+    inv[4] = -m[4]*m[10]*m[15] + m[4]*m[11]*m[14] + m[8]*m[6]*m[15] - m[8]*m[7]*m[14] - m[12]*m[6]*m[11] + m[12]*m[7]*m[10];
+    inv[8] = m[4]*m[9]*m[15] - m[4]*m[11]*m[13] - m[8]*m[5]*m[15] + m[8]*m[7]*m[13] + m[12]*m[5]*m[11] - m[12]*m[7]*m[9];
+    inv[12] = -m[4]*m[9]*m[14] + m[4]*m[10]*m[13] + m[8]*m[5]*m[14] - m[8]*m[6]*m[13] - m[12]*m[5]*m[10] + m[12]*m[6]*m[9];
+    inv[1] = -m[1]*m[10]*m[15] + m[1]*m[11]*m[14] + m[9]*m[2]*m[15] - m[9]*m[3]*m[14] - m[13]*m[2]*m[11] + m[13]*m[3]*m[10];
+    inv[5] = m[0]*m[10]*m[15] - m[0]*m[11]*m[14] - m[8]*m[2]*m[15] + m[8]*m[3]*m[14] + m[12]*m[2]*m[11] - m[12]*m[3]*m[10];
+    inv[9] = -m[0]*m[9]*m[15] + m[0]*m[11]*m[13] + m[8]*m[1]*m[15] - m[8]*m[3]*m[13] - m[12]*m[1]*m[11] + m[12]*m[3]*m[9];
+    inv[13] = m[0]*m[9]*m[14] - m[0]*m[10]*m[13] - m[8]*m[1]*m[14] + m[8]*m[2]*m[13] + m[12]*m[1]*m[10] - m[12]*m[2]*m[9];
+    inv[2] = m[1]*m[6]*m[15] - m[1]*m[7]*m[14] - m[5]*m[2]*m[15] + m[5]*m[3]*m[14] + m[13]*m[2]*m[7] - m[13]*m[3]*m[6];
+    inv[6] = -m[0]*m[6]*m[15] + m[0]*m[7]*m[14] + m[4]*m[2]*m[15] - m[4]*m[3]*m[14] - m[12]*m[2]*m[7] + m[12]*m[3]*m[6];
+    inv[10] = m[0]*m[5]*m[15] - m[0]*m[7]*m[13] - m[4]*m[1]*m[15] + m[4]*m[3]*m[13] + m[12]*m[1]*m[7] - m[12]*m[3]*m[5];
+    inv[14] = -m[0]*m[5]*m[14] + m[0]*m[6]*m[13] + m[4]*m[1]*m[14] - m[4]*m[2]*m[13] - m[12]*m[1]*m[6] + m[12]*m[2]*m[5];
+    inv[3] = -m[1]*m[6]*m[11] + m[1]*m[7]*m[10] + m[5]*m[2]*m[11] - m[5]*m[3]*m[10] - m[9]*m[2]*m[7] + m[9]*m[3]*m[6];
+    inv[7] = m[0]*m[6]*m[11] - m[0]*m[7]*m[10] - m[4]*m[2]*m[11] + m[4]*m[3]*m[10] + m[8]*m[2]*m[7] - m[8]*m[3]*m[6];
+    inv[11] = -m[0]*m[5]*m[11] + m[0]*m[7]*m[9] + m[4]*m[1]*m[11] - m[4]*m[3]*m[9] - m[8]*m[1]*m[7] + m[8]*m[3]*m[5];
+    inv[15] = m[0]*m[5]*m[10] - m[0]*m[6]*m[9] - m[4]*m[1]*m[10] + m[4]*m[2]*m[9] + m[8]*m[1]*m[6] - m[8]*m[2]*m[5];
+    let det = m[0]*inv[0] + m[1]*inv[4] + m[2]*inv[8] + m[3]*inv[12];
+    if (Math.abs(det) < 1e-10) return null;
+    det = 1.0 / det;
+    for (let i = 0; i < 16; i++) inv[i] *= det;
+    return inv;
+  }
+
+  _transformPoint(mat, p) {
+    const w = mat[3] * p[0] + mat[7] * p[1] + mat[11] * p[2] + mat[15];
+    return [
+      (mat[0] * p[0] + mat[4] * p[1] + mat[8] * p[2] + mat[12]) / w,
+      (mat[1] * p[0] + mat[5] * p[1] + mat[9] * p[2] + mat[13]) / w,
+      (mat[2] * p[0] + mat[6] * p[1] + mat[10] * p[2] + mat[14]) / w,
+    ];
+  }
+
+  screenToLayerPoint(screenX, screenY, layerZ) {
+    const invMvp = this._invertMatrix(this._getMVP());
+    if (!invMvp) return null;
+    const ndcX = (screenX / this._w) * 2 - 1;
+    const ndcY = 1 - (screenY / this._h) * 2;
+    const near = this._transformPoint(invMvp, [ndcX, ndcY, -1]);
+    const far = this._transformPoint(invMvp, [ndcX, ndcY, 1]);
+    const dz = far[2] - near[2];
+    if (Math.abs(dz) < 0.0001) return null;
+    const t = (layerZ - near[2]) / dz;
+    return { x: near[0] + t * (far[0] - near[0]), y: near[1] + t * (far[1] - near[1]), z: layerZ };
+  }
+
+  _drawMeasurement(mvp) {
+    if (!measureMode || measurePoints.length === 0) return;
+    const gl = this.gl;
+    const verts = [];
+    const color = [1.0, 1.0, 1.0, 1.0];
+
+    for (const pt of measurePoints) {
+      const s = 0.5;
+      verts.push(pt.x - s, pt.y, pt.z, ...color, pt.x + s, pt.y, pt.z, ...color);
+      verts.push(pt.x, pt.y - s, pt.z, ...color, pt.x, pt.y + s, pt.z, ...color);
+    }
+
+    if (measurePoints.length === 2) {
+      const [a, b] = measurePoints;
+      verts.push(a.x, a.y, a.z, ...color, b.x, b.y, b.z, ...color);
+    }
+
+    if (verts.length === 0) return;
+    const data = new Float32Array(verts);
+    const stride = 7 * 4;
+    gl.useProgram(this.lineProg);
+    gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STREAM_DRAW);
+    gl.enableVertexAttribArray(this.line_a_pos);
+    gl.vertexAttribPointer(this.line_a_pos, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(this.line_a_color);
+    gl.vertexAttribPointer(this.line_a_color, 4, gl.FLOAT, false, stride, 12);
+    gl.drawArrays(gl.LINES, 0, verts.length / 7);
+    gl.deleteBuffer(vbo);
+  }
+
+  fitBounds() {
+    this.cam.rotX = 0.6;
+    this.cam.rotZ = 0.4;
+    this.cam.panX = 0;
+    this.cam.panY = 0;
+    this.cam.zoom = 1.0;
+  }
+
+  _setupInteraction() {
+    const c = this.canvas;
+
+    c.addEventListener('contextmenu', e => e.preventDefault());
+
+    c.addEventListener('mousedown', e => {
+      this._dragging = true;
+      this._dragButton = e.button;
+      this._lastMouse = { x: e.clientX, y: e.clientY };
+      this._mouseMoved = false;
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', e => {
+      if (!this._dragging) return;
+      const dx = e.clientX - this._lastMouse.x;
+      const dy = e.clientY - this._lastMouse.y;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) this._mouseMoved = true;
+
+      if (this._dragButton === 0) {
+        // Left-drag: orbit
+        this.cam.rotZ += dx * 0.005;
+        this.cam.rotX = Math.max(0.01, Math.min(Math.PI / 2 - 0.01, this.cam.rotX - dy * 0.005));
+      } else if (this._dragButton === 1 || this._dragButton === 2) {
+        // Middle or right drag: pan
+        const panScale = 0.5 / this.cam.zoom;
+        this.cam.panX -= dx * panScale * Math.cos(this.cam.rotZ) + dy * panScale * Math.sin(this.cam.rotZ);
+        this.cam.panY += dx * panScale * Math.sin(this.cam.rotZ) - dy * panScale * Math.cos(this.cam.rotZ);
+      }
+
+      this._lastMouse = { x: e.clientX, y: e.clientY };
+      this.render(this.currentLayer);
+    });
+
+    window.addEventListener('mouseup', () => { this._dragging = false; });
+
+    // Scroll to zoom
+    c.addEventListener('wheel', e => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      this.cam.zoom *= factor;
+      this.cam.zoom = Math.max(0.1, Math.min(50, this.cam.zoom));
+      this.render(this.currentLayer);
+    }, { passive: false });
+
+    // Touch support
+    let lastTouchDist = 0;
+    let lastTouchMid = null;
+
+    c.addEventListener('touchstart', e => {
+      if (e.touches.length === 1) {
+        this._dragging = true;
+        this._dragButton = 0;
+        this._lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      } else if (e.touches.length === 2) {
+        this._dragging = false;
+        lastTouchDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        lastTouchMid = {
+          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+        };
+      }
+    }, { passive: true });
+
+    c.addEventListener('touchmove', e => {
+      e.preventDefault();
+      if (e.touches.length === 1 && this._dragging) {
+        const dx = e.touches[0].clientX - this._lastMouse.x;
+        const dy = e.touches[0].clientY - this._lastMouse.y;
+        this.cam.rotZ += dx * 0.005;
+        this.cam.rotX = Math.max(0.01, Math.min(Math.PI / 2 - 0.01, this.cam.rotX - dy * 0.005));
+        this._lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        this.render(this.currentLayer);
+      } else if (e.touches.length === 2) {
+        // Pinch zoom
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        if (lastTouchDist) {
+          this.cam.zoom *= dist / lastTouchDist;
+          this.cam.zoom = Math.max(0.1, Math.min(50, this.cam.zoom));
+        }
+        // Two-finger pan
+        const mid = {
+          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+        };
+        if (lastTouchMid) {
+          const dx = mid.x - lastTouchMid.x;
+          const dy = mid.y - lastTouchMid.y;
+          const panScale = 0.5 / this.cam.zoom;
+          this.cam.panX -= dx * panScale * Math.cos(this.cam.rotZ) + dy * panScale * Math.sin(this.cam.rotZ);
+          this.cam.panY += dx * panScale * Math.sin(this.cam.rotZ) - dy * panScale * Math.cos(this.cam.rotZ);
+        }
+        lastTouchDist = dist;
+        lastTouchMid = mid;
+        this.render(this.currentLayer);
+      }
+    }, { passive: false });
+
+    c.addEventListener('touchend', () => {
+      this._dragging = false;
+      lastTouchDist = 0;
+      lastTouchMid = null;
+    });
+
+
+    // Measurement click handler
+    c.addEventListener('click', e => {
+      if (!measureMode || this._mouseMoved) return;
+      const rect = c.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const layer = parser.getLayerByNumber(this.currentLayer);
+      const z = layer?.zHeight || 0;
+      const pt = this.screenToLayerPoint(sx, sy, z);
+      if (pt) {
+        measurePoints.push(pt);
+        if (measurePoints.length > 2) measurePoints = [measurePoints[measurePoints.length - 1]];
+        this.render(this.currentLayer);
+        if (measurePoints.length === 2) {
+          const [a, b] = measurePoints;
+          const dist = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+          showToast('Distance: ' + dist.toFixed(2) + ' mm', 'success', 6000);
+        }
+      }
+    });
+
+    // Resize observer
+    new ResizeObserver(() => {
+      if (currentView === 'visual') { this.resize(); this.render(this.currentLayer); }
+    }).observe(c.parentElement);
+  }
+}
+
+const viewer = new GcodeViewer3D('viewerCanvas');
+
+// ===== HOLE DETECTION UI =====
+function toggleHoleMode() {
+  holeDetectMode = !holeDetectMode;
+  const btn = document.getElementById('holeDetectToggle');
+  const canvas = document.getElementById('viewerCanvas');
+  btn.classList.toggle('active', holeDetectMode);
+  canvas.classList.toggle('hole-mode', holeDetectMode);
+
+  if (holeDetectMode) {
+    switchTab('inserts');
+    if (currentView !== 'visual') setView('visual');
+  }
+}
+
+function detectHolesOnLayer() {
+  if (selectedLayer === null) { showToast('Please select a layer first.', 'warning'); return; }
+  if (currentView !== 'visual') setView('visual');
+
+  const minDia = parseFloat(document.getElementById('holeMinDia').value) || 4;
+  const ignoreInfill = document.getElementById('holeIgnoreInfill').checked;
+
+  const holes = holeDetector.detectHoles(selectedLayer, minDia, ignoreInfill);
+
+  // Analyze depth for each hole
+  for (const hole of holes) {
+    holeDetector.analyzeHoleDepth(hole, selectedLayer);
+  }
+
+  holeDetector.selectedHoles = [];
+  renderHoleList(selectedLayer);
+  viewer.render(selectedLayer);
+
+  if (!holeDetectMode) toggleHoleMode();
+}
+
+function renderHoleList(layerNum) {
+  const wrap = document.getElementById('holeListWrap');
+  const holes = holeDetector.holes.get(layerNum);
+
+  if (!holes || holes.length === 0) {
+    wrap.innerHTML = '<div class="no-holes">No holes detected on this layer</div>';
+    return;
+  }
+
+  let html = '';
+  holes.forEach((hole, i) => {
+    const isSelected = holeDetector.selectedHoles.includes(hole.id);
+    const depthStr = hole.depthMm != null ? `${hole.depthMm.toFixed(1)}mm deep` :
+                     (hole.floorLayer === -1 ? 'through-hole' : 'depth unknown');
+    html += `<div class="hole-item${isSelected ? ' selected' : ''}" onclick="toggleHoleSelection('${hole.id}', event)">
+      <span class="hole-id">#${i + 1}</span>
+      <div class="hole-info">
+        ${hole.diameterMm.toFixed(1)}mm dia &middot; ${hole.areaMm2.toFixed(1)}mm&sup2;
+        <span>${depthStr} &middot; floor layer ${hole.floorLayer >= 0 ? hole.floorLayer : 'none'}</span>
+      </div>
+    </div>`;
+  });
+  wrap.innerHTML = html;
+}
+
+function toggleHoleSelection(holeId, event) {
+  const ctrlOrCmd = event && (event.ctrlKey || event.metaKey);
+  if (ctrlOrCmd) {
+    const idx = holeDetector.selectedHoles.indexOf(holeId);
+    if (idx >= 0) holeDetector.selectedHoles.splice(idx, 1);
+    else holeDetector.selectedHoles.push(holeId);
+  } else {
+    if (holeDetector.selectedHoles.length === 1 && holeDetector.selectedHoles[0] === holeId) {
+      holeDetector.selectedHoles = [];
+    } else {
+      holeDetector.selectedHoles = [holeId];
+    }
+  }
+
+  renderHoleList(selectedLayer);
+  updateComputedPauseInfo();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function updateComputedPauseInfo() {
+  const container = document.getElementById('computedPauseInfo');
+  const selected = getSelectedHoleObjects();
+  if (selected.length === 0) { container.innerHTML = ''; return; }
+
+  const heightVal = parseFloat(document.getElementById('insertHeight').value) || 3;
+  const heightUnit = document.getElementById('insertHeightUnit').value;
+
+  let html = '';
+  for (const hole of selected) {
+    let insertMm = heightVal;
+    if (heightUnit === 'layers' && hole.floorLayer >= 0) {
+      const floorData = parser.getLayerByNumber(hole.floorLayer);
+      const startData = parser.getLayerByNumber(hole.layerNum);
+      if (floorData && startData && floorData.zHeight != null && startData.zHeight != null) {
+        const layerH = (startData.zHeight - floorData.zHeight) / Math.max(1, hole.layerNum - hole.floorLayer);
+        insertMm = heightVal * layerH;
+      }
+    }
+
+    const pauseLayer = insertManager.calculatePauseLayer(hole, insertMm);
+    if (pauseLayer != null) {
+      const pauseData = parser.getLayerByNumber(pauseLayer);
+      const zStr = pauseData?.zHeight != null ? ` (Z${pauseData.zHeight.toFixed(2)}mm)` : '';
+      html += `<div class="computed-layer">Hole #${holeDetector.holes.get(hole.layerNum)?.indexOf(hole) + 1}: pause at layer ${pauseLayer}${zStr}</div>`;
+    } else if (hole.floorLayer < 0) {
+      html += `<div class="warning-msg">Hole is a through-hole — cannot compute pause layer</div>`;
+    } else {
+      html += `<div class="warning-msg">Insert may be taller than remaining print</div>`;
+    }
+  }
+  container.innerHTML = html;
+}
+
+function getSelectedHoleObjects() {
+  const results = [];
+  for (const [layerNum, holes] of holeDetector.holes) {
+    for (const hole of holes) {
+      if (holeDetector.selectedHoles.includes(hole.id)) results.push(hole);
+    }
+  }
+  return results;
+}
+
+function addInsertsForSelection() {
+  const selected = getSelectedHoleObjects();
+  if (selected.length === 0) { showToast('Please select at least one hole first.', 'warning'); return; }
+
+  const heightVal = parseFloat(document.getElementById('insertHeight').value);
+  if (!heightVal || heightVal <= 0) { showToast('Please enter a valid insert height.', 'error'); return; }
+
+  const heightUnit = document.getElementById('insertHeightUnit').value;
+  const diameterMm = parseFloat(document.getElementById('insertDiameter').value) || 6;
+  const label = document.getElementById('insertLabel').value.trim();
+  const pauseType = document.querySelector('input[name="insertPauseType"]:checked').value;
+  const moveHead = document.getElementById('insertMoveHead').checked;
+
+  let addedCount = 0;
+  for (const hole of selected) {
+    let insertMm = heightVal;
+    if (heightUnit === 'layers' && hole.floorLayer >= 0) {
+      const floorData = parser.getLayerByNumber(hole.floorLayer);
+      const startData = parser.getLayerByNumber(hole.layerNum);
+      if (floorData && startData && floorData.zHeight != null && startData.zHeight != null) {
+        const layerH = (startData.zHeight - floorData.zHeight) / Math.max(1, hole.layerNum - hole.floorLayer);
+        insertMm = heightVal * layerH;
+      }
+    }
+
+    const result = insertManager.createModification(hole, insertMm, diameterMm, label, pauseType, moveHead);
+    if (result) addedCount++;
+  }
+
+  if (addedCount === 0) { showToast('Could not compute pause layers for the selected holes. They may be through-holes.', 'error'); return; }
+
+  holeDetector.selectedHoles = [];
+  refreshAfterMod();
+  renderHoleList(selectedLayer);
+  updateComputedPauseInfo();
+  showToast(addedCount + ' insert pause(s) added successfully', 'success');
+}
+
+// Update computed info when insert height changes
+document.addEventListener('DOMContentLoaded', () => {
+  const heightInput = document.getElementById('insertHeight');
+  const unitSelect = document.getElementById('insertHeightUnit');
+  if (heightInput) heightInput.addEventListener('input', updateComputedPauseInfo);
+  if (unitSelect) unitSelect.addEventListener('change', updateComputedPauseInfo);
+});
+
+// ===== EXPORT =====
+function exportGcode() {
+  if (parser.lines.length === 0) return;
+
+  const modifiedLines = modifier.applyAll(parser.lines, parser);
+  const text = modifiedLines.join('\n');
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+
+  const baseName = parser.fileName.replace(/\.gcode$/i, '');
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = baseName + '_modified.gcode';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ===== UNDO/REDO =====
+function performUndo() {
+  const state = undoStack.undo();
+  if (state) {
+    modifier.modifications = state;
+    renderModsList();
+    renderLayerList();
+    updateSlider();
+    if (selectedLayer !== null) {
+      renderPreview(selectedLayer);
+      if (currentView === 'visual') {
+        viewer.maxVisibleLayer = selectedLayer;
+        viewer.render(selectedLayer);
+        updateViewerOverlay(selectedLayer);
+      }
+    }
+  }
+}
+
+function performRedo() {
+  const state = undoStack.redo();
+  if (state) {
+    modifier.modifications = state;
+    renderModsList();
+    renderLayerList();
+    updateSlider();
+    if (selectedLayer !== null) {
+      renderPreview(selectedLayer);
+      if (currentView === 'visual') {
+        viewer.maxVisibleLayer = selectedLayer;
+        viewer.render(selectedLayer);
+        updateViewerOverlay(selectedLayer);
+      }
+    }
+  }
+}
+
+function toggleShortcutsOverlay() {
+  document.getElementById('shortcutsOverlay').classList.toggle('active');
+}
+
+window.addEventListener('keydown', e => {
+  const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT';
+
+  // Undo/redo (works even in inputs)
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); performUndo(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); performRedo(); return; }
+
+  // Ctrl shortcuts (work everywhere)
+  if ((e.ctrlKey || e.metaKey) && e.key === 'e') { e.preventDefault(); exportGcode(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); document.getElementById('fileInput').click(); return; }
+
+  if (isInput) return;
+
+  // Tab switching: 1-6
+  const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts' };
+  if (tabKeys[e.key]) { switchTab(tabKeys[e.key]); return; }
+
+  // Layer navigation
+  if (e.key === '[' || e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    const slider = document.getElementById('layerSlider');
+    slider.value = Math.max(0, +slider.value - 1);
+    onSliderChange(+slider.value);
+    return;
+  }
+  if (e.key === ']' || e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const slider = document.getElementById('layerSlider');
+    slider.value = Math.min(+slider.max, +slider.value + 1);
+    onSliderChange(+slider.value);
+    return;
+  }
+
+  // View toggle
+  if (e.key === ' ') { e.preventDefault(); setView(currentView === 'code' ? 'visual' : 'code'); return; }
+
+  // Reset camera
+  if (e.key === 'f' && currentView === 'visual') { viewer.fitBounds(); viewer.render(viewer.currentLayer); return; }
+
+  // Help overlay
+  if (e.key === '?') { toggleShortcutsOverlay(); return; }
+});
+
+// ===== THEME SUPPORT =====
+function getPreferredTheme() {
+  const stored = localStorage.getItem('gcode_theme');
+  if (stored) return stored;
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('themeIcon').textContent = theme === 'light' ? '\u2600' : '\u263D';
+  localStorage.setItem('gcode_theme', theme);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+applyTheme(getPreferredTheme());
+</script>
+</body>
+</html>
