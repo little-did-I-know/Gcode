@@ -17,7 +17,7 @@ A sample file (`test_cube.gcode`) is included in the repository so you can try t
 
 ## Interface Layout
 
-The app uses a three-panel layout: layer navigator on the left, code/visual preview in the center, and modification tools on the right. On mobile (< 800px), the layout switches to a vertical stack with a collapsible layer drawer.
+The app uses a three-panel layout: layer navigator on the left, code/visual preview in the center, and modification tools on the right. The right panel can be resized by dragging its left edge — useful for expanding the Reference tab for easier reading. On mobile (< 800px), the layout switches to a vertical stack with a collapsible layer drawer.
 
 ![Interface Layout](screenshots/04-modification-added.png)
 
@@ -150,13 +150,17 @@ Insert arbitrary G-code at a specific layer or at the end of the file.
 
 ### G-Code Reference
 
-A built-in reference for ~40 common 3D printing G-code commands, organized by category and adapted to your selected firmware.
+A built-in reference for ~40 common 3D printing G-code commands, organized by category and adapted to your selected firmware. Each command card includes a beginner-friendly description, a parameter table with units and typical values, real-world multi-line examples, and firmware-specific notes.
+
+![Reference Tab](screenshots/12-reference-tab.png)
 
 - **Search**: Type in the search box to filter commands by code, name, or description.
 - **Categories**: Movement, Temperature, Extrusion, Print Control, Calibration & Leveling, Stepper & Motion, Filament & Material, Display & Communication, PID & Advanced.
 - **Firmware notes**: Each command shows firmware-specific tips and warnings based on the firmware selected in the header dropdown.
 - **Click to insert**: Click the "Insert" button on any command to populate the Custom G-code tab with that command's template, ready to customize and add as a modification.
 - **Keyboard shortcut**: Press `7` to switch to the Reference tab.
+
+![Reference Tab Search](screenshots/13-reference-search.png)
 
 ### Inserts (Hole Detection)
 
