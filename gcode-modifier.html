@@ -475,7 +475,8 @@ main { display: flex; flex: 1; overflow: hidden; }
       <div class="tab-content" id="tab-inserts">
         <div class="section-label" style="border-top:none;padding-top:0">Detection</div>
         <div class="detect-controls">
-          <button class="btn btn-primary" onclick="detectHolesOnLayer()" style="width:auto;flex:1">Detect Holes</button>
+          <button class="btn btn-primary" onclick="detectHolesOnLayer()" style="width:auto;flex:1">Detect (Layer)</button>
+          <button class="btn btn-primary" onclick="scanAllHoles()" style="width:auto;flex:1" id="scanAllBtn">Scan All Layers</button>
         </div>
         <div class="filter-row">
           <label>Min diameter</label>
@@ -1132,12 +1133,14 @@ class HoleDetector {
     this.gridCache = new Map();
     this.holes = new Map(); // layerNum -> HoleInfo[]
     this.selectedHoles = [];
+    this.scannedHoles = []; // flat array of unique holes from full scan
   }
 
   clearCache() {
     this.gridCache.clear();
     this.holes.clear();
     this.selectedHoles = [];
+    this.scannedHoles = [];
   }
 
   _getGridDims() {
@@ -1334,19 +1337,19 @@ class HoleDetector {
   }
 
   analyzeHoleDepth(hole, startLayerNum) {
-    const ignoreInfill = document.getElementById('holeIgnoreInfill')?.checked ?? true;
     const dims = hole.gridDims;
 
     // Get footprint cells as a set of (gx, gy) pairs
     const footprint = new Set(hole.cells);
     let floorLayer = -1;
 
-    // Scan layers downward
+    // Scan layers downward — always include infill when looking for the floor,
+    // because the floor of interior holes IS solid infill
     for (let ln = startLayerNum - 1; ln >= 0; ln--) {
       const layer = parser.getLayerByNumber(ln);
       if (!layer) continue;
 
-      const { grid } = this.rasterizeLayer(ln, ignoreInfill);
+      const { grid } = this.rasterizeLayer(ln, false);
       // Check what % of footprint cells are filled in this layer
       let filledCount = 0;
       for (const idx of footprint) {
@@ -1374,6 +1377,54 @@ class HoleDetector {
     }
 
     return hole;
+  }
+
+  _holesOverlap(h1, h2) {
+    const dx = h1.centroid.x - h2.centroid.x;
+    const dy = h1.centroid.y - h2.centroid.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const maxRadius = Math.max(h1.diameterMm, h2.diameterMm) / 2;
+    return dist < maxRadius;
+  }
+
+  async scanAllLayers(minDiameterMm, ignoreInfill, progressCb) {
+    this.scannedHoles = [];
+    this.selectedHoles = [];
+    const layers = parser.layers;
+    const uniqueHoles = [];
+
+    // Scan from top layer to bottom
+    for (let i = layers.length - 1; i >= 0; i--) {
+      const ln = layers[i].number;
+      if (progressCb) progressCb(layers.length - 1 - i, layers.length);
+
+      const layerHoles = this.detectHoles(ln, minDiameterMm, ignoreInfill);
+
+      for (const hole of layerHoles) {
+        let matched = false;
+        for (const existing of uniqueHoles) {
+          if (this._holesOverlap(existing.hole, hole)) {
+            matched = true;
+            break;
+          }
+        }
+        if (!matched) {
+          hole.topLayer = ln;
+          uniqueHoles.push({ hole, topLayer: ln });
+        }
+      }
+
+      // Yield to event loop every 5 layers to keep UI responsive
+      if (i % 5 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+
+    // Analyze depth for each unique hole
+    for (const entry of uniqueHoles) {
+      this.analyzeHoleDepth(entry.hole, entry.topLayer);
+    }
+
+    this.scannedHoles = uniqueHoles.map(e => e.hole);
+    return this.scannedHoles;
   }
 }
 
@@ -1778,9 +1829,9 @@ function selectLayer(num) {
   else if (activeTab === 'filament') document.getElementById('filamentLayer').value = num;
   else if (activeTab === 'zoffset') document.getElementById('zoffsetLayer').value = num;
 
-  // Update hole list if holes were detected for this layer
-  if (holeDetector.holes.has(num)) {
-    renderHoleList(num);
+  // Update hole list if holes were detected
+  if (holeDetector.scannedHoles.length > 0 || holeDetector.holes.has(num)) {
+    renderHoleList();
   }
 }
 
@@ -2632,6 +2683,7 @@ class GcodeViewer3D {
 
     // Draw modification marker planes
     this._drawModMarkers(mvp);
+    this._drawHoleHighlights(mvp);
     this._drawMeasurement(mvp);
   }
 
@@ -2685,6 +2737,84 @@ class GcodeViewer3D {
     gl.deleteBuffer(vbo);
   }
 
+  _drawHoleHighlights(mvp) {
+    if (!holeDetector || holeDetector.selectedHoles.length === 0) return;
+    const gl = this.gl;
+    const selected = getSelectedHoleObjects();
+    if (selected.length === 0) return;
+
+    const verts = [];
+    const topColor = [0.0, 1.0, 0.4, 0.30];
+    const sideColor = [0.0, 1.0, 0.4, 0.15];
+
+    for (const hole of selected) {
+      const topLayerNum = hole.topLayer ?? hole.layerNum;
+      const topLayerData = parser.getLayerByNumber(topLayerNum);
+      if (!topLayerData || topLayerData.zHeight == null) continue;
+      const zTop = topLayerData.zHeight + 0.15;
+      const b = hole.bbox;
+      const pad = 0.3;
+
+      // Top face
+      verts.push(
+        b.minX - pad, b.minY - pad, zTop, ...topColor,
+        b.maxX + pad, b.minY - pad, zTop, ...topColor,
+        b.maxX + pad, b.maxY + pad, zTop, ...topColor,
+        b.minX - pad, b.minY - pad, zTop, ...topColor,
+        b.maxX + pad, b.maxY + pad, zTop, ...topColor,
+        b.minX - pad, b.maxY + pad, zTop, ...topColor,
+      );
+
+      // If hole has a floor, draw sides and bottom
+      if (hole.floorLayer >= 0) {
+        const floorData = parser.getLayerByNumber(hole.floorLayer);
+        if (floorData && floorData.zHeight != null) {
+          const zBot = floorData.zHeight + 0.05;
+
+          // Bottom face
+          verts.push(
+            b.minX - pad, b.minY - pad, zBot, ...topColor,
+            b.maxX + pad, b.minY - pad, zBot, ...topColor,
+            b.maxX + pad, b.maxY + pad, zBot, ...topColor,
+            b.minX - pad, b.minY - pad, zBot, ...topColor,
+            b.maxX + pad, b.maxY + pad, zBot, ...topColor,
+            b.minX - pad, b.maxY + pad, zBot, ...topColor,
+          );
+
+          // Four side faces
+          const corners = [
+            [b.minX - pad, b.minY - pad], [b.maxX + pad, b.minY - pad],
+            [b.maxX + pad, b.maxY + pad], [b.minX - pad, b.maxY + pad]
+          ];
+          for (let s = 0; s < 4; s++) {
+            const [x0, y0] = corners[s];
+            const [x1, y1] = corners[(s + 1) % 4];
+            verts.push(
+              x0, y0, zTop, ...sideColor, x1, y1, zTop, ...sideColor, x1, y1, zBot, ...sideColor,
+              x0, y0, zTop, ...sideColor, x1, y1, zBot, ...sideColor, x0, y0, zBot, ...sideColor,
+            );
+          }
+        }
+      }
+    }
+
+    if (verts.length === 0) return;
+    const data = new Float32Array(verts);
+    const stride = 7 * 4;
+
+    gl.useProgram(this.lineProg);
+    gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STREAM_DRAW);
+    gl.enableVertexAttribArray(this.line_a_pos);
+    gl.vertexAttribPointer(this.line_a_pos, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(this.line_a_color);
+    gl.vertexAttribPointer(this.line_a_color, 4, gl.FLOAT, false, stride, 12);
+    gl.drawArrays(gl.TRIANGLES, 0, verts.length / 7);
+    gl.deleteBuffer(vbo);
+  }
 
   _invertMatrix(m) {
     const inv = new Float32Array(16);
@@ -2936,6 +3066,7 @@ function detectHolesOnLayer() {
   const minDia = parseFloat(document.getElementById('holeMinDia').value) || 4;
   const ignoreInfill = document.getElementById('holeIgnoreInfill').checked;
 
+  holeDetector.scannedHoles = []; // clear any full-scan results
   const holes = holeDetector.detectHoles(selectedLayer, minDia, ignoreInfill);
 
   // Analyze depth for each hole
@@ -2944,31 +3075,70 @@ function detectHolesOnLayer() {
   }
 
   holeDetector.selectedHoles = [];
-  renderHoleList(selectedLayer);
+  renderHoleList();
   viewer.render(selectedLayer);
 
   if (!holeDetectMode) toggleHoleMode();
 }
 
-function renderHoleList(layerNum) {
-  const wrap = document.getElementById('holeListWrap');
-  const holes = holeDetector.holes.get(layerNum);
+async function scanAllHoles() {
+  if (!parser || !parser.layers || parser.layers.length === 0) {
+    showToast('Please load a G-code file first.', 'warning');
+    return;
+  }
+  if (currentView !== 'visual') setView('visual');
 
-  if (!holes || holes.length === 0) {
-    wrap.innerHTML = '<div class="no-holes">No holes detected on this layer</div>';
+  const minDia = parseFloat(document.getElementById('holeMinDia').value) || 4;
+  const ignoreInfill = document.getElementById('holeIgnoreInfill').checked;
+
+  const btn = document.getElementById('scanAllBtn');
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Scanning...';
+
+  const totalLayers = parser.layers.length;
+  const holes = await holeDetector.scanAllLayers(minDia, ignoreInfill, (done, total) => {
+    btn.textContent = `Scanning ${Math.round(done / total * 100)}%`;
+  });
+
+  btn.disabled = false;
+  btn.textContent = origText;
+
+  renderHoleList();
+  if (viewer) viewer.render(viewer.currentLayer);
+
+  if (!holeDetectMode) toggleHoleMode();
+
+  if (holes.length === 0) {
+    showToast('No holes detected in the print.', 'warning');
+  } else {
+    showToast(`Found ${holes.length} hole(s) across all layers.`, 'success');
+  }
+}
+
+function renderHoleList() {
+  const wrap = document.getElementById('holeListWrap');
+  const holes = holeDetector.scannedHoles.length > 0
+    ? holeDetector.scannedHoles
+    : (selectedLayer !== null ? (holeDetector.holes.get(selectedLayer) || []) : []);
+
+  if (holes.length === 0) {
+    wrap.innerHTML = '<div class="no-holes" id="noHoles">Click "Detect (Layer)" or "Scan All Layers"</div>';
     return;
   }
 
+  const isScanned = holeDetector.scannedHoles.length > 0;
   let html = '';
   holes.forEach((hole, i) => {
     const isSelected = holeDetector.selectedHoles.includes(hole.id);
     const depthStr = hole.depthMm != null ? `${hole.depthMm.toFixed(1)}mm deep` :
                      (hole.floorLayer === -1 ? 'through-hole' : 'depth unknown');
+    const layerStr = isScanned ? ` &middot; layer ${hole.topLayer ?? hole.layerNum}` : '';
     html += `<div class="hole-item${isSelected ? ' selected' : ''}" onclick="toggleHoleSelection('${hole.id}', event)">
       <span class="hole-id">#${i + 1}</span>
       <div class="hole-info">
         ${hole.diameterMm.toFixed(1)}mm dia &middot; ${hole.areaMm2.toFixed(1)}mm&sup2;
-        <span>${depthStr} &middot; floor layer ${hole.floorLayer >= 0 ? hole.floorLayer : 'none'}</span>
+        <span>${depthStr} &middot; floor layer ${hole.floorLayer >= 0 ? hole.floorLayer : 'none'}${layerStr}</span>
       </div>
     </div>`;
   });
@@ -2989,7 +3159,7 @@ function toggleHoleSelection(holeId, event) {
     }
   }
 
-  renderHoleList(selectedLayer);
+  renderHoleList();
   updateComputedPauseInfo();
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
@@ -3071,7 +3241,7 @@ function addInsertsForSelection() {
 
   holeDetector.selectedHoles = [];
   refreshAfterMod();
-  renderHoleList(selectedLayer);
+  renderHoleList();
   updateComputedPauseInfo();
   showToast(addedCount + ' insert pause(s) added successfully', 'success');
 }
