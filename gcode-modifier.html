@@ -1633,13 +1633,17 @@ function showOnboardHint(key, targetId, text) {
   const hint = document.createElement('div');
   hint.className = 'onboard-hint below';
   hint.textContent = text;
-  hint.onclick = () => {
-    hint.remove();
+  const dismiss = () => {
+    hint.style.transition = 'opacity .3s';
+    hint.style.opacity = '0';
+    setTimeout(() => hint.remove(), 300);
     onboardState[key] = true;
     localStorage.setItem('gcode_onboard', JSON.stringify(onboardState));
   };
+  hint.onclick = dismiss;
   target.style.position = 'relative';
   target.appendChild(hint);
+  setTimeout(dismiss, 5000);
 }
 
 if (!onboardState.dropzone) {
