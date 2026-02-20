@@ -255,6 +255,30 @@ main { display: flex; flex: 1; overflow: hidden; }
 .onboard-hint::after { content: ''; position: absolute; border: 6px solid transparent; }
 .onboard-hint.below::after { bottom: 100%; left: 20px; border-bottom-color: var(--accent); }
 @keyframes hintPulse { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
+
+/* Reference tab */
+.ref-search-wrap { position: sticky; top: 0; z-index: 2; padding-bottom: 8px; background: var(--bg-primary); }
+.ref-firmware-badge { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+.ref-firmware-badge span { background: var(--accent); color: #fff; padding: 1px 8px; border-radius: 8px; font-weight: 600; font-size: 10px; }
+.ref-category { margin-bottom: 12px; }
+.ref-category-header { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 6px 0; font-weight: 700; font-size: 13px; color: var(--text-primary); user-select: none; }
+.ref-category-header::before { content: '\25BC'; font-size: 9px; transition: transform .2s; }
+.ref-category.collapsed .ref-category-header::before { transform: rotate(-90deg); }
+.ref-category.collapsed .ref-category-cards { display: none; }
+.ref-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: var(--bg-secondary); }
+.ref-card-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.ref-card-code { font-family: var(--mono); font-weight: 700; font-size: 15px; color: var(--accent); }
+.ref-card-name { font-weight: 600; font-size: 13px; color: var(--text-primary); }
+.ref-card-desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; line-height: 1.4; }
+.ref-card-params { width: 100%; font-size: 11px; border-collapse: collapse; margin-bottom: 6px; }
+.ref-card-params th { text-align: left; font-weight: 600; color: var(--text-secondary); padding: 2px 8px 2px 0; border-bottom: 1px solid var(--border); }
+.ref-card-params td { padding: 2px 8px 2px 0; color: var(--text-primary); }
+.ref-card-params td:first-child { font-family: var(--mono); font-weight: 700; color: var(--accent); width: 30px; }
+.ref-card-example { font-family: var(--mono); font-size: 11px; background: var(--bg-primary); padding: 4px 8px; border-radius: 4px; color: var(--text-secondary); margin-bottom: 6px; overflow-x: auto; white-space: nowrap; }
+.ref-card-firmware { font-size: 11px; padding: 4px 8px; border-radius: 4px; margin-bottom: 6px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg-secondary)); color: var(--text-primary); }
+.ref-card-insert { font-size: 11px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; float: right; }
+.ref-card-insert:hover { background: var(--accent); color: #fff; }
+.ref-no-results { text-align: center; color: var(--text-secondary); padding: 20px 0; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -353,6 +377,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="tab" data-tab="zoffset" onclick="switchTab('zoffset')">Z-Offset</button>
         <button class="tab" data-tab="custom" onclick="switchTab('custom')">Custom</button>
         <button class="tab" data-tab="inserts" onclick="switchTab('inserts')">Inserts</button>
+        <button class="tab" data-tab="reference" onclick="switchTab('reference')">Reference</button>
       </div>
 
       <!-- PAUSE TAB -->
@@ -529,6 +554,15 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="btn btn-primary" onclick="addInsertsForSelection()">+ Add Pause for Selected Holes</button>
       </div>
 
+      <!-- REFERENCE TAB -->
+      <div class="tab-content" id="tab-reference">
+        <div class="ref-search-wrap">
+          <input type="text" class="input" id="refSearch" placeholder="Search commands (e.g. G1, home, temperature...)" oninput="filterReferenceCards()">
+          <div class="ref-firmware-badge" id="refFirmwareBadge"></div>
+        </div>
+        <div id="refContent"></div>
+      </div>
+
       <!-- MODIFICATIONS LIST -->
       <div class="mods-section">
         <div class="mods-header">
@@ -554,7 +588,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td><td>Redo</td></tr>
       <tr><td><kbd>Space</kbd></td><td>Toggle Code/Visual</td></tr>
       <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Previous/Next layer</td></tr>
-      <tr><td><kbd>1</kbd>–<kbd>6</kbd></td><td>Switch tool tab</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>7</kbd></td><td>Switch tool tab</td></tr>
       <tr><td><kbd>F</kbd></td><td>Reset camera</td></tr>
       <tr><td><kbd>?</kbd></td><td>This help</td></tr>
     </table>
@@ -1632,6 +1666,431 @@ const FIRMWARE = {
   },
 };
 
+// ===== G-CODE REFERENCE DATA =====
+const GCODE_REFERENCE = [
+  // ── Movement ──
+  { code: 'G0', name: 'Rapid Move', category: 'Movement',
+    description: 'Move the print head as fast as possible without extruding. Used for travel moves between print areas.',
+    params: [
+      { letter: 'X', name: 'X position (mm)', example: '100' },
+      { letter: 'Y', name: 'Y position (mm)', example: '100' },
+      { letter: 'Z', name: 'Z position (mm)', example: '5' },
+      { letter: 'F', name: 'Feed rate (mm/min)', example: '9000' },
+    ],
+    example: 'G0 X100 Y100 F9000 ; Travel to (100,100)',
+    template: 'G0 X__ Y__ F9000',
+    firmware: { bambu: null, klipper: null, marlin: 'G0 and G1 behave identically in Marlin — both respect the F parameter.', reprap: null }
+  },
+  { code: 'G1', name: 'Linear Move', category: 'Movement',
+    description: 'Move the print head in a straight line at a controlled speed. The most common command in any G-code file — used for all extrusion moves.',
+    params: [
+      { letter: 'X', name: 'X position (mm)', example: '10.5' },
+      { letter: 'Y', name: 'Y position (mm)', example: '20.0' },
+      { letter: 'Z', name: 'Z position (mm)', example: '0.3' },
+      { letter: 'F', name: 'Feed rate (mm/min)', example: '1500' },
+      { letter: 'E', name: 'Extruder position (mm)', example: '0.5' },
+    ],
+    example: 'G1 X10 Y20 Z0.3 F1500 E0.5 ; Print move',
+    template: 'G1 X__ Y__ Z__ F1500 E__',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'G2', name: 'Clockwise Arc', category: 'Movement',
+    description: 'Move in a clockwise arc from the current position to the target. Used by some slicers for curved walls. I and J define the arc center offset.',
+    params: [
+      { letter: 'X', name: 'End X position (mm)', example: '10' },
+      { letter: 'Y', name: 'End Y position (mm)', example: '20' },
+      { letter: 'I', name: 'Arc center X offset (mm)', example: '5' },
+      { letter: 'J', name: 'Arc center Y offset (mm)', example: '0' },
+      { letter: 'F', name: 'Feed rate (mm/min)', example: '1200' },
+    ],
+    example: 'G2 X10 Y20 I5 J0 F1200 ; Clockwise arc',
+    template: 'G2 X__ Y__ I__ J__ F1200',
+    firmware: { bambu: 'Bambu Lab firmware supports arc commands natively.', klipper: 'Enable arc support with [gcode_arcs] in printer.cfg.', marlin: 'Enable ARC_SUPPORT in Configuration_adv.h.', reprap: null }
+  },
+  { code: 'G3', name: 'Counter-Clockwise Arc', category: 'Movement',
+    description: 'Same as G2, but the arc goes counter-clockwise. Parameters are identical.',
+    params: [
+      { letter: 'X', name: 'End X position (mm)', example: '10' },
+      { letter: 'Y', name: 'End Y position (mm)', example: '20' },
+      { letter: 'I', name: 'Arc center X offset (mm)', example: '5' },
+      { letter: 'J', name: 'Arc center Y offset (mm)', example: '0' },
+      { letter: 'F', name: 'Feed rate (mm/min)', example: '1200' },
+    ],
+    example: 'G3 X10 Y20 I5 J0 F1200 ; Counter-clockwise arc',
+    template: 'G3 X__ Y__ I__ J__ F1200',
+    firmware: { bambu: null, klipper: 'Enable arc support with [gcode_arcs] in printer.cfg.', marlin: 'Enable ARC_SUPPORT in Configuration_adv.h.', reprap: null }
+  },
+  { code: 'G28', name: 'Home Axes', category: 'Movement',
+    description: 'Move the print head to the home position (endstops). With no parameters, homes all axes. You can specify individual axes like G28 X Y.',
+    params: [
+      { letter: 'X', name: 'Home X axis', example: '' },
+      { letter: 'Y', name: 'Home Y axis', example: '' },
+      { letter: 'Z', name: 'Home Z axis', example: '' },
+    ],
+    example: 'G28 ; Home all axes',
+    template: 'G28',
+    firmware: { bambu: null, klipper: 'Uses [homing_override] or [safe_z_home] if configured.', marlin: null, reprap: null }
+  },
+  { code: 'G90', name: 'Absolute Positioning', category: 'Movement',
+    description: 'Switch to absolute positioning mode. All XYZ coordinates are relative to the origin (0,0,0). This is the default mode for most prints.',
+    params: [],
+    example: 'G90 ; Use absolute coordinates',
+    template: 'G90',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: 'In RepRapFirmware, G90 also affects the extruder. Use M82/M83 to set extruder mode independently.' }
+  },
+  { code: 'G91', name: 'Relative Positioning', category: 'Movement',
+    description: 'Switch to relative (incremental) positioning. All XYZ moves are relative to the current position. Useful for lifting the nozzle by a set amount.',
+    params: [],
+    example: 'G91 ; Use relative coordinates\nG1 Z5 F600 ; Lift nozzle 5mm',
+    template: 'G91\nG1 Z5 F600\nG90',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: 'In RepRapFirmware, G91 also affects the extruder.' }
+  },
+  { code: 'G92', name: 'Set Position', category: 'Movement',
+    description: 'Set the current position to the given values without moving. Commonly used as G92 E0 to reset the extruder position to zero.',
+    params: [
+      { letter: 'X', name: 'New X position', example: '0' },
+      { letter: 'Y', name: 'New Y position', example: '0' },
+      { letter: 'Z', name: 'New Z position', example: '0' },
+      { letter: 'E', name: 'New extruder position', example: '0' },
+    ],
+    example: 'G92 E0 ; Reset extruder to zero',
+    template: 'G92 E0',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+
+  // ── Temperature ──
+  { code: 'M104', name: 'Set Hotend Temperature', category: 'Temperature',
+    description: 'Set the hotend (nozzle) temperature and continue immediately without waiting. Use M109 if you need to wait for the temperature to be reached.',
+    params: [
+      { letter: 'S', name: 'Target temperature (\u00b0C)', example: '200' },
+      { letter: 'T', name: 'Extruder index (multi-extruder)', example: '0' },
+    ],
+    example: 'M104 S200 ; Start heating nozzle to 200\u00b0C',
+    template: 'M104 S200',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M109', name: 'Wait for Hotend Temperature', category: 'Temperature',
+    description: 'Set the hotend temperature and wait until it is reached before continuing. Blocks all movement until the target temperature is hit.',
+    params: [
+      { letter: 'S', name: 'Target temperature (\u00b0C)', example: '200' },
+      { letter: 'R', name: 'Wait for exact temp (heat and cool)', example: '200' },
+    ],
+    example: 'M109 S200 ; Heat nozzle and wait',
+    template: 'M109 S200',
+    firmware: { bambu: null, klipper: null, marlin: 'S waits only for heating. R waits for both heating and cooling.', reprap: null }
+  },
+  { code: 'M140', name: 'Set Bed Temperature', category: 'Temperature',
+    description: 'Set the heated bed temperature and continue immediately without waiting. Use M190 if you need to wait.',
+    params: [
+      { letter: 'S', name: 'Target temperature (\u00b0C)', example: '60' },
+    ],
+    example: 'M140 S60 ; Start heating bed to 60\u00b0C',
+    template: 'M140 S60',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M190', name: 'Wait for Bed Temperature', category: 'Temperature',
+    description: 'Set the heated bed temperature and wait until it is reached. Blocks until the bed hits the target.',
+    params: [
+      { letter: 'S', name: 'Target temperature (\u00b0C)', example: '60' },
+      { letter: 'R', name: 'Wait for exact temp', example: '60' },
+    ],
+    example: 'M190 S60 ; Heat bed and wait',
+    template: 'M190 S60',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M106', name: 'Set Fan Speed', category: 'Temperature',
+    description: 'Turn on the part cooling fan at a specific speed. Speed ranges from 0 (off) to 255 (full). Some slicers use percentages in comments but the actual value is 0-255.',
+    params: [
+      { letter: 'S', name: 'Fan speed (0-255)', example: '255' },
+      { letter: 'P', name: 'Fan index (multi-fan)', example: '0' },
+    ],
+    example: 'M106 S127 ; Fan at ~50%',
+    template: 'M106 S255',
+    firmware: { bambu: 'Bambu Lab uses P1 for the auxiliary fan and P2 for the chamber fan.', klipper: 'Fan must be defined as [fan] in printer.cfg. Additional fans use [fan_generic].', marlin: null, reprap: null }
+  },
+  { code: 'M107', name: 'Fan Off', category: 'Temperature',
+    description: 'Turn off the part cooling fan. Equivalent to M106 S0.',
+    params: [],
+    example: 'M107 ; Turn off fan',
+    template: 'M107',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+
+  // ── Extrusion ──
+  { code: 'M82', name: 'Absolute Extrusion', category: 'Extrusion',
+    description: 'Set the extruder to absolute mode. E values in G1 commands represent the total distance extruded since the last E reset (G92 E0). Most slicers use this mode.',
+    params: [],
+    example: 'M82 ; Absolute extrusion mode',
+    template: 'M82',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: 'In RepRapFirmware, M82 overrides G90/G91 for the extruder axis specifically.' }
+  },
+  { code: 'M83', name: 'Relative Extrusion', category: 'Extrusion',
+    description: 'Set the extruder to relative mode. Each E value in G1 commands is the amount to extrude for that move, not the total. Some slicers prefer this mode.',
+    params: [],
+    example: 'M83 ; Relative extrusion mode',
+    template: 'M83',
+    firmware: { bambu: null, klipper: 'Klipper recommends relative extrusion for better pressure advance behavior.', marlin: null, reprap: null }
+  },
+
+  // ── Print Control ──
+  { code: 'M0', name: 'Unconditional Stop', category: 'Print Control',
+    description: 'Stop the print and wait for user interaction (button press on the LCD or host confirmation). Useful for pausing to insert objects.',
+    params: [
+      { letter: 'S', name: 'Timeout in seconds', example: '30' },
+    ],
+    example: 'M0 ; Pause and wait for user',
+    template: 'M0',
+    firmware: { bambu: 'Not recommended for Bambu Lab \u2014 use M400 U1 instead.', klipper: 'M0 is supported but PAUSE macro is preferred.', marlin: 'Requires LCD or host connection to resume.', reprap: null }
+  },
+  { code: 'M25', name: 'Pause SD Print', category: 'Print Control',
+    description: 'Pause a print running from the SD card. Only works for SD/USB prints, not host-streamed prints.',
+    params: [],
+    example: 'M25 ; Pause SD print',
+    template: 'M25',
+    firmware: { bambu: null, klipper: 'Not commonly used in Klipper \u2014 use PAUSE macro instead.', marlin: 'Only works for SD prints. For host prints, use M0 or M600.', reprap: null }
+  },
+  { code: 'M226', name: 'Wait for Pin / Pause', category: 'Print Control',
+    description: 'In RepRapFirmware, this pauses the print (equivalent to pressing Pause in the web interface). In Marlin, it waits for a pin to change state.',
+    params: [],
+    example: 'M226 ; Pause print (RepRap)',
+    template: 'M226',
+    firmware: { bambu: 'Not supported on Bambu Lab.', klipper: 'Not supported in Klipper \u2014 use PAUSE macro.', marlin: 'In Marlin, M226 waits for a pin state, not a pause command.', reprap: 'Primary pause command in RepRapFirmware. Runs the pause.g macro.' }
+  },
+  { code: 'M600', name: 'Filament Change', category: 'Print Control',
+    description: 'Pause the print for a filament change. The printer will retract, move the head out of the way, and wait for the user to load new filament.',
+    params: [
+      { letter: 'E', name: 'Retract length (mm)', example: '3' },
+      { letter: 'L', name: 'Load length (mm)', example: '50' },
+      { letter: 'X', name: 'Park X position', example: '10' },
+      { letter: 'Y', name: 'Park Y position', example: '10' },
+      { letter: 'Z', name: 'Z lift amount', example: '5' },
+    ],
+    example: 'M600 ; Filament change',
+    template: 'M600',
+    firmware: { bambu: 'Supported but M1020 is preferred for AMS filament changes.', klipper: 'Must be defined as a [gcode_macro M600] in printer.cfg.', marlin: 'Requires ADVANCED_PAUSE_FEATURE enabled in Configuration_adv.h.', reprap: 'Runs the filament-change.g macro file.' }
+  },
+  { code: 'M400', name: 'Wait for Moves to Finish', category: 'Print Control',
+    description: 'Wait for all buffered moves to complete before proceeding to the next command. Useful before pauses or temperature changes to ensure the nozzle is in the expected position.',
+    params: [],
+    example: 'M400 ; Finish all moves',
+    template: 'M400',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M400 U1', name: 'Bambu Lab Pause', category: 'Print Control',
+    description: 'Bambu Lab-specific pause command. Pauses the print and shows a dialog on the printer screen. This is the recommended pause method for Bambu Lab printers.',
+    params: [],
+    example: 'M400 U1 ; Bambu pause with dialog',
+    template: 'M400 U1',
+    firmware: { bambu: 'Recommended pause command for all Bambu Lab printers.', klipper: 'Not supported \u2014 use PAUSE macro instead.', marlin: 'Not supported \u2014 use M0 or M600.', reprap: 'Not supported \u2014 use M226.' }
+  },
+  { code: 'PAUSE', name: 'Klipper Pause Macro', category: 'Print Control',
+    description: 'Klipper-specific macro to pause the print. Calls the [pause_resume] module. The behavior (park position, retraction) is defined in your printer.cfg.',
+    params: [],
+    example: 'PAUSE ; Klipper pause',
+    template: 'PAUSE',
+    firmware: { bambu: 'Not supported \u2014 use M400 U1.', klipper: 'Requires [pause_resume] in printer.cfg. Customize with gcode_macro.', marlin: 'Not supported \u2014 use M0 or M600.', reprap: 'Not supported \u2014 use M226.' }
+  },
+
+  // ── Calibration & Leveling ──
+  { code: 'G29', name: 'Auto Bed Leveling', category: 'Calibration & Leveling',
+    description: 'Run the automatic bed leveling probe sequence. The probe samples multiple points across the bed and creates a mesh to compensate for an uneven surface.',
+    params: [],
+    example: 'G28 ; Home first\nG29 ; Run bed leveling',
+    template: 'G28\nG29',
+    firmware: { bambu: 'Bambu Lab printers auto-level before each print. Manual G29 is not typically needed.', klipper: 'Use BED_MESH_CALIBRATE instead. G29 is not a native Klipper command.', marlin: 'Requires a probe configured (BLTouch, inductive, etc.) and AUTO_BED_LEVELING enabled.', reprap: 'Runs the bed.g macro to probe the bed.' }
+  },
+  { code: 'M48', name: 'Probe Repeatability Test', category: 'Calibration & Leveling',
+    description: 'Test how consistently the Z-probe triggers by probing the same point multiple times and reporting the standard deviation.',
+    params: [
+      { letter: 'P', name: 'Number of probe points', example: '10' },
+    ],
+    example: 'M48 P10 ; Probe 10 times and report',
+    template: 'M48 P10',
+    firmware: { bambu: null, klipper: 'Use PROBE_ACCURACY command instead.', marlin: 'Requires Z_MIN_PROBE_REPEATABILITY_TEST enabled.', reprap: null }
+  },
+  { code: 'M500', name: 'Save Settings to EEPROM', category: 'Calibration & Leveling',
+    description: 'Save the current configuration (steps/mm, PID values, Z-offset, etc.) to non-volatile memory so they persist across power cycles.',
+    params: [],
+    example: 'M500 ; Save settings',
+    template: 'M500',
+    firmware: { bambu: null, klipper: 'Klipper uses SAVE_CONFIG instead of M500.', marlin: 'Requires EEPROM_SETTINGS enabled in Configuration.h.', reprap: 'Saves to config-override.g.' }
+  },
+  { code: 'M501', name: 'Load Settings from EEPROM', category: 'Calibration & Leveling',
+    description: 'Load previously saved settings from EEPROM/flash, overriding any changes made since boot.',
+    params: [],
+    example: 'M501 ; Load saved settings',
+    template: 'M501',
+    firmware: { bambu: null, klipper: 'Not applicable \u2014 Klipper reads printer.cfg at startup.', marlin: null, reprap: 'Runs config-override.g.' }
+  },
+  { code: 'M503', name: 'Report Settings', category: 'Calibration & Leveling',
+    description: 'Print all current firmware settings to the serial console. Useful for checking steps/mm, PID values, acceleration, and other calibration values.',
+    params: [],
+    example: 'M503 ; Show current settings',
+    template: 'M503',
+    firmware: { bambu: null, klipper: 'Not applicable \u2014 settings are in printer.cfg.', marlin: null, reprap: null }
+  },
+
+  // ── Stepper & Motion ──
+  { code: 'M84', name: 'Disable Steppers', category: 'Stepper & Motion',
+    description: 'Disable stepper motors. The print head and bed will be free to move by hand. Usually called at the end of a print.',
+    params: [
+      { letter: 'S', name: 'Idle timeout (seconds)', example: '120' },
+    ],
+    example: 'M84 ; Disable all steppers',
+    template: 'M84',
+    firmware: { bambu: null, klipper: null, marlin: 'Also accessible as M18.', reprap: null }
+  },
+  { code: 'M201', name: 'Set Max Acceleration', category: 'Stepper & Motion',
+    description: 'Set the maximum acceleration for each axis in mm/s\u00b2. Higher values allow faster direction changes but may cause ringing artifacts.',
+    params: [
+      { letter: 'X', name: 'X max accel (mm/s\u00b2)', example: '1000' },
+      { letter: 'Y', name: 'Y max accel (mm/s\u00b2)', example: '1000' },
+      { letter: 'Z', name: 'Z max accel (mm/s\u00b2)', example: '100' },
+      { letter: 'E', name: 'E max accel (mm/s\u00b2)', example: '5000' },
+    ],
+    example: 'M201 X1000 Y1000 ; Set XY max accel',
+    template: 'M201 X1000 Y1000 Z100 E5000',
+    firmware: { bambu: null, klipper: 'Use SET_VELOCITY_LIMIT ACCEL=value instead.', marlin: null, reprap: null }
+  },
+  { code: 'M203', name: 'Set Max Feedrate', category: 'Stepper & Motion',
+    description: 'Set the maximum feedrate (speed) for each axis in mm/s. Moves will never exceed these speeds even if the G-code requests higher.',
+    params: [
+      { letter: 'X', name: 'X max speed (mm/s)', example: '200' },
+      { letter: 'Y', name: 'Y max speed (mm/s)', example: '200' },
+      { letter: 'Z', name: 'Z max speed (mm/s)', example: '5' },
+      { letter: 'E', name: 'E max speed (mm/s)', example: '50' },
+    ],
+    example: 'M203 X200 Y200 ; Set max XY speed',
+    template: 'M203 X200 Y200 Z5 E50',
+    firmware: { bambu: null, klipper: 'Use SET_VELOCITY_LIMIT VELOCITY=value instead.', marlin: null, reprap: null }
+  },
+  { code: 'M204', name: 'Set Default Acceleration', category: 'Stepper & Motion',
+    description: 'Set the default acceleration used for print moves, travel moves, and retractions.',
+    params: [
+      { letter: 'P', name: 'Print accel (mm/s\u00b2)', example: '1000' },
+      { letter: 'T', name: 'Travel accel (mm/s\u00b2)', example: '2000' },
+      { letter: 'R', name: 'Retract accel (mm/s\u00b2)', example: '3000' },
+    ],
+    example: 'M204 P1000 T2000 ; Print and travel accel',
+    template: 'M204 P1000 T2000',
+    firmware: { bambu: null, klipper: 'Use SET_VELOCITY_LIMIT ACCEL=value. Klipper uses a single acceleration value.', marlin: null, reprap: null }
+  },
+  { code: 'M205', name: 'Set Jerk / Junction Deviation', category: 'Stepper & Motion',
+    description: 'Set jerk limits (maximum instantaneous speed change at direction changes). Lower values produce smoother prints but slower corners.',
+    params: [
+      { letter: 'X', name: 'X jerk (mm/s)', example: '8' },
+      { letter: 'Y', name: 'Y jerk (mm/s)', example: '8' },
+      { letter: 'Z', name: 'Z jerk (mm/s)', example: '0.4' },
+      { letter: 'E', name: 'E jerk (mm/s)', example: '5' },
+      { letter: 'J', name: 'Junction deviation (mm)', example: '0.013' },
+    ],
+    example: 'M205 X8 Y8 ; Set XY jerk to 8mm/s',
+    template: 'M205 X8 Y8 Z0.4 E5',
+    firmware: { bambu: null, klipper: 'Klipper uses square_corner_velocity in printer.cfg instead of jerk.', marlin: 'J parameter enables Junction Deviation mode (alternative to classic jerk).', reprap: 'RepRapFirmware uses M566 for jerk settings, not M205.' }
+  },
+  { code: 'M220', name: 'Set Speed Factor', category: 'Stepper & Motion',
+    description: 'Override the print speed as a percentage of the original. M220 S50 = half speed, M220 S200 = double speed.',
+    params: [
+      { letter: 'S', name: 'Speed percentage', example: '100' },
+    ],
+    example: 'M220 S100 ; Reset to normal speed',
+    template: 'M220 S100',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M221', name: 'Set Flow Rate', category: 'Stepper & Motion',
+    description: 'Override the extrusion flow rate as a percentage. M221 S95 = 95% flow (slight under-extrusion). Useful for fine-tuning mid-print.',
+    params: [
+      { letter: 'S', name: 'Flow percentage', example: '100' },
+    ],
+    example: 'M221 S100 ; Reset to normal flow',
+    template: 'M221 S100',
+    firmware: { bambu: null, klipper: 'Use SET_PRESSURE_ADVANCE for flow tuning instead.', marlin: null, reprap: null }
+  },
+
+  // ── Filament & Material ──
+  { code: 'M1020', name: 'Bambu AMS Filament Change', category: 'Filament & Material',
+    description: 'Bambu Lab-specific command to switch filament using the AMS (Automatic Material System). Specify which slot to load from.',
+    params: [
+      { letter: 'S', name: 'AMS slot number (0-3)', example: '1' },
+    ],
+    example: 'M1020 S1 ; Switch to AMS slot 2',
+    template: 'M1020 S0',
+    firmware: { bambu: 'Primary AMS filament change command. Slots: S0=slot 1, S1=slot 2, S2=slot 3, S3=slot 4.', klipper: 'Not supported \u2014 Bambu Lab specific.', marlin: 'Not supported \u2014 Bambu Lab specific.', reprap: 'Not supported \u2014 Bambu Lab specific.' }
+  },
+  { code: 'T0', name: 'Select Extruder', category: 'Filament & Material',
+    description: 'Select which extruder/tool to use on multi-extruder printers. T0 = first extruder, T1 = second, etc.',
+    params: [],
+    example: 'T0 ; Select first extruder\nT1 ; Select second extruder',
+    template: 'T0',
+    firmware: { bambu: 'Bambu Lab uses T commands internally with AMS.', klipper: 'Requires [extruder] and [extruder1] etc. in printer.cfg.', marlin: 'Requires EXTRUDERS > 1 in Configuration.h.', reprap: 'Runs the tool-change macro (tpre0.g, tpost0.g, tfree0.g).' }
+  },
+
+  // ── Display & Communication ──
+  { code: 'M117', name: 'Set LCD Message', category: 'Display & Communication',
+    description: 'Display a message on the printer\'s LCD screen. Useful for showing status messages or reminders during a print.',
+    params: [
+      { letter: '', name: 'Message text', example: 'Layer 50 of 200' },
+    ],
+    example: 'M117 Printing layer 50... ; Show on LCD',
+    template: 'M117 Your message here',
+    firmware: { bambu: 'May not display on Bambu Lab touchscreen.', klipper: 'Requires [display] in printer.cfg. Also supports SET_DISPLAY_TEXT.', marlin: null, reprap: 'Displays on PanelDue or web interface.' }
+  },
+  { code: 'M118', name: 'Serial Message', category: 'Display & Communication',
+    description: 'Send a message to the host (OctoPrint, Mainsail, etc.) via serial. Useful for triggering host-side actions or logging.',
+    params: [
+      { letter: '', name: 'Message text', example: 'Print checkpoint reached' },
+    ],
+    example: 'M118 Print checkpoint reached',
+    template: 'M118 Message here',
+    firmware: { bambu: null, klipper: 'Use RESPOND MSG="text" for Klipper host messaging.', marlin: null, reprap: null }
+  },
+  { code: 'M73', name: 'Set Print Progress', category: 'Display & Communication',
+    description: 'Tell the printer what percentage of the print is complete and the estimated remaining time. Many slicers insert these automatically.',
+    params: [
+      { letter: 'P', name: 'Progress percentage (0-100)', example: '50' },
+      { letter: 'R', name: 'Remaining time (minutes)', example: '30' },
+    ],
+    example: 'M73 P50 R30 ; 50% done, 30min left',
+    template: 'M73 P__ R__',
+    firmware: { bambu: 'Bambu Lab uses this to display progress on the touchscreen.', klipper: 'Supported with [display] and SET_DISPLAY_TEXT.', marlin: 'Requires SET_PROGRESS_MANUALLY enabled.', reprap: null }
+  },
+
+  // ── PID & Advanced ──
+  { code: 'M303', name: 'PID Autotune', category: 'PID & Advanced',
+    description: 'Run a PID autotune cycle for the hotend or bed. The printer heats to the target, measures response, and calculates optimal PID values. Save results with M500.',
+    params: [
+      { letter: 'S', name: 'Target temperature (\u00b0C)', example: '200' },
+      { letter: 'E', name: 'Heater index (0=hotend, -1=bed)', example: '0' },
+      { letter: 'C', name: 'Autotune cycles', example: '8' },
+    ],
+    example: 'M303 S200 E0 C8 ; Autotune hotend at 200\u00b0C',
+    template: 'M303 S200 E0 C8',
+    firmware: { bambu: 'Bambu Lab printers have factory-tuned PID. Manual tuning is not recommended.', klipper: 'Use PID_CALIBRATE HEATER=extruder TARGET=200 instead.', marlin: 'After tuning, apply values with M301 (hotend) or M304 (bed), then M500 to save.', reprap: 'Use M303 H1 S200 for the hotend heater.' }
+  },
+  { code: 'M301', name: 'Set Hotend PID', category: 'PID & Advanced',
+    description: 'Set the PID tuning parameters for the hotend heater. Usually set after running M303 autotune. Save with M500.',
+    params: [
+      { letter: 'P', name: 'Proportional (Kp)', example: '22.2' },
+      { letter: 'I', name: 'Integral (Ki)', example: '1.08' },
+      { letter: 'D', name: 'Derivative (Kd)', example: '114.0' },
+    ],
+    example: 'M301 P22.2 I1.08 D114.0 ; Set hotend PID',
+    template: 'M301 P__ I__ D__',
+    firmware: { bambu: 'Not user-configurable on Bambu Lab.', klipper: 'PID values are set in printer.cfg under [extruder] section.', marlin: 'Save to EEPROM with M500 after setting.', reprap: 'Use M307 for heater model tuning instead.' }
+  },
+  { code: 'M304', name: 'Set Bed PID', category: 'PID & Advanced',
+    description: 'Set the PID tuning parameters for the heated bed. Usually set after running M303 autotune with E-1.',
+    params: [
+      { letter: 'P', name: 'Proportional (Kp)', example: '70.3' },
+      { letter: 'I', name: 'Integral (Ki)', example: '1.6' },
+      { letter: 'D', name: 'Derivative (Kd)', example: '350.0' },
+    ],
+    example: 'M304 P70.3 I1.6 D350.0 ; Set bed PID',
+    template: 'M304 P__ I__ D__',
+    firmware: { bambu: 'Not user-configurable on Bambu Lab.', klipper: 'PID values are set in printer.cfg under [heater_bed] section.', marlin: null, reprap: 'Use M307 for heater model tuning instead.' }
+  },
+];
+
 let currentFirmware = 'bambu';
 
 function onFirmwareChange(fw) {
@@ -1657,6 +2116,9 @@ function onFirmwareChange(fw) {
 
   // Update eject hint
   document.getElementById('ejectHint').textContent = profile.ejectHint;
+
+  // Update reference tab if rendered
+  if (document.getElementById('refContent').children.length > 0) renderReference();
 }
 
 function renderRadioGroup(containerId, radioName, options) {
@@ -1979,6 +2441,100 @@ function showToast(message, type = 'success', duration = 4000) {
 function switchTab(tabName) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
   document.querySelectorAll('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === 'tab-' + tabName));
+  if (tabName === 'reference' && document.getElementById('refContent').children.length === 0) {
+    renderReference();
+  }
+}
+
+// ===== REFERENCE TAB =====
+function renderReference() {
+  const fw = currentFirmware;
+  const fwName = FIRMWARE[fw].name;
+  document.getElementById('refFirmwareBadge').innerHTML = 'Showing notes for: <span>' + fwName + '</span>';
+
+  const categories = [];
+  const catMap = {};
+  GCODE_REFERENCE.forEach(cmd => {
+    if (!catMap[cmd.category]) {
+      catMap[cmd.category] = [];
+      categories.push(cmd.category);
+    }
+    catMap[cmd.category].push(cmd);
+  });
+
+  let html = '';
+  categories.forEach(cat => {
+    html += '<div class="ref-category" data-category="' + cat + '">';
+    html += '<div class="ref-category-header" onclick="this.parentElement.classList.toggle(\'collapsed\')">' + cat + '</div>';
+    html += '<div class="ref-category-cards">';
+    catMap[cat].forEach(cmd => {
+      const fwNote = cmd.firmware[fw];
+      html += '<div class="ref-card" data-search="' + (cmd.code + ' ' + cmd.name + ' ' + cmd.description).toLowerCase().replace(/"/g, '&quot;') + '">';
+      html += '<div class="ref-card-head"><span class="ref-card-code">' + cmd.code + '</span><span class="ref-card-name">' + cmd.name + '</span>';
+      html += '<button class="ref-card-insert" onclick="insertRefCommand(\'' + cmd.code.replace(/'/g, "\\'") + '\');event.stopPropagation()">Insert</button></div>';
+      html += '<div class="ref-card-desc">' + cmd.description + '</div>';
+      if (cmd.params.length > 0) {
+        html += '<table class="ref-card-params"><tr><th>Param</th><th>Description</th><th>Example</th></tr>';
+        cmd.params.forEach(p => {
+          html += '<tr><td>' + p.letter + '</td><td>' + p.name + '</td><td>' + p.example + '</td></tr>';
+        });
+        html += '</table>';
+      }
+      html += '<div class="ref-card-example">' + cmd.example.replace(/\n/g, '<br>') + '</div>';
+      if (fwNote) {
+        html += '<div class="ref-card-firmware">' + fwName + ': ' + fwNote + '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div></div>';
+  });
+
+  document.getElementById('refContent').innerHTML = html;
+}
+
+function filterReferenceCards() {
+  const query = document.getElementById('refSearch').value.toLowerCase().trim();
+  const categories = document.querySelectorAll('#refContent .ref-category');
+  let anyVisible = false;
+
+  categories.forEach(cat => {
+    const cards = cat.querySelectorAll('.ref-card');
+    let catVisible = false;
+    cards.forEach(card => {
+      const match = !query || card.dataset.search.includes(query);
+      card.style.display = match ? '' : 'none';
+      if (match) catVisible = true;
+    });
+    cat.style.display = catVisible ? '' : 'none';
+    if (catVisible) anyVisible = true;
+  });
+
+  let noRes = document.getElementById('refNoResults');
+  if (!anyVisible) {
+    if (!noRes) {
+      noRes = document.createElement('div');
+      noRes.id = 'refNoResults';
+      noRes.className = 'ref-no-results';
+      noRes.textContent = 'No commands found matching your search.';
+      document.getElementById('refContent').appendChild(noRes);
+    }
+    noRes.style.display = '';
+  } else if (noRes) {
+    noRes.style.display = 'none';
+  }
+}
+
+function insertRefCommand(code) {
+  const cmd = GCODE_REFERENCE.find(c => c.code === code);
+  if (!cmd) return;
+  switchTab('custom');
+  const textarea = document.getElementById('customGcode');
+  textarea.value = cmd.template;
+  const layerInput = document.getElementById('customLayer');
+  if (selectedLayer != null && layerInput.value === '') {
+    layerInput.value = selectedLayer;
+  }
+  showToast(cmd.code + ' inserted into Custom G-code tab', 'success');
 }
 
 // ===== ADD MODIFICATIONS =====
@@ -3365,8 +3921,8 @@ window.addEventListener('keydown', e => {
 
   if (isInput) return;
 
-  // Tab switching: 1-6
-  const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts' };
+  // Tab switching: 1-7
+  const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts', '7': 'reference' };
   if (tabKeys[e.key]) { switchTab(tabKeys[e.key]); return; }
 
   // Layer navigation

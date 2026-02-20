@@ -148,6 +148,16 @@ Insert arbitrary G-code at a specific layer or at the end of the file.
 - **Layer Number**: enter a layer number, or `end` to append at the file's end.
 - **Custom G-Code**: multi-line textarea — each line is inserted as-is, wrapped in `; === CUSTOM G-CODE ===` / `; === END CUSTOM ===` comment markers.
 
+### G-Code Reference
+
+A built-in reference for ~40 common 3D printing G-code commands, organized by category and adapted to your selected firmware.
+
+- **Search**: Type in the search box to filter commands by code, name, or description.
+- **Categories**: Movement, Temperature, Extrusion, Print Control, Calibration & Leveling, Stepper & Motion, Filament & Material, Display & Communication, PID & Advanced.
+- **Firmware notes**: Each command shows firmware-specific tips and warnings based on the firmware selected in the header dropdown.
+- **Click to insert**: Click the "Insert" button on any command to populate the Custom G-code tab with that command's template, ready to customize and add as a modification.
+- **Keyboard shortcut**: Press `7` to switch to the Reference tab.
+
 ### Inserts (Hole Detection)
 
 Automatically detect holes in the print and calculate the correct pause layer for placing physical inserts (magnets, threaded inserts, etc.).
@@ -225,7 +235,7 @@ Toggle between dark and light themes using the sun/moon button in the header. Th
 | `Space` | Toggle Code/Visual view |
 | `[` / `]` | Previous/Next layer |
 | Arrow keys | Previous/Next layer |
-| `1`–`6` | Switch tool tab |
+| `1`–`7` | Switch tool tab |
 | `F` | Reset camera |
 | `?` | Show keyboard shortcuts help |
 
