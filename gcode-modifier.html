@@ -241,14 +241,14 @@ main { display: flex; flex: 1; overflow: hidden; }
 .drawer-toggle:hover { border-color: var(--accent); color: var(--accent); }
 
 /* TOAST NOTIFICATIONS */
-.toast-container { position: fixed; top: 12px; right: 12px; z-index: 200; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-.toast { pointer-events: auto; padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px; animation: toastIn .3s ease; min-width: 200px; max-width: 400px; }
-.toast.success { background: rgba(74,222,128,.15); color: var(--green); border: 1px solid rgba(74,222,128,.3); }
-.toast.warning { background: rgba(250,204,21,.15); color: var(--yellow); border: 1px solid rgba(250,204,21,.3); }
-.toast.error { background: rgba(248,113,113,.15); color: var(--red); border: 1px solid rgba(248,113,113,.3); }
-.toast .toast-close { margin-left: auto; background: none; border: none; color: inherit; cursor: pointer; opacity: .6; font-size: 16px; }
+.toast-container { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; gap: 8px; pointer-events: none; align-items: center; }
+.toast { pointer-events: auto; padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 10px; animation: toastSlide .35s ease; min-width: 260px; max-width: 480px; box-shadow: 0 4px 20px rgba(0,0,0,.35); border: none; }
+.toast.success { background: #16a34a; color: #fff; }
+.toast.warning { background: #eab308; color: #000; }
+.toast.error { background: #dc2626; color: #fff; }
+.toast .toast-close { margin-left: auto; background: none; border: none; color: inherit; cursor: pointer; opacity: .7; font-size: 18px; }
 .toast .toast-close:hover { opacity: 1; }
-@keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
 /* ONBOARDING HINTS */
 .onboard-hint { position: absolute; background: var(--accent); color: #000; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; z-index: 50; white-space: nowrap; cursor: pointer; animation: hintPulse 2s ease-in-out infinite; top: calc(100% + 8px); left: 0; }
@@ -1292,7 +1292,12 @@ class HoleDetector {
       }
 
       const areaMm2 = cells.length * this.resolution * this.resolution;
-      const diameterMm = 2 * Math.sqrt(areaMm2 / Math.PI); // equivalent circle diameter
+      const rawDiameter = 2 * Math.sqrt(areaMm2 / Math.PI);
+      // Compensate for wall stamp encroachment: the rasterization stamp eats into
+      // the hole by ~halfW*resolution on each side, making detected area smaller
+      const halfW = Math.ceil(this.lineWidth / 2 / this.resolution);
+      const stampCorrection = halfW * this.resolution * 2;
+      const diameterMm = rawDiameter + stampCorrection;
 
       if (diameterMm < minDiameterMm) continue; // Filter small holes
 
@@ -2743,58 +2748,47 @@ class GcodeViewer3D {
     const selected = getSelectedHoleObjects();
     if (selected.length === 0) return;
 
+    // Draw highlight at the currently viewed layer's Z height
+    const currentLayerData = parser.getLayerByNumber(this.currentLayer);
+    if (!currentLayerData || currentLayerData.zHeight == null) return;
+    const z = currentLayerData.zHeight + 0.2;
+
     const verts = [];
-    const topColor = [0.0, 1.0, 0.4, 0.30];
-    const sideColor = [0.0, 1.0, 0.4, 0.15];
+    const fillColor = [0.0, 1.0, 0.4, 0.30];
+    const ringColor = [0.0, 1.0, 0.4, 0.70];
+    const segments = 36;
 
     for (const hole of selected) {
-      const topLayerNum = hole.topLayer ?? hole.layerNum;
-      const topLayerData = parser.getLayerByNumber(topLayerNum);
-      if (!topLayerData || topLayerData.zHeight == null) continue;
-      const zTop = topLayerData.zHeight + 0.15;
-      const b = hole.bbox;
-      const pad = 0.3;
+      const cx = hole.centroid.x;
+      const cy = hole.centroid.y;
+      const r = hole.diameterMm / 2;
 
-      // Top face
-      verts.push(
-        b.minX - pad, b.minY - pad, zTop, ...topColor,
-        b.maxX + pad, b.minY - pad, zTop, ...topColor,
-        b.maxX + pad, b.maxY + pad, zTop, ...topColor,
-        b.minX - pad, b.minY - pad, zTop, ...topColor,
-        b.maxX + pad, b.maxY + pad, zTop, ...topColor,
-        b.minX - pad, b.maxY + pad, zTop, ...topColor,
-      );
+      // Filled translucent circle
+      for (let i = 0; i < segments; i++) {
+        const a1 = (i / segments) * Math.PI * 2;
+        const a2 = ((i + 1) / segments) * Math.PI * 2;
+        verts.push(
+          cx, cy, z, ...fillColor,
+          cx + r * Math.cos(a1), cy + r * Math.sin(a1), z, ...fillColor,
+          cx + r * Math.cos(a2), cy + r * Math.sin(a2), z, ...fillColor,
+        );
+      }
 
-      // If hole has a floor, draw sides and bottom
-      if (hole.floorLayer >= 0) {
-        const floorData = parser.getLayerByNumber(hole.floorLayer);
-        if (floorData && floorData.zHeight != null) {
-          const zBot = floorData.zHeight + 0.05;
-
-          // Bottom face
-          verts.push(
-            b.minX - pad, b.minY - pad, zBot, ...topColor,
-            b.maxX + pad, b.minY - pad, zBot, ...topColor,
-            b.maxX + pad, b.maxY + pad, zBot, ...topColor,
-            b.minX - pad, b.minY - pad, zBot, ...topColor,
-            b.maxX + pad, b.maxY + pad, zBot, ...topColor,
-            b.minX - pad, b.maxY + pad, zBot, ...topColor,
-          );
-
-          // Four side faces
-          const corners = [
-            [b.minX - pad, b.minY - pad], [b.maxX + pad, b.minY - pad],
-            [b.maxX + pad, b.maxY + pad], [b.minX - pad, b.maxY + pad]
-          ];
-          for (let s = 0; s < 4; s++) {
-            const [x0, y0] = corners[s];
-            const [x1, y1] = corners[(s + 1) % 4];
-            verts.push(
-              x0, y0, zTop, ...sideColor, x1, y1, zTop, ...sideColor, x1, y1, zBot, ...sideColor,
-              x0, y0, zTop, ...sideColor, x1, y1, zBot, ...sideColor, x0, y0, zBot, ...sideColor,
-            );
-          }
-        }
+      // Bright ring outline (annulus)
+      const ringW = 0.3;
+      const rOuter = r + ringW;
+      const rInner = r;
+      for (let i = 0; i < segments; i++) {
+        const a1 = (i / segments) * Math.PI * 2;
+        const a2 = ((i + 1) / segments) * Math.PI * 2;
+        const ox1 = cx + rOuter * Math.cos(a1), oy1 = cy + rOuter * Math.sin(a1);
+        const ox2 = cx + rOuter * Math.cos(a2), oy2 = cy + rOuter * Math.sin(a2);
+        const ix1 = cx + rInner * Math.cos(a1), iy1 = cy + rInner * Math.sin(a1);
+        const ix2 = cx + rInner * Math.cos(a2), iy2 = cy + rInner * Math.sin(a2);
+        verts.push(
+          ox1, oy1, z, ...ringColor, ox2, oy2, z, ...ringColor, ix1, iy1, z, ...ringColor,
+          ox2, oy2, z, ...ringColor, ix2, iy2, z, ...ringColor, ix1, iy1, z, ...ringColor,
+        );
       }
     }
 
