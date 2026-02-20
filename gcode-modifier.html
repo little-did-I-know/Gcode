@@ -1279,9 +1279,11 @@ class HoleDetector {
         }
       }
 
-      // Compute bbox, centroid, area
+      // Compute bbox, centroid, area, perimeter
       let minGx = Infinity, maxGx = -Infinity, minGy = Infinity, maxGy = -Infinity;
       let sumX = 0, sumY = 0;
+      const cellSet = new Set(cells);
+      let perimeterEdges = 0;
       for (const idx of cells) {
         const cx = idx % w, cy = (idx - cx) / w;
         if (cx < minGx) minGx = cx;
@@ -1289,6 +1291,13 @@ class HoleDetector {
         if (cy < minGy) minGy = cy;
         if (cy > maxGy) maxGy = cy;
         sumX += cx; sumY += cy;
+        // Count exposed edges for perimeter
+        for (let d = 0; d < 4; d++) {
+          const nx = cx + dx4[d], ny = cy + dy4[d];
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h || !cellSet.has(ny * w + nx)) {
+            perimeterEdges++;
+          }
+        }
       }
 
       const areaMm2 = cells.length * this.resolution * this.resolution;
@@ -1301,6 +1310,18 @@ class HoleDetector {
 
       if (diameterMm < minDiameterMm) continue; // Filter small holes
 
+      // Shape classification via circularity = 4π·area / perimeter²
+      const perimeterMm = perimeterEdges * this.resolution;
+      const circularity = perimeterMm > 0 ? (4 * Math.PI * areaMm2) / (perimeterMm * perimeterMm) : 0;
+      const bboxW = (maxGx - minGx + 1) * this.resolution + stampCorrection;
+      const bboxH = (maxGy - minGy + 1) * this.resolution + stampCorrection;
+      const aspect = Math.max(bboxW, bboxH) / Math.max(0.1, Math.min(bboxW, bboxH));
+      let shape;
+      if (circularity > 0.82) shape = 'circle';
+      else if (circularity > 0.75) shape = 'hexagon';
+      else if (aspect < 1.25) shape = 'square';
+      else shape = 'rectangle';
+
       const centroid = this._toGcode(sumX / cells.length, sumY / cells.length, dims);
       const bboxMin = this._toGcode(minGx, minGy, dims);
       const bboxMax = this._toGcode(maxGx, maxGy, dims);
@@ -1310,9 +1331,13 @@ class HoleDetector {
         label: holeLabel,
         layerNum,
         cells,
-        cellSet: new Set(cells),
+        cellSet,
         areaMm2,
         diameterMm,
+        shape,
+        widthMm: bboxW,
+        heightMm: bboxH,
+        circularity,
         centroid,
         bbox: { minX: bboxMin.x, minY: bboxMin.y, maxX: bboxMax.x, maxY: bboxMax.y },
         gridDims: dims,
@@ -3127,12 +3152,33 @@ function renderHoleList() {
     const isSelected = holeDetector.selectedHoles.includes(hole.id);
     const depthStr = hole.depthMm != null ? `${hole.depthMm.toFixed(1)}mm deep` :
                      (hole.floorLayer === -1 ? 'through-hole' : 'depth unknown');
-    const layerStr = isScanned ? ` &middot; layer ${hole.topLayer ?? hole.layerNum}` : '';
+
+    // Shape and dimension info
+    const shapeIcon = { circle: '\u25cb', hexagon: '\u2b21', square: '\u25a1', rectangle: '\u25ad' }[hole.shape] || '';
+    const shapeName = hole.shape || 'unknown';
+    let dimStr;
+    if (hole.shape === 'circle') {
+      dimStr = `${hole.diameterMm.toFixed(1)}mm dia`;
+    } else if (hole.widthMm && hole.heightMm) {
+      dimStr = `${hole.widthMm.toFixed(1)} &times; ${hole.heightMm.toFixed(1)}mm`;
+    } else {
+      dimStr = `${hole.diameterMm.toFixed(1)}mm dia`;
+    }
+
+    // Clickable layer links
+    const floorLink = hole.floorLayer >= 0
+      ? `<a href="#" onclick="event.stopPropagation();jumpToLayer(${hole.floorLayer})" style="color:var(--accent);text-decoration:underline">${hole.floorLayer}</a>`
+      : 'none';
+    const topLayerNum = hole.topLayer ?? hole.layerNum;
+    const topLink = isScanned
+      ? ` &middot; top <a href="#" onclick="event.stopPropagation();jumpToLayer(${topLayerNum})" style="color:var(--accent);text-decoration:underline">${topLayerNum}</a>`
+      : '';
+
     html += `<div class="hole-item${isSelected ? ' selected' : ''}" onclick="toggleHoleSelection('${hole.id}', event)">
       <span class="hole-id">#${i + 1}</span>
       <div class="hole-info">
-        ${hole.diameterMm.toFixed(1)}mm dia &middot; ${hole.areaMm2.toFixed(1)}mm&sup2;
-        <span>${depthStr} &middot; floor layer ${hole.floorLayer >= 0 ? hole.floorLayer : 'none'}${layerStr}</span>
+        ${shapeIcon} ${shapeName} &middot; ${dimStr} &middot; ${hole.areaMm2.toFixed(1)}mm&sup2;
+        <span>${depthStr} &middot; floor ${floorLink}${topLink}</span>
       </div>
     </div>`;
   });
