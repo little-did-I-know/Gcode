@@ -2234,7 +2234,7 @@ function updateViewerOverlay(layerNum) {
 class GcodeViewer3D {
   constructor(canvasId) {
     this.canvas = document.getElementById(canvasId);
-    this.gl = this.canvas.getContext('webgl2');
+    this.gl = this.canvas.getContext('webgl2', { preserveDrawingBuffer: true });
     if (!this.gl) {
       console.error('GcodeViewer3D: WebGL2 not supported');
       this._broken = true;

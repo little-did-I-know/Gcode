@@ -13,6 +13,8 @@ Open `gcode-modifier.html` in any modern browser (WebGL2 required). No server, b
 3. **Browse layers** in the left panel, add modifications in the right panel.
 4. **Export** the modified file with the "Export G-Code" button. The output is saved as `<original-name>_modified.gcode`.
 
+A sample file (`test_cube.gcode`) is included in the repository so you can try the tool immediately — see [Test File](#test-file) below.
+
 ## Interface Layout
 
 The app uses a three-panel layout: layer navigator on the left, code/visual preview in the center, and modification tools on the right. On mobile (< 800px), the layout switches to a vertical stack with a collapsible layer drawer.
@@ -150,18 +152,30 @@ Insert arbitrary G-code at a specific layer or at the end of the file.
 
 Automatically detect holes in the print and calculate the correct pause layer for placing physical inserts (magnets, threaded inserts, etc.).
 
+![Hole Detection](screenshots/10-hole-detection.png)
+
+**Two detection modes:**
+
+- **Detect (Layer)**: Detect holes on the currently selected layer only. Useful when you already know which layer to inspect.
+- **Scan All Layers**: Automatically scan every layer from top to bottom, find all unique holes in the entire print, and analyze their depth. No need to manually scrub layers to find holes — the tool finds them for you. A progress indicator shows scan status.
+
 **Workflow:**
 
-1. Select a layer in the visual view where holes are visible (typically the top of the cavity).
-2. Click **Detect Holes**. The tool rasterizes the layer's toolpaths onto a grid and uses flood-fill to identify enclosed empty regions.
-3. Detected holes appear in the list with diameter, area, depth, and floor layer.
-4. Configure the insert: height (mm or layers), diameter, label, pause command.
-5. The tool automatically calculates which layer to pause at based on the hole's floor layer + insert height.
-6. Click **Add Pause for Selected Holes** to queue the modifications.
+1. Switch to the Visual view and open the **Inserts** tab.
+2. Click **Scan All Layers** (recommended) or navigate to a specific layer and click **Detect (Layer)**.
+3. Detected holes appear in the list with diameter, area, depth, floor layer, and (for scanned holes) which layer they were found on.
+4. Click a hole in the list to select it — a **green circle highlight** appears on the 3D view at the current layer's Z height showing the hole's position and size.
+5. Configure the insert: height (mm or layers), diameter, label, pause command.
+6. The tool automatically calculates which layer to pause at based on the hole's floor layer + insert height.
+7. Click **Add Pause for Selected Holes** to queue the modifications.
 
 **Detection settings:**
 - **Min diameter**: filter out holes smaller than this (range: 1–20mm).
 - **Ignore infill regions**: exclude infill patterns from the analysis so only wall-enclosed holes are detected.
+
+**How it works:**
+
+The detector rasterizes each layer's toolpaths onto a grid, uses flood-fill from the borders to identify exterior space, then finds connected components of interior empty cells. Hole diameters are compensated for wall-stamp encroachment to match the actual physical hole size. Depth analysis scans downward from where a hole first appears, looking for the layer where the footprint becomes filled (the floor). Through-holes that go all the way through the print are identified as such.
 
 ### Measurement Tool
 
@@ -188,9 +202,17 @@ All queued modifications appear in the bottom section of the right panel.
 - **Counter badge**: shows the total number of active modifications.
 - Modifications are applied bottom-up (highest layer number first) during export to avoid line-offset issues.
 
+## Toast Notifications
+
+Status messages (success, warning, error) appear as prominent centered notifications at the top of the screen. They auto-dismiss after 4 seconds or can be closed manually.
+
+![Toast Notification](screenshots/11-toast-notification.png)
+
 ## Theme
 
 Toggle between dark and light themes using the sun/moon button in the header. The theme is saved to localStorage and defaults to your system preference.
+
+![Light Theme](screenshots/08-light-theme.png)
 
 ## Keyboard Shortcuts
 
@@ -208,6 +230,18 @@ Toggle between dark and light themes using the sun/moon button in the header. Th
 | `?` | Show keyboard shortcuts help |
 
 Press `?` at any time to see the shortcuts overlay.
+
+![Keyboard Shortcuts](screenshots/09-shortcuts.png)
+
+## Test File
+
+A sample G-code file (`test_cube.gcode`) is included in the repository for testing. It's a 50mm test cube sliced with Bambu Studio containing:
+
+- **250 layers** at 0.2mm layer height
+- **A through-hole** (~10mm diameter) that goes all the way through the cube
+- **A blind pocket** (~5mm diameter, ~10mm deep) designed for placing a threaded insert or magnet
+
+This file is ideal for trying out the hole detection features: load it, click **Scan All Layers**, and both holes will be detected automatically — the through-hole and the interior pocket with its correct floor layer and depth.
 
 ## Large File Support
 

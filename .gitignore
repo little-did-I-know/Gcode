@@ -1,6 +1,7 @@
 package-lock.json
 package.json
 screenshots.mjs
+take-screenshots.js
 node_modules
 .idea
 .venv
