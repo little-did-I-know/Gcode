@@ -105,6 +105,7 @@ main { display: flex; flex: 1; overflow: hidden; }
 .viewer-mod-banner.pause { background: rgba(250,204,21,.2); color: var(--yellow); border: 1px solid rgba(250,204,21,.3); }
 .viewer-mod-banner.filament { background: rgba(167,139,250,.2); color: var(--purple); border: 1px solid rgba(167,139,250,.3); }
 .viewer-mod-banner.custom { background: rgba(0,200,255,.15); color: var(--accent); border: 1px solid rgba(0,200,255,.25); }
+.viewer-mod-banner.recovery { background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.3); color: var(--red, #ef4444); }
 .viewer-legend { position: absolute; bottom: 12px; left: 12px; display: flex; flex-wrap: wrap; gap: 10px; pointer-events: none; }
 .legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-dim); }
 .legend-swatch { width: 14px; height: 3px; border-radius: 2px; }
@@ -164,6 +165,7 @@ main { display: flex; flex: 1; overflow: hidden; }
 .mod-badge.eject { background: rgba(74,222,128,.15); color: var(--green); }
 .mod-badge.custom { background: rgba(0,200,255,.12); color: var(--accent); }
 .mod-badge.zoffset { background: rgba(251,146,60,.15); color: var(--orange); }
+.mod-badge.recovery { background: rgba(239,68,68,.15); color: var(--red, #ef4444); }
 .mod-desc { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mod-actions { display: flex; gap: 2px; }
 .mod-action { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-dim); border-radius: 4px; }
@@ -383,6 +385,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="tab" data-tab="custom" onclick="switchTab('custom')">Custom</button>
         <button class="tab" data-tab="inserts" onclick="switchTab('inserts')">Inserts</button>
         <button class="tab" data-tab="reference" onclick="switchTab('reference')">Reference</button>
+        <button class="tab" data-tab="recovery" onclick="switchTab('recovery')">Recovery</button>
       </div>
 
       <!-- PAUSE TAB -->
@@ -568,6 +571,22 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div id="refContent"></div>
       </div>
 
+      <!-- RECOVERY TAB -->
+      <div class="tab-content" id="tab-recovery">
+        <div style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--text);">
+          Recovery mode reprints from a specific layer at the bed surface. Print it flat, then glue the two halves together.
+        </div>
+        <div class="form-group">
+          <label>Resume from Layer</label>
+          <input type="number" class="input" id="recoveryLayer" min="1" placeholder="e.g. 50">
+          <div class="hint">First layer to include in the recovery print. Layers below this are removed.</div>
+        </div>
+        <div class="form-group">
+          <div class="hint">Z-heights are shifted so the resume layer prints at the original first-layer height. Feedrates on the resume layer are overridden with first-layer speeds for bed adhesion.</div>
+        </div>
+        <button class="btn btn-primary" onclick="addRecovery()">+ Add Recovery</button>
+      </div>
+
       <!-- MODIFICATIONS LIST -->
       <div class="mods-section">
         <div class="mods-header">
@@ -593,7 +612,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td><td>Redo</td></tr>
       <tr><td><kbd>Space</kbd></td><td>Toggle Code/Visual</td></tr>
       <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Previous/Next layer</td></tr>
-      <tr><td><kbd>1</kbd>–<kbd>7</kbd></td><td>Switch tool tab</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>8</kbd></td><td>Switch tool tab</td></tr>
       <tr><td><kbd>F</kbd></td><td>Reset camera</td></tr>
       <tr><td><kbd>?</kbd></td><td>This help</td></tr>
     </table>
@@ -980,6 +999,17 @@ class GcodeModifier {
     return mod;
   }
 
+  addRecovery(resumeLayer) {
+    // Only one recovery mod allowed — replace existing
+    this.modifications = this.modifications.filter(m => m.type !== 'recovery');
+    const mod = {
+      id: this._id(), type: 'recovery', layer: resumeLayer,
+      resumeLayer
+    };
+    this.modifications.push(mod);
+    return mod;
+  }
+
   addZOffset(layer, endLayer, offset, note) {
     const mod = {
       id: this._id(), type: 'zoffset', layer,
@@ -1066,6 +1096,12 @@ class GcodeModifier {
         lines.push('; === END CUSTOM ===');
         break;
       }
+      case 'recovery': {
+        lines.push(`; === PRINT RECOVERY: Resume from layer ${mod.resumeLayer} ===`);
+        lines.push(`; Layers below ${mod.resumeLayer} removed, Z shifted to bed`);
+        lines.push('; === END RECOVERY HEADER ===');
+        break;
+      }
     }
     return lines;
   }
@@ -1073,9 +1109,71 @@ class GcodeModifier {
   applyAll(originalLines, parser) {
     let result = [...originalLines];
 
+    // === RECOVERY: strip layers below resume point, shift Z to bed, override first-layer speeds ===
+    const recoveryMod = this.modifications.find(m => m.type === 'recovery');
+    let recoveryLineShift = 0; // line offset for other mods after recovery reassembly
+    if (recoveryMod && parser.layers.length > 0) {
+      const resumeLayer = parser.getLayerByNumber(recoveryMod.resumeLayer);
+      const layer0 = parser.layers[0];
+      if (resumeLayer && layer0 && resumeLayer.zHeight != null) {
+        const layer0Z = layer0.zHeight || 0.2;
+        const zShift = resumeLayer.zHeight - layer0Z;
+
+        // 1. Keep preamble + strip layers before resume point
+        const preamble = result.slice(0, parser.headerEnd);
+        const remaining = result.slice(resumeLayer.startLine);
+
+        // 2. Collect layer-0 extrusion feedrate for speed override
+        let layer0Speed = null;
+        for (let i = layer0.startLine; i <= layer0.endLine; i++) {
+          const line = result[i];
+          if (/^G[01]\s/i.test(line.trim()) && /E[\d.]/i.test(line) && /F[\d.]/i.test(line)) {
+            const fm = line.match(/F([\d.]+)/i);
+            if (fm) { layer0Speed = parseFloat(fm[1]); break; }
+          }
+        }
+
+        // 3. Reassemble: preamble + recovery header + remaining layers
+        const snippet = this.getSnippet(recoveryMod);
+        result = [...preamble, ...snippet, ...remaining];
+
+        // 4. Compute line shift so other mods can find correct insertion points
+        recoveryLineShift = preamble.length + snippet.length - resumeLayer.startLine;
+
+        // 5. Shift all Z values down by zShift in remaining lines
+        const remainingStart = preamble.length + snippet.length;
+        for (let i = remainingStart; i < result.length; i++) {
+          const trimmed = result[i].trim();
+          if (/^G[0123]\s/i.test(trimmed) && /Z[-\d.]/i.test(trimmed)) {
+            result[i] = result[i].replace(
+              /([Zz])([-\d.]+)/g,
+              (match, letter, val) => {
+                const newZ = parseFloat(val) - zShift;
+                return letter + newZ.toFixed(3);
+              }
+            );
+          }
+        }
+
+        // 6. Override feedrates on resume layer with layer-0 speed
+        if (layer0Speed) {
+          const resumeEnd = remainingStart + (resumeLayer.endLine - resumeLayer.startLine);
+          for (let i = remainingStart; i <= resumeEnd && i < result.length; i++) {
+            const trimmed = result[i].trim();
+            if (/^G[01]\s/i.test(trimmed) && /E[\d.]/i.test(trimmed) && /F[\d.]/i.test(trimmed)) {
+              result[i] = result[i].replace(
+                /F[\d.]+/i,
+                'F' + layer0Speed.toFixed(0)
+              );
+            }
+          }
+        }
+      }
+    }
+
     // Separate mod types
     const zoffsetMods = this.modifications.filter(m => m.type === 'zoffset');
-    const layerMods = this.modifications.filter(m => m.type !== 'eject' && m.type !== 'zoffset');
+    const layerMods = this.modifications.filter(m => m.type !== 'eject' && m.type !== 'zoffset' && m.type !== 'recovery');
     const ejectMods = this.modifications.filter(m => m.type === 'eject');
 
     // Apply z-offset modifications by adjusting Z values in affected lines
@@ -1144,9 +1242,11 @@ class GcodeModifier {
       if (mod.layer === 'end') {
         insertLine = result.length;
       } else {
+        // Skip mods targeting layers that were stripped by recovery
+        if (recoveryMod && mod.layer < recoveryMod.resumeLayer) continue;
         const layer = parser.getLayerByNumber(mod.layer);
         if (layer) {
-          insertLine = layer.startLine + 1; // After ;LAYER:X line
+          insertLine = layer.startLine + 1 + recoveryLineShift; // Adjust for recovery line shift
         } else {
           continue; // Skip if layer not found
         }
@@ -2327,6 +2427,7 @@ function selectLayer(num) {
   if (activeTab === 'pause') document.getElementById('pauseLayer').value = num;
   else if (activeTab === 'filament') document.getElementById('filamentLayer').value = num;
   else if (activeTab === 'zoffset') document.getElementById('zoffsetLayer').value = num;
+  else if (activeTab === 'recovery') document.getElementById('recoveryLayer').value = num;
 
   // Update hole list if holes were detected
   if (holeDetector.scannedHoles.length > 0 || holeDetector.holes.has(num)) {
@@ -2586,6 +2687,20 @@ function addEject() {
   showToast('Eject sequence added', 'success');
 }
 
+function addRecovery() {
+  const layer = parseInt(document.getElementById('recoveryLayer').value);
+  if (isNaN(layer)) { showToast('Please enter a valid layer number.', 'error'); return; }
+  if (layer === 0) { showToast('Layer 0 is already the first layer — no recovery needed.', 'warning'); return; }
+  if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
+  const lastLayer = parser.layers[parser.layers.length - 1];
+  if (lastLayer && layer === lastLayer.number) {
+    showToast('Warning: recovery print will only contain the final layer.', 'warning');
+  }
+  modifier.addRecovery(layer);
+  refreshAfterMod();
+  showToast(`Recovery added: resume from layer ${layer}`, 'success');
+}
+
 function addZOffset() {
   const layer = parseInt(document.getElementById('zoffsetLayer').value);
   if (isNaN(layer)) { showToast('Please enter a valid start layer number.', 'error'); return; }
@@ -2681,6 +2796,9 @@ function renderModsList() {
       }
       case 'custom':
         desc = mod.layer === 'end' ? 'End of file' : `Layer ${mod.layer}`;
+        break;
+      case 'recovery':
+        desc = `Resume from layer ${mod.resumeLayer}`;
         break;
     }
 
@@ -2812,6 +2930,8 @@ function updateViewerOverlay(layerNum) {
       html += `<div class="viewer-mod-banner pause">↕ Z-Offset: ${sign}${mod.offset}mm${mod.note ? ' – ' + mod.note : ''}</div>`;
     } else if (mod.type === 'custom') {
       html += `<div class="viewer-mod-banner custom">⚙ Custom G-code inserted</div>`;
+    } else if (mod.type === 'recovery') {
+      html += `<div class="viewer-mod-banner recovery">Recovery: resume from layer ${mod.resumeLayer}</div>`;
     }
   }
   overlay.innerHTML = html;
@@ -3298,6 +3418,7 @@ class GcodeViewer3D {
         case 'filament': color = [0.655, 0.545, 0.980, 0.15]; break;
         case 'zoffset': color = [0.984, 0.573, 0.235, 0.15]; break;
         case 'custom': color = [0.0, 0.784, 1.0, 0.15]; break;
+        case 'recovery': color = [1.0, 0.2, 0.2, 0.20]; break;
         default: color = [0.5, 0.5, 0.5, 0.15];
       }
 
@@ -3867,9 +3988,11 @@ function exportGcode() {
   const url = URL.createObjectURL(blob);
 
   const baseName = parser.fileName.replace(/\.gcode$/i, '');
+  const recoveryMod = modifier.modifications.find(m => m.type === 'recovery');
+  const suffix = recoveryMod ? `_recovery_L${recoveryMod.resumeLayer}` : '_modified';
   const a = document.createElement('a');
   a.href = url;
-  a.download = baseName + '_modified.gcode';
+  a.download = baseName + suffix + '.gcode';
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -3956,8 +4079,8 @@ window.addEventListener('keydown', e => {
 
   if (isInput) return;
 
-  // Tab switching: 1-7
-  const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts', '7': 'reference' };
+  // Tab switching: 1-8
+  const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts', '7': 'reference', '8': 'recovery' };
   if (tabKeys[e.key]) { switchTab(tabKeys[e.key]); return; }
 
   // Layer navigation
