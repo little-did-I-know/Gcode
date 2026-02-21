@@ -15,6 +15,37 @@ Open `gcode-modifier.html` in any modern browser (WebGL2 required). No server, b
 
 A sample file (`test_cube.gcode`) is included in the repository so you can try the tool immediately — see [Test File](#test-file) below.
 
+## Exporting G-Code From Your Slicer
+
+To use this tool you need a `.gcode` file exported from your slicer. Here's how to get one:
+
+### Bambu Studio
+
+1. Open your model and configure print/filament/printer settings as usual.
+2. Click **Slice plate** (or press Ctrl+R) to slice the model.
+3. Click **Export G-code file** (the folder icon next to the "Print plate" button) in the bottom-right corner.
+4. Choose a location and save. The file will be saved as `.gcode`.
+
+> **Tip:** If you normally send prints directly to your printer, the export button is easy to miss — look for the small folder/export icon next to the main print button.
+
+### PrusaSlicer / OrcaSlicer
+
+1. Open your model and configure settings as usual.
+2. Click **Slice now** (bottom-right) to slice the model.
+3. Click **Export G-code** (the button replaces "Slice now" after slicing) or use **File → Export → Export G-code** (Ctrl+G).
+4. Choose a location and save.
+
+> **Note:** OrcaSlicer follows the same workflow as PrusaSlicer. If you have multiple plates, make sure the correct plate is selected before exporting.
+
+### Cura
+
+1. Open your model and configure settings as usual.
+2. Click **Slice** in the bottom-right corner.
+3. After slicing completes, click **Save to Disk** (the button replaces "Slice" after slicing). If you see "Save to Removable Drive" instead, click the small arrow next to it and select **Save to Disk**.
+4. Choose a location and save. The file will be saved as `.gcode`.
+
+> **Tip:** You can also use **File → Export** to save the G-code file.
+
 ## Interface Layout
 
 The app uses a three-panel layout: layer navigator on the left, code/visual preview in the center, and modification tools on the right. The right panel can be resized by dragging its left edge — useful for expanding the Reference tab for easier reading. On mobile (< 800px), the layout switches to a vertical stack with a collapsible layer drawer.
