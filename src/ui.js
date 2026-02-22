@@ -136,6 +136,7 @@ function loadFile(file) {
     viewer.resize();
     viewer.fitBounds();
     updateSlider();
+    buildSections();
     if (parser.layers.length > 0) selectLayer(parser.layers[0].number);
     else renderFullPreview();
 
@@ -193,7 +194,7 @@ function filterLayers(query) {
 function selectLayer(num) {
   selectedLayer = num;
   renderLayerList();
-  renderPreview(num);
+  updateSectionForLayer(num);
   updateSlider();
 
   // Update visual viewer if active
@@ -221,75 +222,295 @@ function jumpToLayer(num) {
   if (layer) selectLayer(num);
 }
 
-// ===== PREVIEW =====
-function renderPreview(layerNum) {
+// ===== SECTION-BASED PREVIEW =====
+let sectionStates = []; // tracks {type, startLine, endLine, expanded, layerNum, zHeight, lineCount}
+let currentExpandedLayer = null;
+
+function buildSections() {
+  sectionStates = [];
+  if (parser.lines.length === 0) return;
+
+  const firstLayer = parser.layers.length > 0 ? parser.layers[0] : null;
+  const headerEndLine = firstLayer ? firstLayer.startLine - 1 : parser.lines.length - 1;
+
+  // Header section (everything before first layer)
+  if (headerEndLine >= 0) {
+    sectionStates.push({
+      type: 'header',
+      startLine: 0,
+      endLine: headerEndLine,
+      expanded: true,
+      lineCount: headerEndLine + 1
+    });
+  }
+
+  // Layer sections + gap sections between layers
+  for (let i = 0; i < parser.layers.length; i++) {
+    const layer = parser.layers[i];
+    const prevEnd = i === 0 ? headerEndLine : parser.layers[i - 1].endLine;
+
+    // Gap between previous section and this layer
+    if (layer.startLine > prevEnd + 1) {
+      sectionStates.push({
+        type: 'gap',
+        startLine: prevEnd + 1,
+        endLine: layer.startLine - 1,
+        expanded: false,
+        lineCount: layer.startLine - 1 - prevEnd
+      });
+    }
+
+    // Layer section
+    sectionStates.push({
+      type: 'layer',
+      startLine: layer.startLine,
+      endLine: layer.endLine,
+      expanded: i === 0,
+      layerNum: layer.number,
+      zHeight: layer.zHeight,
+      lineCount: layer.lineCount
+    });
+  }
+
+  // Trailing lines after the last layer
+  const lastLayer = parser.layers[parser.layers.length - 1];
+  if (lastLayer && lastLayer.endLine < parser.lines.length - 1) {
+    sectionStates.push({
+      type: 'gap',
+      startLine: lastLayer.endLine + 1,
+      endLine: parser.lines.length - 1,
+      expanded: false,
+      lineCount: parser.lines.length - 1 - lastLayer.endLine
+    });
+  }
+
+  currentExpandedLayer = parser.layers.length > 0 ? parser.layers[0].number : null;
+}
+
+function renderSectionPreview() {
   const container = document.getElementById('gcodePreview');
   const previewEmpty = document.getElementById('previewEmpty');
   if (previewEmpty) previewEmpty.remove();
 
-  const layer = parser.getLayerByNumber(layerNum);
-  if (!layer) return;
+  if (sectionStates.length === 0) return;
 
-  const contextBefore = 5;
-  const contextAfter = 10;
-  const startLine = Math.max(0, layer.startLine - contextBefore);
-  const endLine = Math.min(parser.lines.length - 1, layer.endLine + contextAfter);
+  let html = '';
+  for (let idx = 0; idx < sectionStates.length; idx++) {
+    const section = sectionStates[idx];
+    const stateClass = section.expanded ? 'expanded' : 'collapsed';
+    const isActiveLayer = section.type === 'layer' && section.layerNum === selectedLayer;
 
-  // Find modification lines for this layer
-  const modLayers = new Set(modifier.modifications.filter(m => {
-    if (m.type === 'zoffset') return layerNum >= m.layer && (m.endLayer == null || layerNum <= m.endLayer);
-    return m.layer === layerNum;
-  }).map(m => m.id));
+    html += `<div class="gcode-section ${stateClass}" data-section="${idx}">`;
+    html += renderSectionHeader(section, idx, isActiveLayer);
 
-  let html = '<table class="code-table"><tbody>';
-  for (let i = startLine; i <= endLine; i++) {
-    const raw = parser.lines[i];
-    const isLayerStart = raw.trim().match(/^;LAYER:\d+/i);
-    const isHighlight = i >= layer.startLine && i <= layer.endLine;
-    const classes = [];
-    if (isLayerStart) classes.push('layer-start');
-    if (isHighlight) classes.push('highlight');
+    if (section.expanded) {
+      html += `<div class="gcode-section-lines" id="sectionLines_${idx}">`;
+      html += renderSectionLines(section, idx);
+      html += '</div>';
+    } else {
+      html += renderSectionPreviewLines(section);
+    }
 
-    html += `<tr class="${classes.join(' ')}"><td class="ln">${i + 1}</td><td>${syntaxHighlight(raw)}</td></tr>`;
+    html += '</div>';
   }
 
-  // Show modification preview snippets
-  if (modLayers.size > 0) {
-    html += '<tr class="layer-start"><td class="ln" style="color:var(--orange)">+</td><td style="color:var(--orange);font-weight:600">; ── Modifications to be inserted ──</td></tr>';
-    for (const mod of modifier.modifications.filter(m => {
-      if (m.type === 'zoffset') return layerNum >= m.layer && (m.endLayer == null || layerNum <= m.endLayer);
-      return m.layer === layerNum;
-    })) {
-      const snippet = modifier.getSnippet(mod);
-      for (const line of snippet) {
-        html += `<tr class="mod-line"><td class="ln">+</td><td>${syntaxHighlight(line)}</td></tr>`;
-      }
+  container.innerHTML = html;
+
+  // Chunked rendering for large expanded sections
+  for (let idx = 0; idx < sectionStates.length; idx++) {
+    const section = sectionStates[idx];
+    if (section.expanded && section.lineCount > 200) {
+      scheduleChunkedRender(section, idx);
     }
   }
 
-  html += '</tbody></table>';
-  container.innerHTML = html;
+  // Scroll to selected layer section
+  scrollToActiveSection();
+}
 
-  document.getElementById('previewInfo').textContent =
-    `Layer ${layer.number}  ·  Z${layer.zHeight?.toFixed(2) || '?'}mm  ·  Lines ${layer.startLine + 1}–${layer.endLine + 1}`;
+function renderSectionHeader(section, idx, isActive) {
+  let label = '';
+  let meta = '';
+
+  if (section.type === 'header') {
+    label = 'Header / Preamble';
+    meta = `${section.lineCount} lines`;
+  } else if (section.type === 'layer') {
+    label = `Layer ${section.layerNum}`;
+    meta = `Z${section.zHeight?.toFixed(2) || '?'}mm &middot; ${section.lineCount} lines`;
+  } else {
+    label = 'Inter-layer';
+    meta = `${section.lineCount} lines`;
+  }
+
+  const activeClass = isActive ? ' active' : '';
+  return `<div class="gcode-section-header${activeClass}" onclick="toggleSection(${idx})">` +
+    `<span class="section-chevron">&#9660;</span>` +
+    `<span class="section-label">${label}</span>` +
+    `<span class="section-meta">${meta}</span>` +
+    `</div>`;
+}
+
+function renderSectionPreviewLines(section) {
+  const previewCount = Math.min(3, section.lineCount);
+  let html = '<div class="gcode-section-preview"><table class="code-table"><tbody>';
+  for (let i = 0; i < previewCount; i++) {
+    const lineIdx = section.startLine + i;
+    if (lineIdx > section.endLine) break;
+    html += `<tr><td class="ln">${lineIdx + 1}</td><td>${syntaxHighlight(parser.lines[lineIdx])}</td></tr>`;
+  }
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function renderSectionLines(section, sectionIdx) {
+  const renderEnd = Math.min(section.startLine + 200, section.endLine + 1);
+  const isSelectedLayer = section.type === 'layer' && section.layerNum === selectedLayer;
+
+  let html = '<table class="code-table"><tbody>';
+  for (let i = section.startLine; i < renderEnd; i++) {
+    const raw = parser.lines[i];
+    const isLayerStart = raw.trim().match(/^;LAYER:\d+/i);
+    const classes = [];
+    if (isLayerStart) classes.push('layer-start');
+    if (isSelectedLayer) classes.push('highlight');
+    html += `<tr class="${classes.join(' ')}"><td class="ln">${i + 1}</td><td>${syntaxHighlight(raw)}</td></tr>`;
+  }
+  html += '</tbody></table>';
+
+  if (section.lineCount > 200) {
+    html += `<div class="gcode-section-loading" id="sectionLoading_${sectionIdx}">Loading ${section.lineCount - 200} more lines...</div>`;
+  }
+
+  if (isSelectedLayer) {
+    html += renderModificationsForLayer(section.layerNum);
+  }
+
+  return html;
+}
+
+function renderModificationsForLayer(layerNum) {
+  const mods = modifier.modifications.filter(m => {
+    if (m.type === 'zoffset') return layerNum >= m.layer && (m.endLayer == null || layerNum <= m.endLayer);
+    return m.layer === layerNum;
+  });
+  if (mods.length === 0) return '';
+
+  let html = '<table class="code-table"><tbody>';
+  html += '<tr class="layer-start"><td class="ln" style="color:var(--orange)">+</td><td style="color:var(--orange);font-weight:600">; ── Modifications to be inserted ──</td></tr>';
+  for (const mod of mods) {
+    const snippet = modifier.getSnippet(mod);
+    for (const line of snippet) {
+      html += `<tr class="mod-line"><td class="ln">+</td><td>${syntaxHighlight(line)}</td></tr>`;
+    }
+  }
+  html += '</tbody></table>';
+  return html;
+}
+
+function scheduleChunkedRender(section, sectionIdx) {
+  const linesContainer = document.getElementById(`sectionLines_${sectionIdx}`);
+  const loadingEl = document.getElementById(`sectionLoading_${sectionIdx}`);
+  if (!linesContainer) return;
+
+  const table = linesContainer.querySelector('.code-table tbody');
+  if (!table) return;
+
+  const isSelectedLayer = section.type === 'layer' && section.layerNum === selectedLayer;
+  let offset = section.startLine + 200;
+  const batchSize = 500;
+
+  function renderBatch() {
+    if (!document.getElementById(`sectionLines_${sectionIdx}`)) return;
+
+    const end = Math.min(offset + batchSize, section.endLine + 1);
+    let html = '';
+    for (let i = offset; i < end; i++) {
+      const raw = parser.lines[i];
+      const isLayerStart = raw.trim().match(/^;LAYER:\d+/i);
+      const classes = [];
+      if (isLayerStart) classes.push('layer-start');
+      if (isSelectedLayer) classes.push('highlight');
+      html += `<tr class="${classes.join(' ')}"><td class="ln">${i + 1}</td><td>${syntaxHighlight(raw)}</td></tr>`;
+    }
+    table.insertAdjacentHTML('beforeend', html);
+    offset = end;
+
+    if (offset <= section.endLine) {
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(renderBatch);
+      } else {
+        setTimeout(renderBatch, 0);
+      }
+    } else {
+      if (loadingEl) loadingEl.remove();
+    }
+  }
+
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(renderBatch);
+  } else {
+    setTimeout(renderBatch, 0);
+  }
+}
+
+function scrollToActiveSection() {
+  const container = document.getElementById('gcodePreview');
+  if (!container) return;
+  const activeHeader = container.querySelector('.gcode-section-header.active');
+  if (activeHeader) {
+    requestAnimationFrame(() => {
+      activeHeader.scrollIntoView({ block: 'start', behavior: 'instant' });
+    });
+  }
+}
+
+function toggleSection(sectionIdx) {
+  const section = sectionStates[sectionIdx];
+  if (!section) return;
+
+  section.expanded = !section.expanded;
+  renderSectionPreview();
+}
+
+function updateSectionForLayer(layerNum) {
+  if (sectionStates.length === 0) return;
+
+  // Collapse the previously expanded layer (but not header)
+  for (const section of sectionStates) {
+    if (section.type === 'layer' && section.expanded && section.layerNum !== layerNum) {
+      section.expanded = false;
+    }
+  }
+
+  // Expand the selected layer's section
+  for (const section of sectionStates) {
+    if (section.type === 'layer' && section.layerNum === layerNum) {
+      section.expanded = true;
+      break;
+    }
+  }
+
+  currentExpandedLayer = layerNum;
+  renderSectionPreview();
+
+  // Update the info bar
+  const layer = parser.getLayerByNumber(layerNum);
+  if (layer) {
+    document.getElementById('previewInfo').textContent =
+      `Layer ${layer.number}  ·  Z${layer.zHeight?.toFixed(2) || '?'}mm  ·  Lines ${layer.startLine + 1}–${layer.endLine + 1}`;
+  }
+}
+
+// ===== PREVIEW =====
+function renderPreview(layerNum) {
+  // Delegate to section-based rendering
+  updateSectionForLayer(layerNum);
 }
 
 function renderFullPreview() {
-  const container = document.getElementById('gcodePreview');
-  const previewEmpty = document.getElementById('previewEmpty');
-  if (previewEmpty) previewEmpty.remove();
-
-  // Show first 200 lines (Bambu headers can be very long)
-  const end = Math.min(200, parser.lines.length);
-  let html = '<table class="code-table"><tbody>';
-  for (let i = 0; i < end; i++) {
-    html += `<tr><td class="ln">${i + 1}</td><td>${syntaxHighlight(parser.lines[i])}</td></tr>`;
-  }
-  if (parser.lines.length > 200) {
-    html += `<tr><td class="ln">...</td><td style="color:var(--text-dim)">... ${(parser.lines.length - 200).toLocaleString()} more lines ...</td></tr>`;
-  }
-  html += '</tbody></table>';
-  container.innerHTML = html;
+  buildSections();
+  renderSectionPreview();
 }
 
 function syntaxHighlight(line) {
