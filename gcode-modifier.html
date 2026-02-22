@@ -576,11 +576,17 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--text);">
           Recovery mode reprints from a specific layer at the bed surface. Print it flat, then glue the two halves together.
         </div>
-        <div class="form-group">
-          <label>Resume from Layer</label>
-          <input type="number" class="input" id="recoveryLayer" min="1" placeholder="e.g. 50">
-          <div class="hint">First layer to include in the recovery print. Layers below this are removed.</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Resume from Layer</label>
+            <input type="number" class="input" id="recoveryLayer" min="1" placeholder="e.g. 50" oninput="syncRecoveryFromLayer()">
+          </div>
+          <div class="form-group">
+            <label>or Height (mm)</label>
+            <input type="number" class="input" id="recoveryHeight" min="0" step="0.01" placeholder="e.g. 10.0" oninput="syncRecoveryFromHeight()">
+          </div>
         </div>
+        <div class="hint" style="margin-bottom:14px">Enter either the layer number or measure the failed print height with calipers. The other field updates automatically.</div>
         <div class="form-group">
           <div class="hint">Z-heights are shifted so the resume layer prints at the original first-layer height. Feedrates on the resume layer are overridden with first-layer speeds for bed adhesion.</div>
         </div>
@@ -2427,7 +2433,7 @@ function selectLayer(num) {
   if (activeTab === 'pause') document.getElementById('pauseLayer').value = num;
   else if (activeTab === 'filament') document.getElementById('filamentLayer').value = num;
   else if (activeTab === 'zoffset') document.getElementById('zoffsetLayer').value = num;
-  else if (activeTab === 'recovery') document.getElementById('recoveryLayer').value = num;
+  else if (activeTab === 'recovery') { document.getElementById('recoveryLayer').value = num; syncRecoveryFromLayer(); }
 
   // Update hole list if holes were detected
   if (holeDetector.scannedHoles.length > 0 || holeDetector.holes.has(num)) {
@@ -2687,9 +2693,33 @@ function addEject() {
   showToast('Eject sequence added', 'success');
 }
 
+function syncRecoveryFromLayer() {
+  const layerNum = parseInt(document.getElementById('recoveryLayer').value);
+  if (isNaN(layerNum) || !parser.layers.length) return;
+  const layer = parser.getLayerByNumber(layerNum);
+  if (layer && layer.zHeight != null) {
+    document.getElementById('recoveryHeight').value = layer.zHeight.toFixed(2);
+  }
+}
+
+function syncRecoveryFromHeight() {
+  const height = parseFloat(document.getElementById('recoveryHeight').value);
+  if (isNaN(height) || !parser.layers.length) return;
+  // Find the last layer at or below the given height
+  let best = null;
+  for (const layer of parser.layers) {
+    if (layer.zHeight != null && layer.zHeight <= height + 0.001) {
+      best = layer;
+    }
+  }
+  if (best) {
+    document.getElementById('recoveryLayer').value = best.number;
+  }
+}
+
 function addRecovery() {
   const layer = parseInt(document.getElementById('recoveryLayer').value);
-  if (isNaN(layer)) { showToast('Please enter a valid layer number.', 'error'); return; }
+  if (isNaN(layer)) { showToast('Please enter a layer number or height.', 'error'); return; }
   if (layer === 0) { showToast('Layer 0 is already the first layer — no recovery needed.', 'warning'); return; }
   if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
   const lastLayer = parser.layers[parser.layers.length - 1];
