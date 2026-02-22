@@ -10,6 +10,7 @@ const FILES = [
   'undo-stack.js',
   'insert-manager.js',
   'hole-detector.js',
+  'parser.js',
   'app.js',
 ];
 
