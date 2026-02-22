@@ -1125,8 +1125,8 @@ class GcodeModifier {
         const layer0Z = layer0.zHeight || 0.2;
         const zShift = resumeLayer.zHeight - layer0Z;
 
-        // 1. Keep preamble + strip layers before resume point
-        const preamble = result.slice(0, parser.headerEnd);
+        // 1. Keep preamble (headers + startup gcode) + strip layers before resume point
+        const preamble = result.slice(0, layer0.startLine);
         const remaining = result.slice(resumeLayer.startLine);
 
         // 2. Collect layer-0 extrusion feedrate for speed override
