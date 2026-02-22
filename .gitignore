@@ -5,3 +5,4 @@ take-screenshots.js
 node_modules
 .idea
 .venv
+gcode_files
