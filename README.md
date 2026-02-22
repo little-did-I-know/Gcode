@@ -333,3 +333,62 @@ Malformed lines are gracefully skipped with a warning count shown after parsing.
 ## Browser Compatibility
 
 Requires a modern browser with WebGL2 support (Chrome 56+, Firefox 51+, Edge 79+, Safari 15+). No external dependencies — the entire application is a single self-contained HTML file. All processing happens client-side; no data is uploaded anywhere.
+
+## For Developers
+
+The source code lives in `src/` as ES modules. A zero-dependency Node build script inlines everything back into the single `gcode-modifier.html` at the repo root.
+
+### Project Structure
+
+```
+src/
+  index.html          # HTML + CSS template 
+  parser.js            # GcodeParser class
+  modifier.js          # GcodeModifier class
+  hole-detector.js     # HoleDetector class
+  insert-manager.js    # InsertManager class
+  undo-stack.js        # UndoStack class
+  viewer3d.js          # GcodeViewer3D (WebGL) class
+  bgcode.js            # Binary G-code decoder (Heatshrink, MeatPack, CRC32)
+  firmware.js          # Firmware profiles + G-code reference data
+  ui.js                # All UI functions (tabs, toasts, layers, mods, etc.)
+  app.js               # App init, state, event wiring
+build.js               # Build script: inline src/*.js into single HTML
+test/                  # Unit tests (node --test)
+```
+
+### Build
+
+```bash
+node build.js
+```
+
+Reads `src/index.html`, strips `import`/`export` syntax from each `src/*.js` file, concatenates them in dependency order, and writes `gcode-modifier.html`. The built file must be committed — it's what end users open.
+
+### Tests
+
+```bash
+npm test
+# or
+node --test test/*.test.js
+```
+
+Tests cover the pure-logic modules (parser, modifier, bgcode, undo-stack) and run in Node.js without a browser.
+
+### Contributing
+
+1. Edit files in `src/`, not `gcode-modifier.html` directly.
+2. Run `node build.js` to regenerate the built file.
+3. Run `npm test` to verify nothing broke.
+4. Commit both the source changes and the rebuilt `gcode-modifier.html`.
+
+**If your change touches G-code modifications** (parser, modifier, or export logic), you must manually verify the output before submitting a PR:
+
+1. Load a test file (e.g., `test_cube.gcode`) in the browser.
+2. Add the relevant modification (pause, filament change, z-offset, recovery, etc.).
+3. Export the modified file and inspect the output G-code — confirm the commands are inserted at the correct layer and the surrounding G-code is intact.
+4. Re-import the exported file to verify it parses and renders correctly in the 3D viewer.
+
+Automated tests cover the modifier and parser logic, but G-code modifications directly control physical machines — a bad export can damage equipment or cause a fire. Always verify the actual output.
+
+CI will fail the PR if the committed built file doesn't match `node build.js` output.
