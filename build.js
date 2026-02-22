@@ -12,6 +12,7 @@ const FILES = [
   'hole-detector.js',
   'parser.js',
   'modifier.js',
+  'viewer3d.js',
   'app.js',
 ];
 
