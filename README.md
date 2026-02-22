@@ -2,6 +2,22 @@
 
 A browser-based G-code editor for 3D printing. Load a `.gcode` file, visually inspect layers in 3D, add modifications (pauses, filament changes, Z-offsets, custom commands), measure distances, detect holes for insert placement, and export the modified file — all without installing anything.
 
+# IMPORTANT SAFETY NOTICE
+
+This software modifies machine control instructions (G-code) that directly affect the behavior of 3D printers and CNC equipment. Improper use may result in equipment damage, print failure, fire hazard, or personal injury.
+
+By using this tool, you agree that:
+
+* You assume all risks associated with the use of generated or modified G-code.
+
+* You will independently verify all output before use.
+
+* The software is provided “AS IS”, without warranties of any kind.
+
+* In no event shall the authors or contributors be liable for any claim, damages, or other liability arising from use of the software.
+
+The modified gcode from this tool has been tested on an Ender V3 SE and a Bambu Labs A1 Mini.
+
 ![Empty State](screenshots/01-empty-state.png)
 
 ## Getting Started

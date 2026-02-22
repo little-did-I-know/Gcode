@@ -1146,10 +1146,13 @@ class GcodeModifier {
         // 4. Compute line shift so other mods can find correct insertion points
         recoveryLineShift = preamble.length + snippet.length - resumeLayer.startLine;
 
-        // 5. Shift all Z values down by zShift in remaining lines
+        // 5. Shift all Z values and renumber layer metadata in remaining lines
         const remainingStart = preamble.length + snippet.length;
+        const layerNumOffset = recoveryMod.resumeLayer; // original 0-based layer number of resume layer
+        const totalRemaining = parser.layers.length - layerNumOffset;
         for (let i = remainingStart; i < result.length; i++) {
           const trimmed = result[i].trim();
+          // Shift G-code Z coordinates
           if (/^G[0123]\s/i.test(trimmed) && /Z[-\d.]/i.test(trimmed)) {
             result[i] = result[i].replace(
               /([Zz])([-\d.]+)/g,
@@ -1157,6 +1160,51 @@ class GcodeModifier {
                 const newZ = parseFloat(val) - zShift;
                 return letter + newZ.toFixed(3);
               }
+            );
+          }
+          // Shift ; Z_HEIGHT: comments
+          if (/^; Z_HEIGHT:\s*[\d.]+/.test(trimmed)) {
+            result[i] = result[i].replace(
+              /(; Z_HEIGHT:\s*)([\d.]+)/,
+              (match, prefix, val) => prefix + (parseFloat(val) - zShift).toFixed(2)
+            );
+          }
+          // Renumber ; layer num/total_layer_count: N/M
+          const layerNumMatch = trimmed.match(/^; layer num\/total_layer_count:\s*(\d+)\/(\d+)/);
+          if (layerNumMatch) {
+            const origNum = parseInt(layerNumMatch[1]); // 1-based
+            const newNum = origNum - layerNumOffset;
+            result[i] = result[i].replace(
+              /(; layer num\/total_layer_count:\s*)\d+\/\d+/,
+              '$1' + newNum + '/' + totalRemaining
+            );
+          }
+          // Renumber M73 L (layer progress)
+          if (/^M73 L\d+/i.test(trimmed)) {
+            result[i] = result[i].replace(
+              /(M73 L)(\d+)/i,
+              (match, prefix, val) => prefix + (parseInt(val) - layerNumOffset)
+            );
+          }
+          // Renumber M991 S0 P (layer notification)
+          if (/^M991 S0 P\d+/i.test(trimmed)) {
+            result[i] = result[i].replace(
+              /(M991 S0 P)(\d+)/i,
+              (match, prefix, val) => prefix + (parseInt(val) - layerNumOffset)
+            );
+          }
+          // Shift ;Z: comments (PrusaSlicer)
+          if (/^;Z:[\d.]+/.test(trimmed)) {
+            result[i] = result[i].replace(
+              /(;Z:)([\d.]+)/,
+              (match, prefix, val) => prefix + (parseFloat(val) - zShift).toFixed(2)
+            );
+          }
+          // Renumber ;LAYER:N comments (Cura/standard)
+          if (/^;LAYER:\d+/i.test(trimmed)) {
+            result[i] = result[i].replace(
+              /(;LAYER:)(\d+)/i,
+              (match, prefix, val) => prefix + (parseInt(val) - layerNumOffset)
             );
           }
         }
