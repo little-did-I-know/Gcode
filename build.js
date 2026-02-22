@@ -9,6 +9,7 @@ const FILES = [
   'bgcode.js',
   'undo-stack.js',
   'insert-manager.js',
+  'hole-detector.js',
   'app.js',
 ];
 
