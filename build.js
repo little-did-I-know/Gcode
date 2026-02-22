@@ -13,8 +13,11 @@ let html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf8');
 let js = '';
 for (const file of FILES) {
   let code = fs.readFileSync(path.join(SRC, file), 'utf8');
-  // Strip ES module import/export lines
-  code = code.replace(/^(import|export)\s.+$/gm, '');
+  // Strip ES module syntax: remove import lines, strip export keyword from declarations
+  code = code.replace(/^import\s.+$/gm, '');
+  code = code.replace(/^export\s+default\s+/gm, '');
+  code = code.replace(/^export\s+(?=(class|function|const|let|var)\s)/gm, '');
+  code = code.replace(/^export\s*\{[^}]*\}\s*;?\s*$/gm, '');
   js += code + '\n';
 }
 
