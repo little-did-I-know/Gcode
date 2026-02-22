@@ -2107,8 +2107,8 @@ class GcodeParser {
       }
 
       // Track extrusion mode
-      if (line === 'M83') relativeE = true;
-      if (line === 'M82') relativeE = false;
+      if (/^M83(\s|;|$)/.test(line)) relativeE = true;
+      if (/^M82(\s|;|$)/.test(line)) relativeE = false;
       if (line.startsWith('G92') && line.includes('E')) { curE = 0; } // Reset E position
 
       // Parse G0/G1 linear moves for the viewer
