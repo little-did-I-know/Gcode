@@ -6,6 +6,7 @@ const SRC = path.join(__dirname, 'src');
 // Dependency order — modules listed before their dependents
 const FILES = [
   'firmware.js',
+  'bgcode.js',
   'app.js',
 ];
 
