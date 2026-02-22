@@ -94,16 +94,22 @@ Toggle between two views using the **Code** / **Visual** buttons:
 
 The parser auto-detects the slicer from file header comments and adapts its parsing accordingly. The detected slicer is shown in the file info bar.
 
-| Slicer | Layer Format | Type Markers | Status |
-|---|---|---|---|
-| **Cura** | `;LAYER:N` | `;TYPE:Outer Wall` | Fully supported |
-| **Bambu Studio** | `; CHANGE_LAYER` + `; Z_HEIGHT` | `; FEATURE: Outer Wall` | Fully supported |
-| **PrusaSlicer** | `;LAYER_CHANGE` + `;Z:X.XX` or `;LAYER:N` | `;TYPE:External perimeter` | Fully supported |
-| **SuperSlicer** | Same as PrusaSlicer | Same as PrusaSlicer | Fully supported |
-| **OrcaSlicer** | Both Bambu and PrusaSlicer formats | Both formats | Fully supported |
-| **Simplify3D** | `; layer N, Z = X.XX` | `; outer perimeter`, `; infill` | Fully supported |
-| **ideaMaker** | `;LAYER:N` | Standard markers | Supported |
-| **Unknown** | Falls back to `;LAYER:N` heuristic | Generic | Best-effort |
+| Slicer | Layer Format | Type Markers | Status            |
+|---|---|---|-------------------|
+| **Cura** | `;LAYER:N` | `;TYPE:Outer Wall` | Fully supported   |
+| **Bambu Studio** | `; CHANGE_LAYER` + `; Z_HEIGHT` | `; FEATURE: Outer Wall` | Fully supported   |
+| **PrusaSlicer** | `;LAYER_CHANGE` + `;Z:X.XX` or `;LAYER:N` | `;TYPE:External perimeter` | Fully supported * |
+| **SuperSlicer** | Same as PrusaSlicer | Same as PrusaSlicer | Fully supported   |
+| **OrcaSlicer** | Both Bambu and PrusaSlicer formats | Both formats | Fully supported   |
+| **Simplify3D** | `; layer N, Z = X.XX` | `; outer perimeter`, `; infill` | Fully supported   |
+| **ideaMaker** | `;LAYER:N` | Standard markers | Supported         |
+| **Unknown** | Falls back to `;LAYER:N` heuristic | Generic | Best-effort       |
+
+\* Prusa slicer by default exports binary gcode files, to export plain gcode uncheck the following box in your preferences:
+
+![Prusa Export Settings](screenshots/14-Uncheck%20this%20box%20to%20export%20pure%20gcode.png)
+
+[Prusa Binary gcode](test_cube_binary.bgcode)
 
 ## Firmware Profiles
 
