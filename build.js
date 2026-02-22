@@ -11,6 +11,7 @@ const FILES = [
   'insert-manager.js',
   'hole-detector.js',
   'parser.js',
+  'modifier.js',
   'app.js',
 ];
 
