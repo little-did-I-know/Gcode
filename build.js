@@ -8,6 +8,7 @@ const FILES = [
   'firmware.js',
   'bgcode.js',
   'undo-stack.js',
+  'insert-manager.js',
   'app.js',
 ];
 
