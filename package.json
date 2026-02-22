@@ -1,0 +1,10 @@
+{
+  "type": "module",
+  "scripts": {
+    "build": "node build.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "playwright": "^1.58.2"
+  }
+}

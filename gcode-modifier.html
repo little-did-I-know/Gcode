@@ -626,6 +626,1242 @@ main { display: flex; flex: 1; overflow: hidden; }
 </div>
 
 <script>
+// ===== FIRMWARE PROFILES =====
+const FIRMWARE = {
+  bambu: {
+    name: 'Bambu Lab',
+    pause: [
+      { value: 'M400U1', label: 'M400 U1 (Bambu)', default: true },
+      { value: 'M600', label: 'M600' },
+    ],
+    pauseHint: 'M400 U1 is recommended for Bambu Lab printers.',
+    pauseGcode: {
+      'M400U1': 'M400 U1 ; Bambu pause',
+      'M600': 'M600 ; Filament change pause',
+    },
+    filament: [
+      { value: 'M1020', label: 'M1020 (AMS)', default: true },
+      { value: 'M600', label: 'M600 (Standard)' },
+    ],
+    filamentHint: 'M1020 triggers AMS filament change with audio notification. M600 is the standard filament change command.',
+    hasAMS: true,
+    ejectHint: 'Eject commands are appended to the end of the G-code. Loop mode adds a note \u2014 true looping requires firmware support or external automation.',
+  },
+  klipper: {
+    name: 'Klipper',
+    pause: [
+      { value: 'PAUSE', label: 'PAUSE (Macro)', default: true },
+      { value: 'M600', label: 'M600' },
+      { value: 'M0', label: 'M0' },
+    ],
+    pauseHint: 'PAUSE calls the [pause_resume] macro. M600 works if defined in your printer.cfg.',
+    pauseGcode: {
+      'PAUSE': 'PAUSE ; Klipper pause macro',
+      'M600': 'M600 ; Filament change',
+      'M0': 'M0 ; Pause (unconditional stop)',
+    },
+    filament: [
+      { value: 'M600', label: 'M600', default: true },
+    ],
+    filamentHint: 'M600 must be defined as a gcode_macro in your printer.cfg. Klipper does not support M600 natively.',
+    hasAMS: false,
+    ejectHint: 'Eject commands are appended to the end of the G-code. Klipper macros can be used for automation.',
+  },
+  marlin: {
+    name: 'Marlin',
+    pause: [
+      { value: 'M0', label: 'M0 (Pause)', default: true },
+      { value: 'M600', label: 'M600 (Filament Change)' },
+      { value: 'M25', label: 'M25 (SD Pause)' },
+    ],
+    pauseHint: 'M0 pauses and waits for user input. M600 triggers the filament change routine. M25 pauses SD card prints.',
+    pauseGcode: {
+      'M0': 'M0 ; Pause (Marlin)',
+      'M600': 'M600 ; Filament change pause',
+      'M25': 'M25 ; Pause SD print',
+    },
+    filament: [
+      { value: 'M600', label: 'M600 (Standard)', default: true },
+    ],
+    filamentHint: 'M600 triggers the filament change sequence. Enable ADVANCED_PAUSE_FEATURE in Marlin configuration.',
+    hasAMS: false,
+    ejectHint: 'Eject commands are appended to the end of the G-code. Loop mode adds a note \u2014 true looping requires firmware support or external automation.',
+  },
+  rrf: {
+    name: 'RepRapFirmware',
+    pause: [
+      { value: 'M226', label: 'M226 (Pause)', default: true },
+      { value: 'M600', label: 'M600 (Filament Change)' },
+      { value: 'M0', label: 'M0 (Stop)' },
+    ],
+    pauseHint: 'M226 pauses the print and runs the pause.g macro. M0 ends the print and runs stop.g.',
+    pauseGcode: {
+      'M226': 'M226 ; Pause (RRF)',
+      'M600': 'M600 ; Filament change',
+      'M0': 'M0 ; Stop print (RRF)',
+    },
+    filament: [
+      { value: 'M600', label: 'M600 (Standard)', default: true },
+    ],
+    filamentHint: 'M600 triggers a filament change. Define the filament-change.g macro on your SD card.',
+    hasAMS: false,
+    ejectHint: 'Eject commands are appended to the end of the G-code.',
+  },
+};
+
+// ===== G-CODE REFERENCE DATA =====
+const GCODE_REFERENCE = [
+  // \u2500\u2500 Movement \u2500\u2500
+  { code: 'G0', name: 'Rapid Move', category: 'Movement',
+    description: 'Move the print head as fast as possible without extruding. Used for travel moves between print areas. The printer moves all axes simultaneously to reach the target position.',
+    params: [
+      { letter: 'X', name: 'Target X position on the bed, in millimeters from the left edge', example: '100' },
+      { letter: 'Y', name: 'Target Y position on the bed, in millimeters from the front edge', example: '100' },
+      { letter: 'Z', name: 'Target Z height above the bed, in millimeters', example: '5' },
+      { letter: 'F', name: 'Movement speed in millimeters per minute (mm/min). 6000 = 100mm/s', example: '9000' },
+    ],
+    example: 'G0 F9000 ; Set travel speed to 150mm/s\nG0 X100 Y100 ; Move nozzle to center of bed\nG0 Z10 ; Raise nozzle 10mm above bed',
+    template: 'G0 X__ Y__ F9000',
+    firmware: { bambu: null, klipper: null, marlin: 'G0 and G1 behave identically in Marlin \u2014 both respect the F parameter.', reprap: null }
+  },
+  { code: 'G1', name: 'Linear Move', category: 'Movement',
+    description: 'Move the print head in a straight line at a controlled speed. This is the most common command \u2014 it does all the actual printing. When E is included, filament is pushed through the nozzle as the head moves.',
+    params: [
+      { letter: 'X', name: 'Target X position in millimeters. In absolute mode (G90), measured from bed origin. In relative mode (G91), distance to move', example: '10.5' },
+      { letter: 'Y', name: 'Target Y position in millimeters, same coordinate rules as X', example: '20.0' },
+      { letter: 'Z', name: 'Target Z height in millimeters. Typically 0.2mm per layer', example: '0.3' },
+      { letter: 'F', name: 'Speed in mm/min. Print moves are typically 600-3000 (10-50mm/s). F sticks until changed', example: '1500' },
+      { letter: 'E', name: 'Extruder position in mm of filament. In absolute mode, total since last G92 E0. In relative mode, amount to push for this move', example: '0.5' },
+    ],
+    example: '; Print a 10mm line along X axis:\nG1 X10 Y0 E0.5 F1500 ; Move 10mm right, extrude 0.5mm of filament at 25mm/s\n; Move to next layer:\nG1 Z0.4 F600 ; Raise nozzle to 0.4mm (layer 2 at 0.2mm height)\n; Retraction (pull filament back to prevent oozing):\nG1 E-1.0 F2400 ; Retract 1mm of filament at 40mm/s',
+    template: 'G1 X__ Y__ Z__ F1500 E__',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'G2', name: 'Clockwise Arc', category: 'Movement',
+    description: 'Move in a clockwise arc. I and J are the offsets from the current position to the center of the arc. The nozzle traces the arc from where it is now to the X,Y endpoint.',
+    params: [
+      { letter: 'X', name: 'End X position of the arc in mm', example: '10' },
+      { letter: 'Y', name: 'End Y position of the arc in mm', example: '20' },
+      { letter: 'I', name: 'X offset from current position to arc center, in mm. Positive = right of current pos', example: '5' },
+      { letter: 'J', name: 'Y offset from current position to arc center, in mm. Positive = behind current pos', example: '0' },
+      { letter: 'E', name: 'Extruder position in mm (how much filament to extrude over the arc)', example: '1.2' },
+      { letter: 'F', name: 'Speed in mm/min', example: '1200' },
+    ],
+    example: '; Draw a half circle (180\u00b0) with 5mm radius:\n; Starting at X0 Y0, center at X5 Y0, ending at X10 Y0\nG2 X10 Y0 I5 J0 F1200 E0.8\n; Draw a full circle with 10mm radius:\nG2 I10 J0 F1200 E3.14',
+    template: 'G2 X__ Y__ I__ J__ F1200',
+    firmware: { bambu: 'Bambu Lab firmware supports arc commands natively.', klipper: 'Enable arc support with [gcode_arcs] in printer.cfg.', marlin: 'Enable ARC_SUPPORT in Configuration_adv.h.', reprap: null }
+  },
+  { code: 'G3', name: 'Counter-Clockwise Arc', category: 'Movement',
+    description: 'Same as G2, but the arc goes counter-clockwise. All parameters work identically.',
+    params: [
+      { letter: 'X', name: 'End X position of the arc in mm', example: '10' },
+      { letter: 'Y', name: 'End Y position of the arc in mm', example: '20' },
+      { letter: 'I', name: 'X offset from current position to arc center, in mm', example: '5' },
+      { letter: 'J', name: 'Y offset from current position to arc center, in mm', example: '0' },
+      { letter: 'E', name: 'Extruder position in mm', example: '1.2' },
+      { letter: 'F', name: 'Speed in mm/min', example: '1200' },
+    ],
+    example: '; Counter-clockwise half circle:\nG3 X10 Y0 I5 J0 F1200 E0.8',
+    template: 'G3 X__ Y__ I__ J__ F1200',
+    firmware: { bambu: null, klipper: 'Enable arc support with [gcode_arcs] in printer.cfg.', marlin: 'Enable ARC_SUPPORT in Configuration_adv.h.', reprap: null }
+  },
+  { code: 'G28', name: 'Home Axes', category: 'Movement',
+    description: 'Move the print head to the home position (0,0,0) using the endstop switches. With no parameters, homes all three axes. You can home individual axes by specifying them.',
+    params: [
+      { letter: 'X', name: 'Home only the X axis (no value needed)', example: '' },
+      { letter: 'Y', name: 'Home only the Y axis (no value needed)', example: '' },
+      { letter: 'Z', name: 'Home only the Z axis (no value needed)', example: '' },
+    ],
+    example: 'G28 ; Home all axes (X, Y, and Z)\nG28 X Y ; Home only X and Y, leave Z where it is\nG28 Z ; Home only Z axis',
+    template: 'G28',
+    firmware: { bambu: null, klipper: 'Uses [homing_override] or [safe_z_home] if configured.', marlin: null, reprap: null }
+  },
+  { code: 'G90', name: 'Absolute Positioning', category: 'Movement',
+    description: 'Switch to absolute positioning. All X/Y/Z values in G0/G1 are measured from the bed origin (0,0,0). This is the default mode \u2014 "G1 X50" means "go to position 50mm".',
+    params: [],
+    example: 'G90 ; Switch to absolute mode\nG1 X50 Y50 ; Move to (50, 50) on the bed\nG1 X100 ; Move to X=100 (not 100mm further)',
+    template: 'G90',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: 'In RepRapFirmware, G90 also affects the extruder. Use M82/M83 to set extruder mode independently.' }
+  },
+  { code: 'G91', name: 'Relative Positioning', category: 'Movement',
+    description: 'Switch to relative (incremental) positioning. All X/Y/Z values are distances to move from the current position. "G1 X50" means "move 50mm to the right". Remember to switch back to G90 when done.',
+    params: [],
+    example: '; Lift nozzle 5mm and move aside (common pause sequence):\nG91 ; Switch to relative\nG1 Z5 F600 ; Lift nozzle 5mm\nG1 X-10 Y-10 F3000 ; Move 10mm left and 10mm forward\nG90 ; Switch back to absolute',
+    template: 'G91\nG1 Z5 F600\nG90',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: 'In RepRapFirmware, G91 also affects the extruder.' }
+  },
+  { code: 'G92', name: 'Set Position', category: 'Movement',
+    description: 'Tell the printer "you are now at this position" without actually moving. Most commonly used as G92 E0 to reset the extruder counter to zero (prevents E values from getting very large).',
+    params: [
+      { letter: 'X', name: 'Set current X position to this value (mm)', example: '0' },
+      { letter: 'Y', name: 'Set current Y position to this value (mm)', example: '0' },
+      { letter: 'Z', name: 'Set current Z position to this value (mm)', example: '0' },
+      { letter: 'E', name: 'Set current extruder position to this value (mm). E0 resets the counter', example: '0' },
+    ],
+    example: 'G92 E0 ; Reset extruder to zero (most common use)\n; After a filament change, if you need to recalibrate Z:\nG92 Z10.2 ; Tell printer current Z is 10.2mm',
+    template: 'G92 E0',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+
+  // \u2500\u2500 Temperature \u2500\u2500
+  { code: 'M104', name: 'Set Hotend Temperature', category: 'Temperature',
+    description: 'Start heating the nozzle and continue immediately \u2014 does NOT wait. The printer keeps executing commands while heating. Use M109 if you need to wait for the temperature before printing.',
+    params: [
+      { letter: 'S', name: 'Target temperature in degrees Celsius (\u00b0C). Common values: PLA=200, PETG=230, ABS=250', example: '200' },
+      { letter: 'T', name: 'Extruder number (0-based) for multi-extruder printers. Default is 0', example: '0' },
+    ],
+    example: '; Start preheating while doing other things:\nM104 S200 ; Begin heating nozzle to 200\u00b0C\nG28 ; Home axes while nozzle heats up\nM109 S200 ; Now wait for it to reach 200\u00b0C',
+    template: 'M104 S200',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M109', name: 'Wait for Hotend Temperature', category: 'Temperature',
+    description: 'Set the nozzle temperature and WAIT until it reaches the target before continuing. The printer will not execute any more commands until the temperature is reached. This blocks the print.',
+    params: [
+      { letter: 'S', name: 'Target temp in \u00b0C \u2014 waits for heating only (if nozzle is hotter, it does not wait to cool down)', example: '200' },
+      { letter: 'R', name: 'Target temp in \u00b0C \u2014 waits for EXACT temp (waits for both heating AND cooling)', example: '200' },
+    ],
+    example: '; Wait for PLA temperature:\nM109 S200 ; Heat to 200\u00b0C and wait\n; Wait for exact temperature (useful after switching materials):\nM109 R180 ; Wait until nozzle is exactly 180\u00b0C, even if cooling down',
+    template: 'M109 S200',
+    firmware: { bambu: null, klipper: null, marlin: 'S waits only for heating. R waits for both heating and cooling.', reprap: null }
+  },
+  { code: 'M140', name: 'Set Bed Temperature', category: 'Temperature',
+    description: 'Start heating the print bed and continue immediately \u2014 does NOT wait. Beds heat slowly (can take several minutes), so start early. Use M190 to wait.',
+    params: [
+      { letter: 'S', name: 'Target bed temperature in \u00b0C. Common values: PLA=60, PETG=70, ABS=100', example: '60' },
+    ],
+    example: '; Preheat bed early (beds are slow to heat):\nM140 S60 ; Start heating bed to 60\u00b0C\nM104 S200 ; Also start heating nozzle\nG28 ; Home while everything heats\nM190 S60 ; Now wait for bed\nM109 S200 ; Then wait for nozzle',
+    template: 'M140 S60',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M190', name: 'Wait for Bed Temperature', category: 'Temperature',
+    description: 'Set the bed temperature and WAIT until reached. Can take 2-5 minutes depending on target. Usually paired with M140 for efficient preheating.',
+    params: [
+      { letter: 'S', name: 'Target bed temp in \u00b0C \u2014 waits for heating only', example: '60' },
+      { letter: 'R', name: 'Target bed temp in \u00b0C \u2014 waits for exact temp (heating or cooling)', example: '60' },
+    ],
+    example: 'M190 S60 ; Heat bed to 60\u00b0C and wait\nM190 R45 ; Wait for bed to cool to exactly 45\u00b0C',
+    template: 'M190 S60',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M106', name: 'Set Fan Speed', category: 'Temperature',
+    description: 'Control the part cooling fan. The fan blows on the printed plastic to cool it quickly. Speed is 0-255 where 0=off and 255=full blast. To convert percentage: multiply by 2.55 (50% = 128).',
+    params: [
+      { letter: 'S', name: 'Fan speed from 0 (off) to 255 (100%). Examples: 64=25%, 128=50%, 191=75%, 255=100%', example: '255' },
+      { letter: 'P', name: 'Fan index for multi-fan setups. P0 = part cooling fan (default), P1/P2 = auxiliary fans', example: '0' },
+    ],
+    example: 'M106 S255 ; Fan at 100% (max cooling, good for PLA)\nM106 S128 ; Fan at 50% (good for PETG bridges)\nM106 S0 ; Fan off (same as M107)\n; For Bambu Lab auxiliary fan:\nM106 P1 S255 ; Turn on aux fan at full speed',
+    template: 'M106 S255',
+    firmware: { bambu: 'P0 = part cooling fan, P1 = auxiliary fan, P2 = chamber fan.', klipper: 'Fan must be defined as [fan] in printer.cfg. Additional fans use [fan_generic].', marlin: null, reprap: null }
+  },
+  { code: 'M107', name: 'Fan Off', category: 'Temperature',
+    description: 'Turn off the part cooling fan completely. Shortcut for M106 S0.',
+    params: [],
+    example: '; Turn fan off for first few layers (better bed adhesion):\nM107 ; Fan off\n; ... print first 3 layers ...\nM106 S255 ; Fan on for remaining layers',
+    template: 'M107',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+
+  // \u2500\u2500 Extrusion \u2500\u2500
+  { code: 'M82', name: 'Absolute Extrusion', category: 'Extrusion',
+    description: 'Set the extruder to absolute mode. The E value in G1 commands is the total filament pushed since the last G92 E0 reset. Most slicers use this mode. Example: E10 means "10mm total extruded so far".',
+    params: [],
+    example: 'M82 ; Use absolute extrusion\nG92 E0 ; Reset E counter to zero\nG1 X10 E0.5 ; Extrude 0.5mm total\nG1 X20 E1.0 ; Extrude 0.5mm more (1.0 - 0.5 = 0.5mm for this move)\nG1 X30 E1.5 ; Extrude 0.5mm more (1.5 - 1.0 = 0.5mm for this move)',
+    template: 'M82',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: 'In RepRapFirmware, M82 overrides G90/G91 for the extruder axis specifically.' }
+  },
+  { code: 'M83', name: 'Relative Extrusion', category: 'Extrusion',
+    description: 'Set the extruder to relative mode. Each E value is the amount of filament to push for THAT move only. Example: E0.5 means "push 0.5mm of filament during this move". No need to track running totals.',
+    params: [],
+    example: 'M83 ; Use relative extrusion\nG1 X10 E0.5 ; Push 0.5mm of filament\nG1 X20 E0.5 ; Push another 0.5mm\nG1 E-1.0 F2400 ; Retract 1mm (negative = pull back)',
+    template: 'M83',
+    firmware: { bambu: null, klipper: 'Klipper recommends relative extrusion for better pressure advance behavior.', marlin: null, reprap: null }
+  },
+
+  // \u2500\u2500 Print Control \u2500\u2500
+  { code: 'M0', name: 'Unconditional Stop', category: 'Print Control',
+    description: 'Pause the print and wait for user to press a button on the LCD/touchscreen. The printer stops all movement and waits indefinitely (or until timeout).',
+    params: [
+      { letter: 'S', name: 'Optional timeout in seconds. After this many seconds, the print resumes automatically. Omit for indefinite pause', example: '30' },
+    ],
+    example: '; Pause to insert a magnet:\nM0 ; Pause \u2014 press button on LCD to resume\n; Pause with 60 second timeout:\nM0 S60 ; Auto-resume after 60 seconds if no button press',
+    template: 'M0',
+    firmware: { bambu: 'Not recommended for Bambu Lab \u2014 use M400 U1 instead.', klipper: 'M0 is supported but PAUSE macro is preferred.', marlin: 'Requires LCD or host connection to resume.', reprap: null }
+  },
+  { code: 'M25', name: 'Pause SD Print', category: 'Print Control',
+    description: 'Pause a print that is running from the SD card or USB drive. Has no effect on prints streamed from a host computer (OctoPrint, etc.).',
+    params: [],
+    example: 'M25 ; Pause the SD card print',
+    template: 'M25',
+    firmware: { bambu: null, klipper: 'Not commonly used in Klipper \u2014 use PAUSE macro instead.', marlin: 'Only works for SD prints. For host prints, use M0 or M600.', reprap: null }
+  },
+  { code: 'M226', name: 'Wait for Pin / Pause', category: 'Print Control',
+    description: 'In RepRapFirmware, pauses the print (like pressing Pause in the web interface). In Marlin, waits for a specific pin to change state (different behavior!).',
+    params: [],
+    example: '; RepRapFirmware: Pause for manual intervention\nM226 ; Pauses print, runs pause.g macro',
+    template: 'M226',
+    firmware: { bambu: 'Not supported on Bambu Lab.', klipper: 'Not supported in Klipper \u2014 use PAUSE macro.', marlin: 'In Marlin, M226 waits for a pin state, not a pause command.', reprap: 'Primary pause command in RepRapFirmware. Runs the pause.g macro.' }
+  },
+  { code: 'M600', name: 'Filament Change', category: 'Print Control',
+    description: 'Initiate a filament change sequence. The printer will: 1) retract filament, 2) move the nozzle out of the way, 3) wait for you to swap filament, 4) prime the new filament, 5) resume printing.',
+    params: [
+      { letter: 'E', name: 'Initial retraction length in mm (how much to pull back before parking). Default varies by firmware', example: '3' },
+      { letter: 'L', name: 'Filament load length in mm (how much to push when loading new filament)', example: '50' },
+      { letter: 'X', name: 'Park X position in mm (where the nozzle moves to during change)', example: '10' },
+      { letter: 'Y', name: 'Park Y position in mm', example: '10' },
+      { letter: 'Z', name: 'Z lift in mm (how much to raise nozzle above print)', example: '5' },
+    ],
+    example: '; Basic filament change (uses firmware defaults):\nM600 ; Retract, park, wait for user, reload, resume\n; Filament change with custom park position:\nM600 X10 Y10 Z5 ; Park at front-left corner, lift 5mm\n; With custom retract and load lengths:\nM600 E4 L80 ; Retract 4mm, load 80mm of new filament',
+    template: 'M600',
+    firmware: { bambu: 'Supported but M1020 is preferred for AMS filament changes.', klipper: 'Must be defined as a [gcode_macro M600] in printer.cfg.', marlin: 'Requires ADVANCED_PAUSE_FEATURE enabled in Configuration_adv.h.', reprap: 'Runs the filament-change.g macro file.' }
+  },
+  { code: 'M400', name: 'Wait for Moves to Finish', category: 'Print Control',
+    description: 'Wait until all buffered movement commands have finished executing. The printer buffers ahead for smooth motion \u2014 M400 forces it to fully catch up. Use before pauses or temperature changes.',
+    params: [],
+    example: '; Ensure nozzle is in position before pausing:\nG1 X50 Y50 F3000 ; Move to center\nM400 ; Wait for move to actually complete\nM0 ; Now pause (nozzle is definitely at 50,50)',
+    template: 'M400',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M400 U1', name: 'Bambu Lab Pause', category: 'Print Control',
+    description: 'Bambu Lab-specific pause. Shows a pop-up dialog on the touchscreen with an audio alert. This is the recommended pause method for all Bambu Lab printers (X1, P1, A1 series).',
+    params: [],
+    example: '; Pause for insert placement on Bambu Lab:\nG91 ; Relative mode\nG1 Z5 F600 ; Lift nozzle 5mm\nG90 ; Absolute mode\nG1 X5 Y5 F6000 ; Move to front corner\nM400 U1 ; Show pause dialog on touchscreen',
+    template: 'M400 U1',
+    firmware: { bambu: 'Recommended pause command for all Bambu Lab printers.', klipper: 'Not supported \u2014 use PAUSE macro instead.', marlin: 'Not supported \u2014 use M0 or M600.', reprap: 'Not supported \u2014 use M226.' }
+  },
+  { code: 'PAUSE', name: 'Klipper Pause Macro', category: 'Print Control',
+    description: 'Klipper-specific pause macro. Behavior (park position, retraction amount, speed) is defined in your printer.cfg. Much more customizable than M0.',
+    params: [],
+    example: '; Simple Klipper pause:\nPAUSE ; Runs your configured pause sequence\n; To resume, use RESUME command or UI button',
+    template: 'PAUSE',
+    firmware: { bambu: 'Not supported \u2014 use M400 U1.', klipper: 'Requires [pause_resume] in printer.cfg. Customize with gcode_macro.', marlin: 'Not supported \u2014 use M0 or M600.', reprap: 'Not supported \u2014 use M226.' }
+  },
+
+  // \u2500\u2500 Calibration & Leveling \u2500\u2500
+  { code: 'G29', name: 'Auto Bed Leveling', category: 'Calibration & Leveling',
+    description: 'Probe multiple points across the bed to create a mesh that compensates for an uneven surface. The probe measures the distance at each point and the firmware adjusts Z during printing. Always home (G28) first.',
+    params: [],
+    example: '; Typical bed leveling sequence:\nG28 ; Home all axes first (required!)\nG29 ; Probe the bed and create mesh\n; The mesh is now active \u2014 Z will auto-adjust during printing',
+    template: 'G28\nG29',
+    firmware: { bambu: 'Bambu Lab printers auto-level before each print. Manual G29 is not typically needed.', klipper: 'Use BED_MESH_CALIBRATE instead. G29 is not a native Klipper command.', marlin: 'Requires a probe (BLTouch, inductive, etc.) and AUTO_BED_LEVELING enabled.', reprap: 'Runs the bed.g macro to probe the bed.' }
+  },
+  { code: 'M48', name: 'Probe Repeatability Test', category: 'Calibration & Leveling',
+    description: 'Test your Z-probe accuracy by probing the same spot multiple times. Reports the standard deviation \u2014 lower is better. A good probe should be under 0.01mm.',
+    params: [
+      { letter: 'P', name: 'Number of times to probe (more = more accurate test). Default is usually 10', example: '10' },
+    ],
+    example: '; Test probe accuracy with 10 samples:\nG28 ; Home first\nM48 P10 ; Probe 10 times, report std deviation\n; Good result: StdDev < 0.01mm\n; Bad result: StdDev > 0.03mm (probe needs adjustment)',
+    template: 'M48 P10',
+    firmware: { bambu: null, klipper: 'Use PROBE_ACCURACY command instead.', marlin: 'Requires Z_MIN_PROBE_REPEATABILITY_TEST enabled.', reprap: null }
+  },
+  { code: 'M500', name: 'Save Settings to EEPROM', category: 'Calibration & Leveling',
+    description: 'Save current settings (steps/mm, PID values, Z-offset, acceleration, etc.) to permanent memory. Settings survive power cycles. Use after calibration so you don\'t have to recalibrate every time.',
+    params: [],
+    example: '; After PID tuning, save the results:\nM303 S200 E0 C8 ; Run PID autotune\nM301 P22.2 I1.08 D114.0 ; Apply the values\nM500 ; Save to EEPROM (survives power off)',
+    template: 'M500',
+    firmware: { bambu: null, klipper: 'Klipper uses SAVE_CONFIG instead of M500.', marlin: 'Requires EEPROM_SETTINGS enabled in Configuration.h.', reprap: 'Saves to config-override.g.' }
+  },
+  { code: 'M501', name: 'Load Settings from EEPROM', category: 'Calibration & Leveling',
+    description: 'Load previously saved settings from EEPROM, overriding anything changed since boot. Useful to undo accidental changes without restarting.',
+    params: [],
+    example: '; Oops, changed acceleration wrong \u2014 reload saved settings:\nM501 ; Restore all saved values from EEPROM',
+    template: 'M501',
+    firmware: { bambu: null, klipper: 'Not applicable \u2014 Klipper reads printer.cfg at startup.', marlin: null, reprap: 'Runs config-override.g.' }
+  },
+  { code: 'M503', name: 'Report Settings', category: 'Calibration & Leveling',
+    description: 'Print all current firmware settings to the serial console. Handy for checking your steps/mm, PID values, max speeds, and other config without opening firmware files.',
+    params: [],
+    example: 'M503 ; Dump all settings to console\n; Look for lines like:\n;   M92 X80 Y80 Z400 E93 (steps/mm)\n;   M301 P22.2 I1.08 D114 (PID values)',
+    template: 'M503',
+    firmware: { bambu: null, klipper: 'Not applicable \u2014 settings are in printer.cfg.', marlin: null, reprap: null }
+  },
+
+  // \u2500\u2500 Stepper & Motion \u2500\u2500
+  { code: 'M84', name: 'Disable Steppers', category: 'Stepper & Motion',
+    description: 'Turn off the stepper motors so the print head and bed can be moved by hand. Usually the last command in a print file. Caution: the nozzle will drop if Z is disabled while raised.',
+    params: [
+      { letter: 'S', name: 'Idle timeout in seconds \u2014 steppers auto-disable after this many seconds of inactivity', example: '120' },
+    ],
+    example: 'M84 ; Disable all steppers immediately\nM84 S120 ; Auto-disable after 120 seconds of idle',
+    template: 'M84',
+    firmware: { bambu: null, klipper: null, marlin: 'Also accessible as M18.', reprap: null }
+  },
+  { code: 'M201', name: 'Set Max Acceleration', category: 'Stepper & Motion',
+    description: 'Set the maximum allowed acceleration for each axis. Higher = faster direction changes but more vibration/ringing. Units are mm/s\u00b2 (millimeters per second squared).',
+    params: [
+      { letter: 'X', name: 'X axis max acceleration in mm/s\u00b2. Typical: 500-3000', example: '1000' },
+      { letter: 'Y', name: 'Y axis max acceleration in mm/s\u00b2. Usually same as X', example: '1000' },
+      { letter: 'Z', name: 'Z axis max acceleration in mm/s\u00b2. Usually low (50-200) since Z moves are slow', example: '100' },
+      { letter: 'E', name: 'Extruder max acceleration in mm/s\u00b2. Typical: 1000-10000', example: '5000' },
+    ],
+    example: '; Reduce acceleration for better print quality:\nM201 X500 Y500 ; Halve XY accel (less ringing)\n; Increase for speed:\nM201 X3000 Y3000 ; Higher accel (faster but may ring)',
+    template: 'M201 X1000 Y1000 Z100 E5000',
+    firmware: { bambu: null, klipper: 'Use SET_VELOCITY_LIMIT ACCEL=value instead.', marlin: null, reprap: null }
+  },
+  { code: 'M203', name: 'Set Max Feedrate', category: 'Stepper & Motion',
+    description: 'Set the absolute maximum speed for each axis. The printer will never exceed these speeds even if the G-code requests faster. Units are mm/s (millimeters per second).',
+    params: [
+      { letter: 'X', name: 'X max speed in mm/s. Typical: 150-500', example: '200' },
+      { letter: 'Y', name: 'Y max speed in mm/s. Usually same as X', example: '200' },
+      { letter: 'Z', name: 'Z max speed in mm/s. Usually 5-20 (Z is slow)', example: '5' },
+      { letter: 'E', name: 'Extruder max speed in mm/s. Typical: 25-100', example: '50' },
+    ],
+    example: '; Cap speeds for quiet printing:\nM203 X100 Y100 ; Limit to 100mm/s\n; Increase Z speed for faster layer changes:\nM203 Z10 ; Allow Z to move at 10mm/s',
+    template: 'M203 X200 Y200 Z5 E50',
+    firmware: { bambu: null, klipper: 'Use SET_VELOCITY_LIMIT VELOCITY=value instead.', marlin: null, reprap: null }
+  },
+  { code: 'M204', name: 'Set Default Acceleration', category: 'Stepper & Motion',
+    description: 'Set the default acceleration used for different types of moves. Print moves are slower (better quality), travel moves are faster (save time), retract can be fastest.',
+    params: [
+      { letter: 'P', name: 'Print move acceleration in mm/s\u00b2. Used when extruding. Typical: 500-2000', example: '1000' },
+      { letter: 'T', name: 'Travel move acceleration in mm/s\u00b2. Used for non-printing moves. Typical: 1000-5000', example: '2000' },
+      { letter: 'R', name: 'Retraction acceleration in mm/s\u00b2. Used for E-only moves. Typical: 1000-5000', example: '3000' },
+    ],
+    example: '; Slow down printing acceleration for quality:\nM204 P800 T2000 ; Gentle prints, fast travels\n; Speed up for draft prints:\nM204 P2000 T5000 ; Aggressive acceleration',
+    template: 'M204 P1000 T2000',
+    firmware: { bambu: null, klipper: 'Use SET_VELOCITY_LIMIT ACCEL=value. Klipper uses a single acceleration value.', marlin: null, reprap: null }
+  },
+  { code: 'M205', name: 'Set Jerk / Junction Deviation', category: 'Stepper & Motion',
+    description: 'Set jerk limits \u2014 the maximum speed the printer can instantly change direction at. Lower values = smoother prints but slower corners. Higher values = faster corners but more vibration.',
+    params: [
+      { letter: 'X', name: 'X jerk in mm/s \u2014 max instant speed change for X axis. Typical: 5-15', example: '8' },
+      { letter: 'Y', name: 'Y jerk in mm/s. Usually same as X', example: '8' },
+      { letter: 'Z', name: 'Z jerk in mm/s. Usually very low (0.2-0.5)', example: '0.4' },
+      { letter: 'E', name: 'Extruder jerk in mm/s. Typical: 2-10', example: '5' },
+      { letter: 'J', name: 'Junction deviation in mm (modern alternative to jerk). Typical: 0.01-0.02', example: '0.013' },
+    ],
+    example: '; Reduce jerk for quieter, smoother printing:\nM205 X5 Y5 ; Lower jerk = less vibration\n; Increase for speed (may cause ringing):\nM205 X12 Y12 ; Higher jerk = faster corners',
+    template: 'M205 X8 Y8 Z0.4 E5',
+    firmware: { bambu: null, klipper: 'Klipper uses square_corner_velocity in printer.cfg instead of jerk.', marlin: 'J parameter enables Junction Deviation mode (alternative to classic jerk).', reprap: 'RepRapFirmware uses M566 for jerk settings, not M205.' }
+  },
+  { code: 'M220', name: 'Set Speed Factor', category: 'Stepper & Motion',
+    description: 'Override ALL print speeds as a percentage. Like the speed dial on your printer. 100% = normal, 50% = half speed, 200% = double speed. Useful for slowing down tricky sections mid-print.',
+    params: [
+      { letter: 'S', name: 'Speed as a percentage. 100 = normal speed. Range: 10-999', example: '100' },
+    ],
+    example: 'M220 S50 ; Half speed (50%) \u2014 for tricky overhangs\nM220 S100 ; Back to normal speed\nM220 S150 ; 50% faster than normal',
+    template: 'M220 S100',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M221', name: 'Set Flow Rate', category: 'Stepper & Motion',
+    description: 'Override the extrusion flow rate as a percentage. Adjusts how much plastic comes out. Useful for fine-tuning: 95% if over-extruding, 105% if under-extruding.',
+    params: [
+      { letter: 'S', name: 'Flow as a percentage. 100 = normal flow. Common adjustments: 90-110', example: '100' },
+    ],
+    example: 'M221 S95 ; Reduce flow to 95% (fixing slight over-extrusion)\nM221 S100 ; Back to normal flow\nM221 S105 ; Increase flow to 105% (filling gaps)',
+    template: 'M221 S100',
+    firmware: { bambu: null, klipper: 'Use SET_PRESSURE_ADVANCE for flow tuning instead.', marlin: null, reprap: null }
+  },
+
+  // \u2500\u2500 Filament & Material \u2500\u2500
+  { code: 'M1020', name: 'Bambu AMS Filament Change', category: 'Filament & Material',
+    description: 'Bambu Lab-specific command to switch which filament the AMS (Automatic Material System) feeds. The AMS has 4 slots numbered 0-3. Plays an audio notification when changing.',
+    params: [
+      { letter: 'S', name: 'AMS slot number (0-3). S0 = Slot 1, S1 = Slot 2, S2 = Slot 3, S3 = Slot 4', example: '1' },
+    ],
+    example: '; Switch to second AMS slot (red filament):\nM1020 S1 ; Load from AMS slot 2\n; Switch back to first slot (white filament):\nM1020 S0 ; Load from AMS slot 1',
+    template: 'M1020 S0',
+    firmware: { bambu: 'Primary AMS filament change command. Slots: S0=slot 1, S1=slot 2, S2=slot 3, S3=slot 4.', klipper: 'Not supported \u2014 Bambu Lab specific.', marlin: 'Not supported \u2014 Bambu Lab specific.', reprap: 'Not supported \u2014 Bambu Lab specific.' }
+  },
+  { code: 'T0', name: 'Select Extruder', category: 'Filament & Material',
+    description: 'Select which extruder to use on multi-extruder printers. T0 = first extruder, T1 = second, T2 = third, etc. Used for dual-color or multi-material printing.',
+    params: [],
+    example: '; Switch between extruders for dual-color print:\nT0 ; Use first extruder (e.g., white PLA)\nG1 X50 Y50 E10 ; Print with extruder 0\nT1 ; Switch to second extruder (e.g., black PLA)\nG1 X60 Y50 E10 ; Print with extruder 1',
+    template: 'T0',
+    firmware: { bambu: 'Bambu Lab uses T commands internally with AMS.', klipper: 'Requires [extruder] and [extruder1] etc. in printer.cfg.', marlin: 'Requires EXTRUDERS > 1 in Configuration.h.', reprap: 'Runs the tool-change macro (tpre0.g, tpost0.g, tfree0.g).' }
+  },
+
+  // \u2500\u2500 Display & Communication \u2500\u2500
+  { code: 'M117', name: 'Set LCD Message', category: 'Display & Communication',
+    description: 'Display a custom message on the printer\'s LCD/touchscreen. Great for showing layer count, time remaining, or reminders. The message stays until replaced by another M117.',
+    params: [
+      { letter: '', name: 'Message text \u2014 everything after "M117 " is displayed. No quotes needed', example: 'Layer 50 of 200' },
+    ],
+    example: 'M117 Printing base layers ; Show status\nM117 Insert magnet NOW! ; Show reminder\nM117 ; Clear the message (empty)',
+    template: 'M117 Your message here',
+    firmware: { bambu: 'May not display on Bambu Lab touchscreen.', klipper: 'Requires [display] in printer.cfg. Also supports SET_DISPLAY_TEXT.', marlin: null, reprap: 'Displays on PanelDue or web interface.' }
+  },
+  { code: 'M118', name: 'Serial Message', category: 'Display & Communication',
+    description: 'Send a text message to the connected host software (OctoPrint, Mainsail, Pronterface, etc.). Useful for logging, triggering plugins, or debugging G-code scripts.',
+    params: [
+      { letter: '', name: 'Message text \u2014 sent to the host over serial/USB', example: 'Print checkpoint reached' },
+    ],
+    example: 'M118 Starting layer 50 ; Log message to host\nM118 Filament change needed ; Alert the host software',
+    template: 'M118 Message here',
+    firmware: { bambu: null, klipper: 'Use RESPOND MSG="text" for Klipper host messaging.', marlin: null, reprap: null }
+  },
+  { code: 'M73', name: 'Set Print Progress', category: 'Display & Communication',
+    description: 'Tell the printer how far along the print is (percentage) and estimated time remaining. Slicers usually insert these automatically. The printer displays this info on the LCD.',
+    params: [
+      { letter: 'P', name: 'Progress percentage, 0 to 100', example: '50' },
+      { letter: 'R', name: 'Remaining time in minutes. 30 = about 30 minutes left', example: '30' },
+    ],
+    example: 'M73 P0 R120 ; 0% done, about 2 hours remaining\nM73 P50 R60 ; 50% done, about 1 hour left\nM73 P100 R0 ; 100% complete',
+    template: 'M73 P__ R__',
+    firmware: { bambu: 'Bambu Lab uses this to display progress on the touchscreen.', klipper: 'Supported with [display] and SET_DISPLAY_TEXT.', marlin: 'Requires SET_PROGRESS_MANUALLY enabled.', reprap: null }
+  },
+
+  // \u2500\u2500 PID & Advanced \u2500\u2500
+  { code: 'M303', name: 'PID Autotune', category: 'PID & Advanced',
+    description: 'Automatically calibrate the PID temperature control for the hotend or bed. The printer cycles the heater on and off, measures the response, and calculates optimal P/I/D values for stable temperature.',
+    params: [
+      { letter: 'S', name: 'Target temperature in \u00b0C to tune at. Use your normal printing temp (e.g., 200 for PLA)', example: '200' },
+      { letter: 'E', name: 'Heater index: 0 = hotend (default), -1 = heated bed', example: '0' },
+      { letter: 'C', name: 'Number of heating cycles. More cycles = more accurate. 5-10 recommended', example: '8' },
+    ],
+    example: '; Tune hotend PID at 200\u00b0C:\nM303 S200 E0 C8 ; 8 cycles at 200\u00b0C\n; Printer will output values like: Kp=22.2 Ki=1.08 Kd=114.0\n; Apply them: M301 P22.2 I1.08 D114.0\n; Save: M500\n\n; Tune bed PID at 60\u00b0C:\nM303 S60 E-1 C8 ; E-1 = bed heater',
+    template: 'M303 S200 E0 C8',
+    firmware: { bambu: 'Bambu Lab printers have factory-tuned PID. Manual tuning is not recommended.', klipper: 'Use PID_CALIBRATE HEATER=extruder TARGET=200 instead.', marlin: 'After tuning, apply values with M301 (hotend) or M304 (bed), then M500 to save.', reprap: 'Use M303 H1 S200 for the hotend heater.' }
+  },
+  { code: 'M301', name: 'Set Hotend PID', category: 'PID & Advanced',
+    description: 'Set the PID control parameters for the hotend heater. These values determine how accurately the nozzle holds temperature. Get values from M303 autotune. Save with M500.',
+    params: [
+      { letter: 'P', name: 'Proportional gain (Kp) \u2014 how aggressively to heat. Higher = faster response but may overshoot', example: '22.2' },
+      { letter: 'I', name: 'Integral gain (Ki) \u2014 corrects long-term drift. Too high = oscillation', example: '1.08' },
+      { letter: 'D', name: 'Derivative gain (Kd) \u2014 dampens overshoot. Higher = smoother but slower', example: '114.0' },
+    ],
+    example: '; Apply PID values from autotune:\nM301 P22.2 I1.08 D114.0\nM500 ; Save to EEPROM so they survive reboot',
+    template: 'M301 P__ I__ D__',
+    firmware: { bambu: 'Not user-configurable on Bambu Lab.', klipper: 'PID values are set in printer.cfg under [extruder] section.', marlin: 'Save to EEPROM with M500 after setting.', reprap: 'Use M307 for heater model tuning instead.' }
+  },
+  { code: 'M304', name: 'Set Bed PID', category: 'PID & Advanced',
+    description: 'Set PID parameters for the heated bed. Same concept as M301 but for the bed heater. Bed PID values are typically very different from hotend values because beds are much larger and slower.',
+    params: [
+      { letter: 'P', name: 'Proportional gain (Kp). Bed values are usually much higher than hotend (100-400)', example: '70.3' },
+      { letter: 'I', name: 'Integral gain (Ki)', example: '1.6' },
+      { letter: 'D', name: 'Derivative gain (Kd)', example: '350.0' },
+    ],
+    example: '; Apply bed PID values from M303 autotune:\nM304 P70.3 I1.6 D350.0\nM500 ; Save to EEPROM',
+    template: 'M304 P__ I__ D__',
+    firmware: { bambu: 'Not user-configurable on Bambu Lab.', klipper: 'PID values are set in printer.cfg under [heater_bed] section.', marlin: null, reprap: 'Use M307 for heater model tuning instead.' }
+  },
+];
+
+// ===== BGCODE DECODER =====
+
+// CRC32 lookup table and function
+const crc32Table = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let j = 0; j < 8; j++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[i] = c;
+  }
+  return t;
+})();
+function crc32(buf) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = crc32Table[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+// Heatshrink decoder
+function heatshrinkDecode(input, windowBits, lookaheadBits, outputSize) {
+  const windowSize = 1 << windowBits;
+  const lookaheadSize = 1 << lookaheadBits;
+  const indexBits = windowBits;
+  const backrefCountBits = lookaheadBits;
+  const ringBuf = new Uint8Array(windowSize);
+  const output = new Uint8Array(outputSize);
+  let ringPos = 0, outPos = 0;
+
+  // Bit reader
+  let bitPos = 0, bytePos = 0;
+  function bitsAvail() { return (input.length - bytePos) * 8 - bitPos; }
+  function readBits(count) {
+    let val = 0;
+    for (let i = 0; i < count; i++) {
+      if (bytePos >= input.length) return -1;
+      val = (val << 1) | ((input[bytePos] >> (7 - bitPos)) & 1);
+      bitPos++;
+      if (bitPos === 8) { bitPos = 0; bytePos++; }
+    }
+    return val;
+  }
+
+  while (outPos < outputSize) {
+    if (bitsAvail() < 1) break;
+    const tag = readBits(1);
+    if (tag === 1) {
+      // Literal byte
+      if (bitsAvail() < 8) break;
+      const byte = readBits(8);
+      ringBuf[ringPos & (windowSize - 1)] = byte;
+      ringPos++;
+      output[outPos++] = byte;
+    } else {
+      // Backref
+      if (bitsAvail() < indexBits + backrefCountBits) break;
+      const index = readBits(indexBits) + 1;
+      const count = readBits(backrefCountBits) + 1;
+      for (let i = 0; i < count; i++) {
+        const byte = ringBuf[(ringPos - index) & (windowSize - 1)];
+        ringBuf[ringPos & (windowSize - 1)] = byte;
+        ringPos++;
+        output[outPos++] = byte;
+        if (outPos >= outputSize) break;
+      }
+    }
+  }
+  return output;
+}
+
+// Deflate decoder (browser-native)
+async function deflateDecode(input, outputSize) {
+  const ds = new DecompressionStream('deflate-raw');
+  const writer = ds.writable.getWriter();
+  const reader = ds.readable.getReader();
+  const chunks = [];
+  let totalLen = 0;
+  const readAll = (async () => {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      totalLen += value.length;
+    }
+  })();
+  writer.write(input);
+  writer.close();
+  await readAll;
+  const result = new Uint8Array(totalLen);
+  let off = 0;
+  for (const c of chunks) { result.set(c, off); off += c.length; }
+  return result;
+}
+
+// MeatPack decoder (matches libbgcode unbinarize)
+function meatpackDecode(input) {
+  const CMD_SIGNAL = 0xFF;
+  const CMD_ENABLE  = 0xFB;  // EnablePacking
+  const CMD_DISABLE = 0xFA;  // DisablePacking
+  const CMD_NOSPACE_ON  = 0xF7;
+  const CMD_NOSPACE_OFF = 0xF6;
+  const CMD_RESET   = 0xF9;
+  const GLINE_PARAMS = new Set([88,89,90,69,70,73,74,82,83,71,80,87,72,67,65]); // X Y Z E F I J R S G P W H C A
+
+  let packing = false, noSpaces = false;
+  let cmdCount = 0, cmdActive = false;
+  let fullCharQueue = 0, charBuf = 0;
+  const output = [];
+  let lastChar = 0, addSpace = false;
+
+  function getChar(nibble) {
+    if (nibble <= 9) return 0x30 + nibble; // '0'-'9'
+    if (nibble === 0xA) return 0x2E; // '.'
+    if (nibble === 0xB) return noSpaces ? 0x45 : 0x20; // 'E' or ' '
+    if (nibble === 0xC) return 0x0A; // '\n'
+    if (nibble === 0xD) return 0x47; // 'G'
+    if (nibble === 0xE) return 0x58; // 'X'
+    return 0; // 0xF = escape marker
+  }
+
+  function emit(ch) {
+    // Suppress duplicate newlines
+    if (ch === 0x0A && lastChar === 0x0A) return;
+    // Insert spaces on G-lines between parameters
+    if (ch === 0x47 && (output.length === 0 || lastChar === 0x0A)) {
+      addSpace = true;
+    } else if (ch === 0x0A) {
+      addSpace = false;
+    } else if (addSpace && lastChar !== 0x20 && GLINE_PARAMS.has(ch)) {
+      output.push(0x20);
+      lastChar = 0x20;
+    }
+    output.push(ch);
+    lastChar = ch;
+  }
+
+  function handleCommand(c) {
+    if (c === CMD_ENABLE)  packing = true;
+    else if (c === CMD_DISABLE) packing = false;
+    else if (c === CMD_NOSPACE_ON) noSpaces = true;
+    else if (c === CMD_NOSPACE_OFF) noSpaces = false;
+    else if (c === CMD_RESET) { packing = false; noSpaces = false; }
+  }
+
+  function handleRxChar(c) {
+    if (packing) {
+      if (fullCharQueue > 0) {
+        emit(c);
+        if (charBuf > 0) { emit(charBuf); charBuf = 0; }
+        fullCharQueue--;
+      } else {
+        const lo = c & 0x0F;
+        const hi = (c >> 4) & 0x0F;
+        const loEsc = (lo === 0x0F);
+        const hiEsc = (hi === 0x0F);
+        if (loEsc) {
+          fullCharQueue++;
+          if (hiEsc) fullCharQueue++;
+          else charBuf = getChar(hi);
+        } else {
+          const ch0 = getChar(lo);
+          emit(ch0);
+          if (ch0 !== 0x0A) { // If first char is newline, skip second
+            if (hiEsc) fullCharQueue++;
+            else emit(getChar(hi));
+          }
+        }
+      }
+    } else {
+      emit(c); // passthrough
+    }
+  }
+
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i];
+    if (c === CMD_SIGNAL) {
+      if (cmdCount > 0) { cmdActive = true; cmdCount = 0; }
+      else cmdCount++;
+    } else {
+      if (cmdActive) { handleCommand(c); cmdActive = false; }
+      else {
+        if (cmdCount > 0) { handleRxChar(CMD_SIGNAL); cmdCount = 0; }
+        handleRxChar(c);
+      }
+    }
+  }
+  return new Uint8Array(output);
+}
+
+// Block parser and orchestrator
+async function decodeBgcode(arrayBuffer) {
+  const view = new DataView(arrayBuffer);
+  const bytes = new Uint8Array(arrayBuffer);
+
+  // File header (10 bytes)
+  const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+  if (magic !== 'GCDE') throw new Error('Not a valid bgcode file (bad magic)');
+  const version = view.getUint32(4, true);
+  const checksumType = view.getUint16(8, true); // 0=None, 1=CRC32
+
+  const progressEl = document.getElementById('parseProgress');
+  const barEl = document.getElementById('parseBar');
+  const labelEl = document.getElementById('parseLabel');
+  progressEl.style.display = '';
+  labelEl.textContent = 'Decoding binary G-code...';
+  barEl.style.width = '0%';
+
+  const gcodeChunks = [];
+  let offset = 10;
+  let blockIndex = 0;
+  const fileSize = arrayBuffer.byteLength;
+
+  while (offset < fileSize - 4) {
+    if (offset + 8 > fileSize) break;
+    const blockStart = offset;
+
+    // Block header
+    const blockType = view.getUint16(offset, true);
+    const compression = view.getUint16(offset + 2, true);
+    const uncompressedSize = view.getUint32(offset + 4, true);
+    offset += 8;
+
+    let compressedSize = uncompressedSize;
+    if (compression !== 0) {
+      compressedSize = view.getUint32(offset, true);
+      offset += 4;
+    }
+
+    // Block params (Thumbnail=6 bytes, others=2 bytes)
+    let encoding = 0;
+    if (blockType === 5) { // Thumbnail
+      offset += 6; // format + width + height
+    } else {
+      encoding = view.getUint16(offset, true);
+      offset += 2;
+    }
+
+    const dataSize = compression !== 0 ? compressedSize : uncompressedSize;
+    const blockData = bytes.subarray(offset, offset + dataSize);
+    offset += dataSize;
+
+    // CRC32 verification (covers header + params + data)
+    if (checksumType === 1) {
+      const storedCrc = view.getUint32(offset, true);
+      offset += 4;
+      if (blockType === 1) {
+        const computedCrc = crc32(bytes.subarray(blockStart, offset - 4));
+        if (computedCrc !== storedCrc) {
+          console.warn(`CRC32 mismatch in GCode block ${blockIndex}: expected ${storedCrc.toString(16)}, got ${computedCrc.toString(16)}`);
+        }
+      }
+    }
+
+    // Only process GCode blocks (type 1)
+    if (blockType !== 1) { blockIndex++; continue; }
+
+    // Decompress
+    let decompressed;
+    if (compression === 0) {
+      decompressed = blockData;
+    } else if (compression === 1) { // Deflate
+      decompressed = await deflateDecode(blockData, uncompressedSize);
+    } else if (compression === 2) { // Heatshrink 11,4
+      decompressed = heatshrinkDecode(blockData, 11, 4, uncompressedSize);
+    } else if (compression === 3) { // Heatshrink 12,4
+      decompressed = heatshrinkDecode(blockData, 12, 4, uncompressedSize);
+    } else {
+      throw new Error('Unknown compression type: ' + compression);
+    }
+
+    // Decode MeatPack
+    let decoded;
+    if (encoding === 0) {
+      decoded = decompressed;
+    } else if (encoding === 1 || encoding === 2) { // MeatPack / MeatPackComments
+      decoded = meatpackDecode(decompressed);
+    } else {
+      throw new Error('Unknown encoding type: ' + encoding);
+    }
+
+    gcodeChunks.push(decoded);
+    blockIndex++;
+
+    // Update progress
+    const pct = Math.min(offset / fileSize, 1);
+    barEl.style.width = (pct * 100).toFixed(0) + '%';
+    labelEl.textContent = `Decoding binary G-code... ${(pct * 100).toFixed(0)}%`;
+    // Yield to UI thread periodically
+    if (blockIndex % 4 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+
+  // Concatenate all decoded chunks into a single string
+  const totalLen = gcodeChunks.reduce((s, c) => s + c.length, 0);
+  const merged = new Uint8Array(totalLen);
+  let pos = 0;
+  for (const chunk of gcodeChunks) { merged.set(chunk, pos); pos += chunk.length; }
+
+  return new TextDecoder().decode(merged);
+}
+
+
+// ===== UNDO/REDO STACK =====
+class UndoStack {
+  constructor(maxSize = 50) {
+    this.stack = [];
+    this.index = -1;
+    this.maxSize = maxSize;
+  }
+
+  push(state) {
+    this.stack = this.stack.slice(0, this.index + 1);
+    this.stack.push(JSON.parse(JSON.stringify(state)));
+    if (this.stack.length > this.maxSize) this.stack.shift();
+    this.index = this.stack.length - 1;
+  }
+
+  undo() {
+    if (this.index <= 0) return null;
+    this.index--;
+    return JSON.parse(JSON.stringify(this.stack[this.index]));
+  }
+
+  redo() {
+    if (this.index >= this.stack.length - 1) return null;
+    this.index++;
+    return JSON.parse(JSON.stringify(this.stack[this.index]));
+  }
+
+  canUndo() { return this.index > 0; }
+  canRedo() { return this.index < this.stack.length - 1; }
+}
+
+// Note: references global `parser` and `modifier` — works in built output.
+// TODO: refactor to accept dependencies as constructor parameters.
+// ===== INSERT MANAGER =====
+class InsertManager {
+  constructor() {
+    this.inserts = []; // track insert-to-modification links
+  }
+
+  clear() { this.inserts = []; }
+
+  calculatePauseLayer(hole, insertHeightMm) {
+    if (hole.floorLayer == null || hole.floorLayer < 0) return null;
+
+    const floorLayerData = parser.getLayerByNumber(hole.floorLayer);
+    if (!floorLayerData || floorLayerData.zHeight == null) return null;
+
+    const targetZ = floorLayerData.zHeight + insertHeightMm;
+
+    // Find first layer where zHeight >= targetZ
+    for (const layer of parser.layers) {
+      if (layer.zHeight != null && layer.zHeight >= targetZ) {
+        return layer.number;
+      }
+    }
+    return null; // insert taller than remaining print
+  }
+
+  createModification(hole, heightMm, diameterMm, label, pauseType, moveHead) {
+    const pauseLayer = this.calculatePauseLayer(hole, heightMm);
+    if (pauseLayer == null) return null;
+
+    const message = label
+      ? `Insert ${label} (${diameterMm}mm dia, ${heightMm}mm tall) at hole #${hole.id}`
+      : `Insert object (${diameterMm}mm dia, ${heightMm}mm tall) at hole #${hole.id}`;
+
+    const mod = modifier.addPause(pauseLayer, message, pauseType, moveHead);
+
+    this.inserts.push({
+      holeId: hole.id,
+      modId: mod.id,
+      pauseLayer,
+      heightMm,
+      diameterMm,
+      label
+    });
+
+    return { mod, pauseLayer };
+  }
+
+  applyToMultipleHoles(holes, config) {
+    const results = [];
+    for (const hole of holes) {
+      const result = this.createModification(
+        hole, config.heightMm, config.diameterMm,
+        config.label, config.pauseType, config.moveHead
+      );
+      if (result) results.push(result);
+    }
+    return results;
+  }
+}
+
+// ===== HOLE DETECTOR =====
+class HoleDetector {
+  constructor() {
+    this.resolution = 0.5; // mm per grid cell
+    this.lineWidth = 0.45; // extrusion width in mm
+    this.gridCache = new Map();
+    this.holes = new Map(); // layerNum -> HoleInfo[]
+    this.selectedHoles = [];
+    this.scannedHoles = []; // flat array of unique holes from full scan
+  }
+
+  clearCache() {
+    this.gridCache.clear();
+    this.holes.clear();
+    this.selectedHoles = [];
+    this.scannedHoles = [];
+  }
+
+  _getGridDims() {
+    const b = parser.bounds;
+    const w = Math.ceil((b.maxX - b.minX) / this.resolution) + 2;
+    const h = Math.ceil((b.maxY - b.minY) / this.resolution) + 2;
+    return { w, h, offX: b.minX, offY: b.minY };
+  }
+
+  _toGrid(gcodeX, gcodeY, dims) {
+    return {
+      gx: Math.round((gcodeX - dims.offX) / this.resolution),
+      gy: Math.round((gcodeY - dims.offY) / this.resolution)
+    };
+  }
+
+  _toGcode(gx, gy, dims) {
+    return {
+      x: gx * this.resolution + dims.offX,
+      y: gy * this.resolution + dims.offY
+    };
+  }
+
+  rasterizeLayer(layerNum, ignoreInfill) {
+    const cacheKey = `${layerNum}_${ignoreInfill ? 1 : 0}`;
+    if (this.gridCache.has(cacheKey)) return this.gridCache.get(cacheKey);
+
+    const dims = this._getGridDims();
+    const grid = new Uint8Array(dims.w * dims.h); // 0 = empty, 1 = filled
+    const moves = parser.layerMoves[layerNum];
+    if (!moves) { this.gridCache.set(cacheKey, { grid, dims }); return { grid, dims }; }
+
+    const halfW = Math.ceil(this.lineWidth / 2 / this.resolution);
+
+    for (const move of moves) {
+      if (!move.extrude) continue;
+      // Optionally skip infill
+      if (ignoreInfill) {
+        const t = move.type.toUpperCase();
+        if (t.includes('INFILL') || t.includes('FILL') || t === 'SPARSE' || t === 'SOLID') continue;
+      }
+
+      const p0 = this._toGrid(move.x1, move.y1, dims);
+      const p1 = this._toGrid(move.x2, move.y2, dims);
+
+      // Bresenham's line with square stamp
+      let dx = Math.abs(p1.gx - p0.gx), dy = Math.abs(p1.gy - p0.gy);
+      let sx = p0.gx < p1.gx ? 1 : -1, sy = p0.gy < p1.gy ? 1 : -1;
+      let err = dx - dy;
+      let cx = p0.gx, cy = p0.gy;
+
+      while (true) {
+        // Square stamp around current point
+        for (let sy2 = -halfW; sy2 <= halfW; sy2++) {
+          for (let sx2 = -halfW; sx2 <= halfW; sx2++) {
+            const nx = cx + sx2, ny = cy + sy2;
+            if (nx >= 0 && nx < dims.w && ny >= 0 && ny < dims.h) {
+              grid[ny * dims.w + nx] = 1;
+            }
+          }
+        }
+        if (cx === p1.gx && cy === p1.gy) break;
+        const e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; cx += sx; }
+        if (e2 < dx) { err += dx; cy += sy; }
+      }
+    }
+
+    this.gridCache.set(cacheKey, { grid, dims });
+    return { grid, dims };
+  }
+
+  detectHoles(layerNum, minDiameterMm, ignoreInfill) {
+    minDiameterMm = minDiameterMm || 4;
+    const { grid, dims } = this.rasterizeLayer(layerNum, ignoreInfill);
+    const w = dims.w, h = dims.h;
+    const totalCells = w * h;
+
+    // Labels: 0 = unvisited empty, 1 = filled, 2 = exterior, 3+ = hole IDs
+    const labels = new Int32Array(totalCells);
+    for (let i = 0; i < totalCells; i++) labels[i] = grid[i] ? 1 : 0;
+
+    // BFS flood-fill from all border cells to mark exterior
+    // Use typed-array circular buffer for O(1) enqueue/dequeue
+    const queueBuf = new Int32Array(totalCells);
+    let qHead = 0, qTail = 0;
+    const enqueue = (idx) => { queueBuf[qTail++ % totalCells] = idx; };
+    const dequeue = () => queueBuf[qHead++ % totalCells];
+
+    // Seed border cells
+    for (let x = 0; x < w; x++) {
+      if (labels[x] === 0) { labels[x] = 2; enqueue(x); }
+      const botIdx = (h - 1) * w + x;
+      if (labels[botIdx] === 0) { labels[botIdx] = 2; enqueue(botIdx); }
+    }
+    for (let y = 1; y < h - 1; y++) {
+      if (labels[y * w] === 0) { labels[y * w] = 2; enqueue(y * w); }
+      const rIdx = y * w + w - 1;
+      if (labels[rIdx] === 0) { labels[rIdx] = 2; enqueue(rIdx); }
+    }
+
+    // BFS to mark all exterior
+    const dx4 = [1, -1, 0, 0], dy4 = [0, 0, 1, -1];
+    while (qHead < qTail) {
+      const idx = dequeue();
+      const cx = idx % w, cy = (idx - cx) / w;
+      for (let d = 0; d < 4; d++) {
+        const nx = cx + dx4[d], ny = cy + dy4[d];
+        if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+        const nIdx = ny * w + nx;
+        if (labels[nIdx] === 0) { labels[nIdx] = 2; enqueue(nIdx); }
+      }
+    }
+
+    // Find connected components of remaining empty cells (label === 0)
+    const holesFound = [];
+    let nextLabel = 3;
+    for (let i = 0; i < totalCells; i++) {
+      if (labels[i] !== 0) continue;
+      // BFS for this hole
+      const holeLabel = nextLabel++;
+      const cells = [];
+      qHead = 0; qTail = 0;
+      labels[i] = holeLabel;
+      enqueue(i);
+
+      while (qHead < qTail) {
+        const idx = dequeue();
+        cells.push(idx);
+        const cx = idx % w, cy = (idx - cx) / w;
+        for (let d = 0; d < 4; d++) {
+          const nx = cx + dx4[d], ny = cy + dy4[d];
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+          const nIdx = ny * w + nx;
+          if (labels[nIdx] === 0) { labels[nIdx] = holeLabel; enqueue(nIdx); }
+        }
+      }
+
+      // Compute bbox, centroid, area
+      let minGx = Infinity, maxGx = -Infinity, minGy = Infinity, maxGy = -Infinity;
+      let sumX = 0, sumY = 0;
+      const cellSet = new Set(cells);
+      for (const idx of cells) {
+        const cx = idx % w, cy = (idx - cx) / w;
+        if (cx < minGx) minGx = cx;
+        if (cx > maxGx) maxGx = cx;
+        if (cy < minGy) minGy = cy;
+        if (cy > maxGy) maxGy = cy;
+        sumX += cx; sumY += cy;
+      }
+
+      const areaMm2 = cells.length * this.resolution * this.resolution;
+      const rawDiameter = 2 * Math.sqrt(areaMm2 / Math.PI);
+      // Compensate for wall stamp encroachment: the rasterization stamp eats into
+      // the hole by ~halfW*resolution on each side, making detected area smaller
+      const halfW = Math.ceil(this.lineWidth / 2 / this.resolution);
+      const stampCorrection = halfW * this.resolution * 2;
+      const diameterMm = rawDiameter + stampCorrection;
+
+      if (diameterMm < minDiameterMm) continue; // Filter small holes
+
+      // Shape classification via bounding-box fill ratio — more reliable on rasterized
+      // grids than perimeter-based circularity (grid perimeter overestimates smooth curves
+      // by ~4/π, making circles score lower than squares on circularity)
+      const bboxW = (maxGx - minGx + 1) * this.resolution + stampCorrection;
+      const bboxH = (maxGy - minGy + 1) * this.resolution + stampCorrection;
+      const aspect = Math.max(bboxW, bboxH) / Math.max(0.1, Math.min(bboxW, bboxH));
+      const rawBboxW = (maxGx - minGx + 1) * this.resolution;
+      const rawBboxH = (maxGy - minGy + 1) * this.resolution;
+      const rawBboxArea = rawBboxW * rawBboxH;
+      const fillRatio = rawBboxArea > 0 ? areaMm2 / rawBboxArea : 0;
+      let shape;
+      if (aspect < 1.12) {
+        // Nearly square bounding box — circle vs square
+        shape = fillRatio < 0.9 ? 'circle' : 'square';
+      } else if (aspect < 1.3) {
+        shape = fillRatio < 0.88 ? 'hexagon' : 'rectangle';
+      } else {
+        shape = 'rectangle';
+      }
+
+      const centroid = this._toGcode(sumX / cells.length, sumY / cells.length, dims);
+      const bboxMin = this._toGcode(minGx, minGy, dims);
+      const bboxMax = this._toGcode(maxGx, maxGy, dims);
+
+      holesFound.push({
+        id: `hole_${layerNum}_${holesFound.length}`,
+        label: holeLabel,
+        layerNum,
+        cells,
+        cellSet,
+        areaMm2,
+        diameterMm,
+        shape,
+        widthMm: bboxW,
+        heightMm: bboxH,
+        fillRatio,
+        centroid,
+        bbox: { minX: bboxMin.x, minY: bboxMin.y, maxX: bboxMax.x, maxY: bboxMax.y },
+        gridDims: dims,
+        floorLayer: null,
+        depthMm: null
+      });
+    }
+
+    this.holes.set(layerNum, holesFound);
+    return holesFound;
+  }
+
+  findHoleAtPoint(gcodeX, gcodeY, layerNum) {
+    const holes = this.holes.get(layerNum);
+    if (!holes) return null;
+
+    for (const hole of holes) {
+      if (gcodeX >= hole.bbox.minX && gcodeX <= hole.bbox.maxX &&
+          gcodeY >= hole.bbox.minY && gcodeY <= hole.bbox.maxY) {
+        // Check if the actual grid cell is part of this hole
+        const { gx, gy } = this._toGrid(gcodeX, gcodeY, hole.gridDims);
+        const idx = gy * hole.gridDims.w + gx;
+        if (hole.cellSet.has(idx)) return hole;
+      }
+    }
+    return null;
+  }
+
+  analyzeHoleDepth(hole, startLayerNum) {
+    const dims = hole.gridDims;
+
+    // Get footprint cells as a set of (gx, gy) pairs
+    const footprint = new Set(hole.cells);
+    let floorLayer = -1;
+
+    // Scan layers downward — always include infill when looking for the floor,
+    // because the floor of interior holes IS solid infill
+    for (let ln = startLayerNum - 1; ln >= 0; ln--) {
+      const layer = parser.getLayerByNumber(ln);
+      if (!layer) continue;
+
+      const { grid } = this.rasterizeLayer(ln, false);
+      // Check what % of footprint cells are filled in this layer
+      let filledCount = 0;
+      for (const idx of footprint) {
+        if (idx >= 0 && idx < grid.length && grid[idx] === 1) filledCount++;
+      }
+
+      const overlapRatio = filledCount / footprint.size;
+      if (overlapRatio >= 0.8) {
+        floorLayer = ln;
+        break;
+      }
+    }
+
+    hole.floorLayer = floorLayer;
+    if (floorLayer >= 0) {
+      const startLayer = parser.getLayerByNumber(startLayerNum);
+      const floorLayerData = parser.getLayerByNumber(floorLayer);
+      if (startLayer && floorLayerData && startLayer.zHeight != null && floorLayerData.zHeight != null) {
+        hole.depthMm = startLayer.zHeight - floorLayerData.zHeight;
+      } else {
+        hole.depthMm = null;
+      }
+    } else {
+      hole.depthMm = null; // through-hole
+    }
+
+    return hole;
+  }
+
+  _holesOverlap(h1, h2) {
+    const dx = h1.centroid.x - h2.centroid.x;
+    const dy = h1.centroid.y - h2.centroid.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const maxRadius = Math.max(h1.diameterMm, h2.diameterMm) / 2;
+    return dist < maxRadius;
+  }
+
+  async scanAllLayers(minDiameterMm, ignoreInfill, progressCb) {
+    this.scannedHoles = [];
+    this.selectedHoles = [];
+    const layers = parser.layers;
+    const uniqueHoles = [];
+
+    // Scan from top layer to bottom
+    for (let i = layers.length - 1; i >= 0; i--) {
+      const ln = layers[i].number;
+      if (progressCb) progressCb(layers.length - 1 - i, layers.length);
+
+      const layerHoles = this.detectHoles(ln, minDiameterMm, ignoreInfill);
+
+      for (const hole of layerHoles) {
+        let matched = false;
+        for (const existing of uniqueHoles) {
+          if (this._holesOverlap(existing.hole, hole)) {
+            matched = true;
+            break;
+          }
+        }
+        if (!matched) {
+          hole.topLayer = ln;
+          uniqueHoles.push({ hole, topLayer: ln });
+        }
+      }
+
+      // Yield to event loop every 5 layers to keep UI responsive
+      if (i % 5 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+
+    // Analyze depth for each unique hole
+    for (const entry of uniqueHoles) {
+      this.analyzeHoleDepth(entry.hole, entry.topLayer);
+    }
+
+    this.scannedHoles = uniqueHoles.map(e => e.hole);
+    return this.scannedHoles;
+  }
+}
+
 // ===== G-CODE PARSER =====
 class GcodeParser {
   constructor() {
@@ -1316,2016 +2552,6 @@ class GcodeModifier {
 
     return result;
   }
-}
-
-// ===== HOLE DETECTOR =====
-class HoleDetector {
-  constructor() {
-    this.resolution = 0.5; // mm per grid cell
-    this.lineWidth = 0.45; // extrusion width in mm
-    this.gridCache = new Map();
-    this.holes = new Map(); // layerNum -> HoleInfo[]
-    this.selectedHoles = [];
-    this.scannedHoles = []; // flat array of unique holes from full scan
-  }
-
-  clearCache() {
-    this.gridCache.clear();
-    this.holes.clear();
-    this.selectedHoles = [];
-    this.scannedHoles = [];
-  }
-
-  _getGridDims() {
-    const b = parser.bounds;
-    const w = Math.ceil((b.maxX - b.minX) / this.resolution) + 2;
-    const h = Math.ceil((b.maxY - b.minY) / this.resolution) + 2;
-    return { w, h, offX: b.minX, offY: b.minY };
-  }
-
-  _toGrid(gcodeX, gcodeY, dims) {
-    return {
-      gx: Math.round((gcodeX - dims.offX) / this.resolution),
-      gy: Math.round((gcodeY - dims.offY) / this.resolution)
-    };
-  }
-
-  _toGcode(gx, gy, dims) {
-    return {
-      x: gx * this.resolution + dims.offX,
-      y: gy * this.resolution + dims.offY
-    };
-  }
-
-  rasterizeLayer(layerNum, ignoreInfill) {
-    const cacheKey = `${layerNum}_${ignoreInfill ? 1 : 0}`;
-    if (this.gridCache.has(cacheKey)) return this.gridCache.get(cacheKey);
-
-    const dims = this._getGridDims();
-    const grid = new Uint8Array(dims.w * dims.h); // 0 = empty, 1 = filled
-    const moves = parser.layerMoves[layerNum];
-    if (!moves) { this.gridCache.set(cacheKey, { grid, dims }); return { grid, dims }; }
-
-    const halfW = Math.ceil(this.lineWidth / 2 / this.resolution);
-
-    for (const move of moves) {
-      if (!move.extrude) continue;
-      // Optionally skip infill
-      if (ignoreInfill) {
-        const t = move.type.toUpperCase();
-        if (t.includes('INFILL') || t.includes('FILL') || t === 'SPARSE' || t === 'SOLID') continue;
-      }
-
-      const p0 = this._toGrid(move.x1, move.y1, dims);
-      const p1 = this._toGrid(move.x2, move.y2, dims);
-
-      // Bresenham's line with square stamp
-      let dx = Math.abs(p1.gx - p0.gx), dy = Math.abs(p1.gy - p0.gy);
-      let sx = p0.gx < p1.gx ? 1 : -1, sy = p0.gy < p1.gy ? 1 : -1;
-      let err = dx - dy;
-      let cx = p0.gx, cy = p0.gy;
-
-      while (true) {
-        // Square stamp around current point
-        for (let sy2 = -halfW; sy2 <= halfW; sy2++) {
-          for (let sx2 = -halfW; sx2 <= halfW; sx2++) {
-            const nx = cx + sx2, ny = cy + sy2;
-            if (nx >= 0 && nx < dims.w && ny >= 0 && ny < dims.h) {
-              grid[ny * dims.w + nx] = 1;
-            }
-          }
-        }
-        if (cx === p1.gx && cy === p1.gy) break;
-        const e2 = 2 * err;
-        if (e2 > -dy) { err -= dy; cx += sx; }
-        if (e2 < dx) { err += dx; cy += sy; }
-      }
-    }
-
-    this.gridCache.set(cacheKey, { grid, dims });
-    return { grid, dims };
-  }
-
-  detectHoles(layerNum, minDiameterMm, ignoreInfill) {
-    minDiameterMm = minDiameterMm || 4;
-    const { grid, dims } = this.rasterizeLayer(layerNum, ignoreInfill);
-    const w = dims.w, h = dims.h;
-    const totalCells = w * h;
-
-    // Labels: 0 = unvisited empty, 1 = filled, 2 = exterior, 3+ = hole IDs
-    const labels = new Int32Array(totalCells);
-    for (let i = 0; i < totalCells; i++) labels[i] = grid[i] ? 1 : 0;
-
-    // BFS flood-fill from all border cells to mark exterior
-    // Use typed-array circular buffer for O(1) enqueue/dequeue
-    const queueBuf = new Int32Array(totalCells);
-    let qHead = 0, qTail = 0;
-    const enqueue = (idx) => { queueBuf[qTail++ % totalCells] = idx; };
-    const dequeue = () => queueBuf[qHead++ % totalCells];
-
-    // Seed border cells
-    for (let x = 0; x < w; x++) {
-      if (labels[x] === 0) { labels[x] = 2; enqueue(x); }
-      const botIdx = (h - 1) * w + x;
-      if (labels[botIdx] === 0) { labels[botIdx] = 2; enqueue(botIdx); }
-    }
-    for (let y = 1; y < h - 1; y++) {
-      if (labels[y * w] === 0) { labels[y * w] = 2; enqueue(y * w); }
-      const rIdx = y * w + w - 1;
-      if (labels[rIdx] === 0) { labels[rIdx] = 2; enqueue(rIdx); }
-    }
-
-    // BFS to mark all exterior
-    const dx4 = [1, -1, 0, 0], dy4 = [0, 0, 1, -1];
-    while (qHead < qTail) {
-      const idx = dequeue();
-      const cx = idx % w, cy = (idx - cx) / w;
-      for (let d = 0; d < 4; d++) {
-        const nx = cx + dx4[d], ny = cy + dy4[d];
-        if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
-        const nIdx = ny * w + nx;
-        if (labels[nIdx] === 0) { labels[nIdx] = 2; enqueue(nIdx); }
-      }
-    }
-
-    // Find connected components of remaining empty cells (label === 0)
-    const holesFound = [];
-    let nextLabel = 3;
-    for (let i = 0; i < totalCells; i++) {
-      if (labels[i] !== 0) continue;
-      // BFS for this hole
-      const holeLabel = nextLabel++;
-      const cells = [];
-      qHead = 0; qTail = 0;
-      labels[i] = holeLabel;
-      enqueue(i);
-
-      while (qHead < qTail) {
-        const idx = dequeue();
-        cells.push(idx);
-        const cx = idx % w, cy = (idx - cx) / w;
-        for (let d = 0; d < 4; d++) {
-          const nx = cx + dx4[d], ny = cy + dy4[d];
-          if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
-          const nIdx = ny * w + nx;
-          if (labels[nIdx] === 0) { labels[nIdx] = holeLabel; enqueue(nIdx); }
-        }
-      }
-
-      // Compute bbox, centroid, area
-      let minGx = Infinity, maxGx = -Infinity, minGy = Infinity, maxGy = -Infinity;
-      let sumX = 0, sumY = 0;
-      const cellSet = new Set(cells);
-      for (const idx of cells) {
-        const cx = idx % w, cy = (idx - cx) / w;
-        if (cx < minGx) minGx = cx;
-        if (cx > maxGx) maxGx = cx;
-        if (cy < minGy) minGy = cy;
-        if (cy > maxGy) maxGy = cy;
-        sumX += cx; sumY += cy;
-      }
-
-      const areaMm2 = cells.length * this.resolution * this.resolution;
-      const rawDiameter = 2 * Math.sqrt(areaMm2 / Math.PI);
-      // Compensate for wall stamp encroachment: the rasterization stamp eats into
-      // the hole by ~halfW*resolution on each side, making detected area smaller
-      const halfW = Math.ceil(this.lineWidth / 2 / this.resolution);
-      const stampCorrection = halfW * this.resolution * 2;
-      const diameterMm = rawDiameter + stampCorrection;
-
-      if (diameterMm < minDiameterMm) continue; // Filter small holes
-
-      // Shape classification via bounding-box fill ratio — more reliable on rasterized
-      // grids than perimeter-based circularity (grid perimeter overestimates smooth curves
-      // by ~4/π, making circles score lower than squares on circularity)
-      const bboxW = (maxGx - minGx + 1) * this.resolution + stampCorrection;
-      const bboxH = (maxGy - minGy + 1) * this.resolution + stampCorrection;
-      const aspect = Math.max(bboxW, bboxH) / Math.max(0.1, Math.min(bboxW, bboxH));
-      const rawBboxW = (maxGx - minGx + 1) * this.resolution;
-      const rawBboxH = (maxGy - minGy + 1) * this.resolution;
-      const rawBboxArea = rawBboxW * rawBboxH;
-      const fillRatio = rawBboxArea > 0 ? areaMm2 / rawBboxArea : 0;
-      let shape;
-      if (aspect < 1.12) {
-        // Nearly square bounding box — circle vs square
-        shape = fillRatio < 0.9 ? 'circle' : 'square';
-      } else if (aspect < 1.3) {
-        shape = fillRatio < 0.88 ? 'hexagon' : 'rectangle';
-      } else {
-        shape = 'rectangle';
-      }
-
-      const centroid = this._toGcode(sumX / cells.length, sumY / cells.length, dims);
-      const bboxMin = this._toGcode(minGx, minGy, dims);
-      const bboxMax = this._toGcode(maxGx, maxGy, dims);
-
-      holesFound.push({
-        id: `hole_${layerNum}_${holesFound.length}`,
-        label: holeLabel,
-        layerNum,
-        cells,
-        cellSet,
-        areaMm2,
-        diameterMm,
-        shape,
-        widthMm: bboxW,
-        heightMm: bboxH,
-        fillRatio,
-        centroid,
-        bbox: { minX: bboxMin.x, minY: bboxMin.y, maxX: bboxMax.x, maxY: bboxMax.y },
-        gridDims: dims,
-        floorLayer: null,
-        depthMm: null
-      });
-    }
-
-    this.holes.set(layerNum, holesFound);
-    return holesFound;
-  }
-
-  findHoleAtPoint(gcodeX, gcodeY, layerNum) {
-    const holes = this.holes.get(layerNum);
-    if (!holes) return null;
-
-    for (const hole of holes) {
-      if (gcodeX >= hole.bbox.minX && gcodeX <= hole.bbox.maxX &&
-          gcodeY >= hole.bbox.minY && gcodeY <= hole.bbox.maxY) {
-        // Check if the actual grid cell is part of this hole
-        const { gx, gy } = this._toGrid(gcodeX, gcodeY, hole.gridDims);
-        const idx = gy * hole.gridDims.w + gx;
-        if (hole.cellSet.has(idx)) return hole;
-      }
-    }
-    return null;
-  }
-
-  analyzeHoleDepth(hole, startLayerNum) {
-    const dims = hole.gridDims;
-
-    // Get footprint cells as a set of (gx, gy) pairs
-    const footprint = new Set(hole.cells);
-    let floorLayer = -1;
-
-    // Scan layers downward — always include infill when looking for the floor,
-    // because the floor of interior holes IS solid infill
-    for (let ln = startLayerNum - 1; ln >= 0; ln--) {
-      const layer = parser.getLayerByNumber(ln);
-      if (!layer) continue;
-
-      const { grid } = this.rasterizeLayer(ln, false);
-      // Check what % of footprint cells are filled in this layer
-      let filledCount = 0;
-      for (const idx of footprint) {
-        if (idx >= 0 && idx < grid.length && grid[idx] === 1) filledCount++;
-      }
-
-      const overlapRatio = filledCount / footprint.size;
-      if (overlapRatio >= 0.8) {
-        floorLayer = ln;
-        break;
-      }
-    }
-
-    hole.floorLayer = floorLayer;
-    if (floorLayer >= 0) {
-      const startLayer = parser.getLayerByNumber(startLayerNum);
-      const floorLayerData = parser.getLayerByNumber(floorLayer);
-      if (startLayer && floorLayerData && startLayer.zHeight != null && floorLayerData.zHeight != null) {
-        hole.depthMm = startLayer.zHeight - floorLayerData.zHeight;
-      } else {
-        hole.depthMm = null;
-      }
-    } else {
-      hole.depthMm = null; // through-hole
-    }
-
-    return hole;
-  }
-
-  _holesOverlap(h1, h2) {
-    const dx = h1.centroid.x - h2.centroid.x;
-    const dy = h1.centroid.y - h2.centroid.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const maxRadius = Math.max(h1.diameterMm, h2.diameterMm) / 2;
-    return dist < maxRadius;
-  }
-
-  async scanAllLayers(minDiameterMm, ignoreInfill, progressCb) {
-    this.scannedHoles = [];
-    this.selectedHoles = [];
-    const layers = parser.layers;
-    const uniqueHoles = [];
-
-    // Scan from top layer to bottom
-    for (let i = layers.length - 1; i >= 0; i--) {
-      const ln = layers[i].number;
-      if (progressCb) progressCb(layers.length - 1 - i, layers.length);
-
-      const layerHoles = this.detectHoles(ln, minDiameterMm, ignoreInfill);
-
-      for (const hole of layerHoles) {
-        let matched = false;
-        for (const existing of uniqueHoles) {
-          if (this._holesOverlap(existing.hole, hole)) {
-            matched = true;
-            break;
-          }
-        }
-        if (!matched) {
-          hole.topLayer = ln;
-          uniqueHoles.push({ hole, topLayer: ln });
-        }
-      }
-
-      // Yield to event loop every 5 layers to keep UI responsive
-      if (i % 5 === 0) await new Promise(r => setTimeout(r, 0));
-    }
-
-    // Analyze depth for each unique hole
-    for (const entry of uniqueHoles) {
-      this.analyzeHoleDepth(entry.hole, entry.topLayer);
-    }
-
-    this.scannedHoles = uniqueHoles.map(e => e.hole);
-    return this.scannedHoles;
-  }
-}
-
-// ===== INSERT MANAGER =====
-class InsertManager {
-  constructor() {
-    this.inserts = []; // track insert-to-modification links
-  }
-
-  clear() { this.inserts = []; }
-
-  calculatePauseLayer(hole, insertHeightMm) {
-    if (hole.floorLayer == null || hole.floorLayer < 0) return null;
-
-    const floorLayerData = parser.getLayerByNumber(hole.floorLayer);
-    if (!floorLayerData || floorLayerData.zHeight == null) return null;
-
-    const targetZ = floorLayerData.zHeight + insertHeightMm;
-
-    // Find first layer where zHeight >= targetZ
-    for (const layer of parser.layers) {
-      if (layer.zHeight != null && layer.zHeight >= targetZ) {
-        return layer.number;
-      }
-    }
-    return null; // insert taller than remaining print
-  }
-
-  createModification(hole, heightMm, diameterMm, label, pauseType, moveHead) {
-    const pauseLayer = this.calculatePauseLayer(hole, heightMm);
-    if (pauseLayer == null) return null;
-
-    const message = label
-      ? `Insert ${label} (${diameterMm}mm dia, ${heightMm}mm tall) at hole #${hole.id}`
-      : `Insert object (${diameterMm}mm dia, ${heightMm}mm tall) at hole #${hole.id}`;
-
-    const mod = modifier.addPause(pauseLayer, message, pauseType, moveHead);
-
-    this.inserts.push({
-      holeId: hole.id,
-      modId: mod.id,
-      pauseLayer,
-      heightMm,
-      diameterMm,
-      label
-    });
-
-    return { mod, pauseLayer };
-  }
-
-  applyToMultipleHoles(holes, config) {
-    const results = [];
-    for (const hole of holes) {
-      const result = this.createModification(
-        hole, config.heightMm, config.diameterMm,
-        config.label, config.pauseType, config.moveHead
-      );
-      if (result) results.push(result);
-    }
-    return results;
-  }
-}
-
-// ===== UNDO/REDO STACK =====
-class UndoStack {
-  constructor(maxSize = 50) {
-    this.stack = [];
-    this.index = -1;
-    this.maxSize = maxSize;
-  }
-
-  push(state) {
-    this.stack = this.stack.slice(0, this.index + 1);
-    this.stack.push(JSON.parse(JSON.stringify(state)));
-    if (this.stack.length > this.maxSize) this.stack.shift();
-    this.index = this.stack.length - 1;
-  }
-
-  undo() {
-    if (this.index <= 0) return null;
-    this.index--;
-    return JSON.parse(JSON.stringify(this.stack[this.index]));
-  }
-
-  redo() {
-    if (this.index >= this.stack.length - 1) return null;
-    this.index++;
-    return JSON.parse(JSON.stringify(this.stack[this.index]));
-  }
-
-  canUndo() { return this.index > 0; }
-  canRedo() { return this.index < this.stack.length - 1; }
-}
-
-// ===== FIRMWARE PROFILES =====
-const FIRMWARE = {
-  bambu: {
-    name: 'Bambu Lab',
-    pause: [
-      { value: 'M400U1', label: 'M400 U1 (Bambu)', default: true },
-      { value: 'M600', label: 'M600' },
-    ],
-    pauseHint: 'M400 U1 is recommended for Bambu Lab printers.',
-    pauseGcode: {
-      'M400U1': 'M400 U1 ; Bambu pause',
-      'M600': 'M600 ; Filament change pause',
-    },
-    filament: [
-      { value: 'M1020', label: 'M1020 (AMS)', default: true },
-      { value: 'M600', label: 'M600 (Standard)' },
-    ],
-    filamentHint: 'M1020 triggers AMS filament change with audio notification. M600 is the standard filament change command.',
-    hasAMS: true,
-    ejectHint: 'Eject commands are appended to the end of the G-code. Loop mode adds a note — true looping requires firmware support or external automation.',
-  },
-  klipper: {
-    name: 'Klipper',
-    pause: [
-      { value: 'PAUSE', label: 'PAUSE (Macro)', default: true },
-      { value: 'M600', label: 'M600' },
-      { value: 'M0', label: 'M0' },
-    ],
-    pauseHint: 'PAUSE calls the [pause_resume] macro. M600 works if defined in your printer.cfg.',
-    pauseGcode: {
-      'PAUSE': 'PAUSE ; Klipper pause macro',
-      'M600': 'M600 ; Filament change',
-      'M0': 'M0 ; Pause (unconditional stop)',
-    },
-    filament: [
-      { value: 'M600', label: 'M600', default: true },
-    ],
-    filamentHint: 'M600 must be defined as a gcode_macro in your printer.cfg. Klipper does not support M600 natively.',
-    hasAMS: false,
-    ejectHint: 'Eject commands are appended to the end of the G-code. Klipper macros can be used for automation.',
-  },
-  marlin: {
-    name: 'Marlin',
-    pause: [
-      { value: 'M0', label: 'M0 (Pause)', default: true },
-      { value: 'M600', label: 'M600 (Filament Change)' },
-      { value: 'M25', label: 'M25 (SD Pause)' },
-    ],
-    pauseHint: 'M0 pauses and waits for user input. M600 triggers the filament change routine. M25 pauses SD card prints.',
-    pauseGcode: {
-      'M0': 'M0 ; Pause (Marlin)',
-      'M600': 'M600 ; Filament change pause',
-      'M25': 'M25 ; Pause SD print',
-    },
-    filament: [
-      { value: 'M600', label: 'M600 (Standard)', default: true },
-    ],
-    filamentHint: 'M600 triggers the filament change sequence. Enable ADVANCED_PAUSE_FEATURE in Marlin configuration.',
-    hasAMS: false,
-    ejectHint: 'Eject commands are appended to the end of the G-code. Loop mode adds a note — true looping requires firmware support or external automation.',
-  },
-  rrf: {
-    name: 'RepRapFirmware',
-    pause: [
-      { value: 'M226', label: 'M226 (Pause)', default: true },
-      { value: 'M600', label: 'M600 (Filament Change)' },
-      { value: 'M0', label: 'M0 (Stop)' },
-    ],
-    pauseHint: 'M226 pauses the print and runs the pause.g macro. M0 ends the print and runs stop.g.',
-    pauseGcode: {
-      'M226': 'M226 ; Pause (RRF)',
-      'M600': 'M600 ; Filament change',
-      'M0': 'M0 ; Stop print (RRF)',
-    },
-    filament: [
-      { value: 'M600', label: 'M600 (Standard)', default: true },
-    ],
-    filamentHint: 'M600 triggers a filament change. Define the filament-change.g macro on your SD card.',
-    hasAMS: false,
-    ejectHint: 'Eject commands are appended to the end of the G-code.',
-  },
-};
-
-// ===== G-CODE REFERENCE DATA =====
-const GCODE_REFERENCE = [
-  // ── Movement ──
-  { code: 'G0', name: 'Rapid Move', category: 'Movement',
-    description: 'Move the print head as fast as possible without extruding. Used for travel moves between print areas. The printer moves all axes simultaneously to reach the target position.',
-    params: [
-      { letter: 'X', name: 'Target X position on the bed, in millimeters from the left edge', example: '100' },
-      { letter: 'Y', name: 'Target Y position on the bed, in millimeters from the front edge', example: '100' },
-      { letter: 'Z', name: 'Target Z height above the bed, in millimeters', example: '5' },
-      { letter: 'F', name: 'Movement speed in millimeters per minute (mm/min). 6000 = 100mm/s', example: '9000' },
-    ],
-    example: 'G0 F9000 ; Set travel speed to 150mm/s\nG0 X100 Y100 ; Move nozzle to center of bed\nG0 Z10 ; Raise nozzle 10mm above bed',
-    template: 'G0 X__ Y__ F9000',
-    firmware: { bambu: null, klipper: null, marlin: 'G0 and G1 behave identically in Marlin — both respect the F parameter.', reprap: null }
-  },
-  { code: 'G1', name: 'Linear Move', category: 'Movement',
-    description: 'Move the print head in a straight line at a controlled speed. This is the most common command — it does all the actual printing. When E is included, filament is pushed through the nozzle as the head moves.',
-    params: [
-      { letter: 'X', name: 'Target X position in millimeters. In absolute mode (G90), measured from bed origin. In relative mode (G91), distance to move', example: '10.5' },
-      { letter: 'Y', name: 'Target Y position in millimeters, same coordinate rules as X', example: '20.0' },
-      { letter: 'Z', name: 'Target Z height in millimeters. Typically 0.2mm per layer', example: '0.3' },
-      { letter: 'F', name: 'Speed in mm/min. Print moves are typically 600-3000 (10-50mm/s). F sticks until changed', example: '1500' },
-      { letter: 'E', name: 'Extruder position in mm of filament. In absolute mode, total since last G92 E0. In relative mode, amount to push for this move', example: '0.5' },
-    ],
-    example: '; Print a 10mm line along X axis:\nG1 X10 Y0 E0.5 F1500 ; Move 10mm right, extrude 0.5mm of filament at 25mm/s\n; Move to next layer:\nG1 Z0.4 F600 ; Raise nozzle to 0.4mm (layer 2 at 0.2mm height)\n; Retraction (pull filament back to prevent oozing):\nG1 E-1.0 F2400 ; Retract 1mm of filament at 40mm/s',
-    template: 'G1 X__ Y__ Z__ F1500 E__',
-    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
-  },
-  { code: 'G2', name: 'Clockwise Arc', category: 'Movement',
-    description: 'Move in a clockwise arc. I and J are the offsets from the current position to the center of the arc. The nozzle traces the arc from where it is now to the X,Y endpoint.',
-    params: [
-      { letter: 'X', name: 'End X position of the arc in mm', example: '10' },
-      { letter: 'Y', name: 'End Y position of the arc in mm', example: '20' },
-      { letter: 'I', name: 'X offset from current position to arc center, in mm. Positive = right of current pos', example: '5' },
-      { letter: 'J', name: 'Y offset from current position to arc center, in mm. Positive = behind current pos', example: '0' },
-      { letter: 'E', name: 'Extruder position in mm (how much filament to extrude over the arc)', example: '1.2' },
-      { letter: 'F', name: 'Speed in mm/min', example: '1200' },
-    ],
-    example: '; Draw a half circle (180\u00b0) with 5mm radius:\n; Starting at X0 Y0, center at X5 Y0, ending at X10 Y0\nG2 X10 Y0 I5 J0 F1200 E0.8\n; Draw a full circle with 10mm radius:\nG2 I10 J0 F1200 E3.14',
-    template: 'G2 X__ Y__ I__ J__ F1200',
-    firmware: { bambu: 'Bambu Lab firmware supports arc commands natively.', klipper: 'Enable arc support with [gcode_arcs] in printer.cfg.', marlin: 'Enable ARC_SUPPORT in Configuration_adv.h.', reprap: null }
-  },
-  { code: 'G3', name: 'Counter-Clockwise Arc', category: 'Movement',
-    description: 'Same as G2, but the arc goes counter-clockwise. All parameters work identically.',
-    params: [
-      { letter: 'X', name: 'End X position of the arc in mm', example: '10' },
-      { letter: 'Y', name: 'End Y position of the arc in mm', example: '20' },
-      { letter: 'I', name: 'X offset from current position to arc center, in mm', example: '5' },
-      { letter: 'J', name: 'Y offset from current position to arc center, in mm', example: '0' },
-      { letter: 'E', name: 'Extruder position in mm', example: '1.2' },
-      { letter: 'F', name: 'Speed in mm/min', example: '1200' },
-    ],
-    example: '; Counter-clockwise half circle:\nG3 X10 Y0 I5 J0 F1200 E0.8',
-    template: 'G3 X__ Y__ I__ J__ F1200',
-    firmware: { bambu: null, klipper: 'Enable arc support with [gcode_arcs] in printer.cfg.', marlin: 'Enable ARC_SUPPORT in Configuration_adv.h.', reprap: null }
-  },
-  { code: 'G28', name: 'Home Axes', category: 'Movement',
-    description: 'Move the print head to the home position (0,0,0) using the endstop switches. With no parameters, homes all three axes. You can home individual axes by specifying them.',
-    params: [
-      { letter: 'X', name: 'Home only the X axis (no value needed)', example: '' },
-      { letter: 'Y', name: 'Home only the Y axis (no value needed)', example: '' },
-      { letter: 'Z', name: 'Home only the Z axis (no value needed)', example: '' },
-    ],
-    example: 'G28 ; Home all axes (X, Y, and Z)\nG28 X Y ; Home only X and Y, leave Z where it is\nG28 Z ; Home only Z axis',
-    template: 'G28',
-    firmware: { bambu: null, klipper: 'Uses [homing_override] or [safe_z_home] if configured.', marlin: null, reprap: null }
-  },
-  { code: 'G90', name: 'Absolute Positioning', category: 'Movement',
-    description: 'Switch to absolute positioning. All X/Y/Z values in G0/G1 are measured from the bed origin (0,0,0). This is the default mode — "G1 X50" means "go to position 50mm".',
-    params: [],
-    example: 'G90 ; Switch to absolute mode\nG1 X50 Y50 ; Move to (50, 50) on the bed\nG1 X100 ; Move to X=100 (not 100mm further)',
-    template: 'G90',
-    firmware: { bambu: null, klipper: null, marlin: null, reprap: 'In RepRapFirmware, G90 also affects the extruder. Use M82/M83 to set extruder mode independently.' }
-  },
-  { code: 'G91', name: 'Relative Positioning', category: 'Movement',
-    description: 'Switch to relative (incremental) positioning. All X/Y/Z values are distances to move from the current position. "G1 X50" means "move 50mm to the right". Remember to switch back to G90 when done.',
-    params: [],
-    example: '; Lift nozzle 5mm and move aside (common pause sequence):\nG91 ; Switch to relative\nG1 Z5 F600 ; Lift nozzle 5mm\nG1 X-10 Y-10 F3000 ; Move 10mm left and 10mm forward\nG90 ; Switch back to absolute',
-    template: 'G91\nG1 Z5 F600\nG90',
-    firmware: { bambu: null, klipper: null, marlin: null, reprap: 'In RepRapFirmware, G91 also affects the extruder.' }
-  },
-  { code: 'G92', name: 'Set Position', category: 'Movement',
-    description: 'Tell the printer "you are now at this position" without actually moving. Most commonly used as G92 E0 to reset the extruder counter to zero (prevents E values from getting very large).',
-    params: [
-      { letter: 'X', name: 'Set current X position to this value (mm)', example: '0' },
-      { letter: 'Y', name: 'Set current Y position to this value (mm)', example: '0' },
-      { letter: 'Z', name: 'Set current Z position to this value (mm)', example: '0' },
-      { letter: 'E', name: 'Set current extruder position to this value (mm). E0 resets the counter', example: '0' },
-    ],
-    example: 'G92 E0 ; Reset extruder to zero (most common use)\n; After a filament change, if you need to recalibrate Z:\nG92 Z10.2 ; Tell printer current Z is 10.2mm',
-    template: 'G92 E0',
-    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
-  },
-
-  // ── Temperature ──
-  { code: 'M104', name: 'Set Hotend Temperature', category: 'Temperature',
-    description: 'Start heating the nozzle and continue immediately — does NOT wait. The printer keeps executing commands while heating. Use M109 if you need to wait for the temperature before printing.',
-    params: [
-      { letter: 'S', name: 'Target temperature in degrees Celsius (\u00b0C). Common values: PLA=200, PETG=230, ABS=250', example: '200' },
-      { letter: 'T', name: 'Extruder number (0-based) for multi-extruder printers. Default is 0', example: '0' },
-    ],
-    example: '; Start preheating while doing other things:\nM104 S200 ; Begin heating nozzle to 200\u00b0C\nG28 ; Home axes while nozzle heats up\nM109 S200 ; Now wait for it to reach 200\u00b0C',
-    template: 'M104 S200',
-    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
-  },
-  { code: 'M109', name: 'Wait for Hotend Temperature', category: 'Temperature',
-    description: 'Set the nozzle temperature and WAIT until it reaches the target before continuing. The printer will not execute any more commands until the temperature is reached. This blocks the print.',
-    params: [
-      { letter: 'S', name: 'Target temp in \u00b0C — waits for heating only (if nozzle is hotter, it does not wait to cool down)', example: '200' },
-      { letter: 'R', name: 'Target temp in \u00b0C — waits for EXACT temp (waits for both heating AND cooling)', example: '200' },
-    ],
-    example: '; Wait for PLA temperature:\nM109 S200 ; Heat to 200\u00b0C and wait\n; Wait for exact temperature (useful after switching materials):\nM109 R180 ; Wait until nozzle is exactly 180\u00b0C, even if cooling down',
-    template: 'M109 S200',
-    firmware: { bambu: null, klipper: null, marlin: 'S waits only for heating. R waits for both heating and cooling.', reprap: null }
-  },
-  { code: 'M140', name: 'Set Bed Temperature', category: 'Temperature',
-    description: 'Start heating the print bed and continue immediately — does NOT wait. Beds heat slowly (can take several minutes), so start early. Use M190 to wait.',
-    params: [
-      { letter: 'S', name: 'Target bed temperature in \u00b0C. Common values: PLA=60, PETG=70, ABS=100', example: '60' },
-    ],
-    example: '; Preheat bed early (beds are slow to heat):\nM140 S60 ; Start heating bed to 60\u00b0C\nM104 S200 ; Also start heating nozzle\nG28 ; Home while everything heats\nM190 S60 ; Now wait for bed\nM109 S200 ; Then wait for nozzle',
-    template: 'M140 S60',
-    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
-  },
-  { code: 'M190', name: 'Wait for Bed Temperature', category: 'Temperature',
-    description: 'Set the bed temperature and WAIT until reached. Can take 2-5 minutes depending on target. Usually paired with M140 for efficient preheating.',
-    params: [
-      { letter: 'S', name: 'Target bed temp in \u00b0C — waits for heating only', example: '60' },
-      { letter: 'R', name: 'Target bed temp in \u00b0C — waits for exact temp (heating or cooling)', example: '60' },
-    ],
-    example: 'M190 S60 ; Heat bed to 60\u00b0C and wait\nM190 R45 ; Wait for bed to cool to exactly 45\u00b0C',
-    template: 'M190 S60',
-    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
-  },
-  { code: 'M106', name: 'Set Fan Speed', category: 'Temperature',
-    description: 'Control the part cooling fan. The fan blows on the printed plastic to cool it quickly. Speed is 0-255 where 0=off and 255=full blast. To convert percentage: multiply by 2.55 (50% = 128).',
-    params: [
-      { letter: 'S', name: 'Fan speed from 0 (off) to 255 (100%). Examples: 64=25%, 128=50%, 191=75%, 255=100%', example: '255' },
-      { letter: 'P', name: 'Fan index for multi-fan setups. P0 = part cooling fan (default), P1/P2 = auxiliary fans', example: '0' },
-    ],
-    example: 'M106 S255 ; Fan at 100% (max cooling, good for PLA)\nM106 S128 ; Fan at 50% (good for PETG bridges)\nM106 S0 ; Fan off (same as M107)\n; For Bambu Lab auxiliary fan:\nM106 P1 S255 ; Turn on aux fan at full speed',
-    template: 'M106 S255',
-    firmware: { bambu: 'P0 = part cooling fan, P1 = auxiliary fan, P2 = chamber fan.', klipper: 'Fan must be defined as [fan] in printer.cfg. Additional fans use [fan_generic].', marlin: null, reprap: null }
-  },
-  { code: 'M107', name: 'Fan Off', category: 'Temperature',
-    description: 'Turn off the part cooling fan completely. Shortcut for M106 S0.',
-    params: [],
-    example: '; Turn fan off for first few layers (better bed adhesion):\nM107 ; Fan off\n; ... print first 3 layers ...\nM106 S255 ; Fan on for remaining layers',
-    template: 'M107',
-    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
-  },
-
-  // ── Extrusion ──
-  { code: 'M82', name: 'Absolute Extrusion', category: 'Extrusion',
-    description: 'Set the extruder to absolute mode. The E value in G1 commands is the total filament pushed since the last G92 E0 reset. Most slicers use this mode. Example: E10 means "10mm total extruded so far".',
-    params: [],
-    example: 'M82 ; Use absolute extrusion\nG92 E0 ; Reset E counter to zero\nG1 X10 E0.5 ; Extrude 0.5mm total\nG1 X20 E1.0 ; Extrude 0.5mm more (1.0 - 0.5 = 0.5mm for this move)\nG1 X30 E1.5 ; Extrude 0.5mm more (1.5 - 1.0 = 0.5mm for this move)',
-    template: 'M82',
-    firmware: { bambu: null, klipper: null, marlin: null, reprap: 'In RepRapFirmware, M82 overrides G90/G91 for the extruder axis specifically.' }
-  },
-  { code: 'M83', name: 'Relative Extrusion', category: 'Extrusion',
-    description: 'Set the extruder to relative mode. Each E value is the amount of filament to push for THAT move only. Example: E0.5 means "push 0.5mm of filament during this move". No need to track running totals.',
-    params: [],
-    example: 'M83 ; Use relative extrusion\nG1 X10 E0.5 ; Push 0.5mm of filament\nG1 X20 E0.5 ; Push another 0.5mm\nG1 E-1.0 F2400 ; Retract 1mm (negative = pull back)',
-    template: 'M83',
-    firmware: { bambu: null, klipper: 'Klipper recommends relative extrusion for better pressure advance behavior.', marlin: null, reprap: null }
-  },
-
-  // ── Print Control ──
-  { code: 'M0', name: 'Unconditional Stop', category: 'Print Control',
-    description: 'Pause the print and wait for user to press a button on the LCD/touchscreen. The printer stops all movement and waits indefinitely (or until timeout).',
-    params: [
-      { letter: 'S', name: 'Optional timeout in seconds. After this many seconds, the print resumes automatically. Omit for indefinite pause', example: '30' },
-    ],
-    example: '; Pause to insert a magnet:\nM0 ; Pause — press button on LCD to resume\n; Pause with 60 second timeout:\nM0 S60 ; Auto-resume after 60 seconds if no button press',
-    template: 'M0',
-    firmware: { bambu: 'Not recommended for Bambu Lab \u2014 use M400 U1 instead.', klipper: 'M0 is supported but PAUSE macro is preferred.', marlin: 'Requires LCD or host connection to resume.', reprap: null }
-  },
-  { code: 'M25', name: 'Pause SD Print', category: 'Print Control',
-    description: 'Pause a print that is running from the SD card or USB drive. Has no effect on prints streamed from a host computer (OctoPrint, etc.).',
-    params: [],
-    example: 'M25 ; Pause the SD card print',
-    template: 'M25',
-    firmware: { bambu: null, klipper: 'Not commonly used in Klipper \u2014 use PAUSE macro instead.', marlin: 'Only works for SD prints. For host prints, use M0 or M600.', reprap: null }
-  },
-  { code: 'M226', name: 'Wait for Pin / Pause', category: 'Print Control',
-    description: 'In RepRapFirmware, pauses the print (like pressing Pause in the web interface). In Marlin, waits for a specific pin to change state (different behavior!).',
-    params: [],
-    example: '; RepRapFirmware: Pause for manual intervention\nM226 ; Pauses print, runs pause.g macro',
-    template: 'M226',
-    firmware: { bambu: 'Not supported on Bambu Lab.', klipper: 'Not supported in Klipper \u2014 use PAUSE macro.', marlin: 'In Marlin, M226 waits for a pin state, not a pause command.', reprap: 'Primary pause command in RepRapFirmware. Runs the pause.g macro.' }
-  },
-  { code: 'M600', name: 'Filament Change', category: 'Print Control',
-    description: 'Initiate a filament change sequence. The printer will: 1) retract filament, 2) move the nozzle out of the way, 3) wait for you to swap filament, 4) prime the new filament, 5) resume printing.',
-    params: [
-      { letter: 'E', name: 'Initial retraction length in mm (how much to pull back before parking). Default varies by firmware', example: '3' },
-      { letter: 'L', name: 'Filament load length in mm (how much to push when loading new filament)', example: '50' },
-      { letter: 'X', name: 'Park X position in mm (where the nozzle moves to during change)', example: '10' },
-      { letter: 'Y', name: 'Park Y position in mm', example: '10' },
-      { letter: 'Z', name: 'Z lift in mm (how much to raise nozzle above print)', example: '5' },
-    ],
-    example: '; Basic filament change (uses firmware defaults):\nM600 ; Retract, park, wait for user, reload, resume\n; Filament change with custom park position:\nM600 X10 Y10 Z5 ; Park at front-left corner, lift 5mm\n; With custom retract and load lengths:\nM600 E4 L80 ; Retract 4mm, load 80mm of new filament',
-    template: 'M600',
-    firmware: { bambu: 'Supported but M1020 is preferred for AMS filament changes.', klipper: 'Must be defined as a [gcode_macro M600] in printer.cfg.', marlin: 'Requires ADVANCED_PAUSE_FEATURE enabled in Configuration_adv.h.', reprap: 'Runs the filament-change.g macro file.' }
-  },
-  { code: 'M400', name: 'Wait for Moves to Finish', category: 'Print Control',
-    description: 'Wait until all buffered movement commands have finished executing. The printer buffers ahead for smooth motion — M400 forces it to fully catch up. Use before pauses or temperature changes.',
-    params: [],
-    example: '; Ensure nozzle is in position before pausing:\nG1 X50 Y50 F3000 ; Move to center\nM400 ; Wait for move to actually complete\nM0 ; Now pause (nozzle is definitely at 50,50)',
-    template: 'M400',
-    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
-  },
-  { code: 'M400 U1', name: 'Bambu Lab Pause', category: 'Print Control',
-    description: 'Bambu Lab-specific pause. Shows a pop-up dialog on the touchscreen with an audio alert. This is the recommended pause method for all Bambu Lab printers (X1, P1, A1 series).',
-    params: [],
-    example: '; Pause for insert placement on Bambu Lab:\nG91 ; Relative mode\nG1 Z5 F600 ; Lift nozzle 5mm\nG90 ; Absolute mode\nG1 X5 Y5 F6000 ; Move to front corner\nM400 U1 ; Show pause dialog on touchscreen',
-    template: 'M400 U1',
-    firmware: { bambu: 'Recommended pause command for all Bambu Lab printers.', klipper: 'Not supported \u2014 use PAUSE macro instead.', marlin: 'Not supported \u2014 use M0 or M600.', reprap: 'Not supported \u2014 use M226.' }
-  },
-  { code: 'PAUSE', name: 'Klipper Pause Macro', category: 'Print Control',
-    description: 'Klipper-specific pause macro. Behavior (park position, retraction amount, speed) is defined in your printer.cfg. Much more customizable than M0.',
-    params: [],
-    example: '; Simple Klipper pause:\nPAUSE ; Runs your configured pause sequence\n; To resume, use RESUME command or UI button',
-    template: 'PAUSE',
-    firmware: { bambu: 'Not supported \u2014 use M400 U1.', klipper: 'Requires [pause_resume] in printer.cfg. Customize with gcode_macro.', marlin: 'Not supported \u2014 use M0 or M600.', reprap: 'Not supported \u2014 use M226.' }
-  },
-
-  // ── Calibration & Leveling ──
-  { code: 'G29', name: 'Auto Bed Leveling', category: 'Calibration & Leveling',
-    description: 'Probe multiple points across the bed to create a mesh that compensates for an uneven surface. The probe measures the distance at each point and the firmware adjusts Z during printing. Always home (G28) first.',
-    params: [],
-    example: '; Typical bed leveling sequence:\nG28 ; Home all axes first (required!)\nG29 ; Probe the bed and create mesh\n; The mesh is now active — Z will auto-adjust during printing',
-    template: 'G28\nG29',
-    firmware: { bambu: 'Bambu Lab printers auto-level before each print. Manual G29 is not typically needed.', klipper: 'Use BED_MESH_CALIBRATE instead. G29 is not a native Klipper command.', marlin: 'Requires a probe (BLTouch, inductive, etc.) and AUTO_BED_LEVELING enabled.', reprap: 'Runs the bed.g macro to probe the bed.' }
-  },
-  { code: 'M48', name: 'Probe Repeatability Test', category: 'Calibration & Leveling',
-    description: 'Test your Z-probe accuracy by probing the same spot multiple times. Reports the standard deviation — lower is better. A good probe should be under 0.01mm.',
-    params: [
-      { letter: 'P', name: 'Number of times to probe (more = more accurate test). Default is usually 10', example: '10' },
-    ],
-    example: '; Test probe accuracy with 10 samples:\nG28 ; Home first\nM48 P10 ; Probe 10 times, report std deviation\n; Good result: StdDev < 0.01mm\n; Bad result: StdDev > 0.03mm (probe needs adjustment)',
-    template: 'M48 P10',
-    firmware: { bambu: null, klipper: 'Use PROBE_ACCURACY command instead.', marlin: 'Requires Z_MIN_PROBE_REPEATABILITY_TEST enabled.', reprap: null }
-  },
-  { code: 'M500', name: 'Save Settings to EEPROM', category: 'Calibration & Leveling',
-    description: 'Save current settings (steps/mm, PID values, Z-offset, acceleration, etc.) to permanent memory. Settings survive power cycles. Use after calibration so you don\'t have to recalibrate every time.',
-    params: [],
-    example: '; After PID tuning, save the results:\nM303 S200 E0 C8 ; Run PID autotune\nM301 P22.2 I1.08 D114.0 ; Apply the values\nM500 ; Save to EEPROM (survives power off)',
-    template: 'M500',
-    firmware: { bambu: null, klipper: 'Klipper uses SAVE_CONFIG instead of M500.', marlin: 'Requires EEPROM_SETTINGS enabled in Configuration.h.', reprap: 'Saves to config-override.g.' }
-  },
-  { code: 'M501', name: 'Load Settings from EEPROM', category: 'Calibration & Leveling',
-    description: 'Load previously saved settings from EEPROM, overriding anything changed since boot. Useful to undo accidental changes without restarting.',
-    params: [],
-    example: '; Oops, changed acceleration wrong — reload saved settings:\nM501 ; Restore all saved values from EEPROM',
-    template: 'M501',
-    firmware: { bambu: null, klipper: 'Not applicable \u2014 Klipper reads printer.cfg at startup.', marlin: null, reprap: 'Runs config-override.g.' }
-  },
-  { code: 'M503', name: 'Report Settings', category: 'Calibration & Leveling',
-    description: 'Print all current firmware settings to the serial console. Handy for checking your steps/mm, PID values, max speeds, and other config without opening firmware files.',
-    params: [],
-    example: 'M503 ; Dump all settings to console\n; Look for lines like:\n;   M92 X80 Y80 Z400 E93 (steps/mm)\n;   M301 P22.2 I1.08 D114 (PID values)',
-    template: 'M503',
-    firmware: { bambu: null, klipper: 'Not applicable \u2014 settings are in printer.cfg.', marlin: null, reprap: null }
-  },
-
-  // ── Stepper & Motion ──
-  { code: 'M84', name: 'Disable Steppers', category: 'Stepper & Motion',
-    description: 'Turn off the stepper motors so the print head and bed can be moved by hand. Usually the last command in a print file. Caution: the nozzle will drop if Z is disabled while raised.',
-    params: [
-      { letter: 'S', name: 'Idle timeout in seconds — steppers auto-disable after this many seconds of inactivity', example: '120' },
-    ],
-    example: 'M84 ; Disable all steppers immediately\nM84 S120 ; Auto-disable after 120 seconds of idle',
-    template: 'M84',
-    firmware: { bambu: null, klipper: null, marlin: 'Also accessible as M18.', reprap: null }
-  },
-  { code: 'M201', name: 'Set Max Acceleration', category: 'Stepper & Motion',
-    description: 'Set the maximum allowed acceleration for each axis. Higher = faster direction changes but more vibration/ringing. Units are mm/s\u00b2 (millimeters per second squared).',
-    params: [
-      { letter: 'X', name: 'X axis max acceleration in mm/s\u00b2. Typical: 500-3000', example: '1000' },
-      { letter: 'Y', name: 'Y axis max acceleration in mm/s\u00b2. Usually same as X', example: '1000' },
-      { letter: 'Z', name: 'Z axis max acceleration in mm/s\u00b2. Usually low (50-200) since Z moves are slow', example: '100' },
-      { letter: 'E', name: 'Extruder max acceleration in mm/s\u00b2. Typical: 1000-10000', example: '5000' },
-    ],
-    example: '; Reduce acceleration for better print quality:\nM201 X500 Y500 ; Halve XY accel (less ringing)\n; Increase for speed:\nM201 X3000 Y3000 ; Higher accel (faster but may ring)',
-    template: 'M201 X1000 Y1000 Z100 E5000',
-    firmware: { bambu: null, klipper: 'Use SET_VELOCITY_LIMIT ACCEL=value instead.', marlin: null, reprap: null }
-  },
-  { code: 'M203', name: 'Set Max Feedrate', category: 'Stepper & Motion',
-    description: 'Set the absolute maximum speed for each axis. The printer will never exceed these speeds even if the G-code requests faster. Units are mm/s (millimeters per second).',
-    params: [
-      { letter: 'X', name: 'X max speed in mm/s. Typical: 150-500', example: '200' },
-      { letter: 'Y', name: 'Y max speed in mm/s. Usually same as X', example: '200' },
-      { letter: 'Z', name: 'Z max speed in mm/s. Usually 5-20 (Z is slow)', example: '5' },
-      { letter: 'E', name: 'Extruder max speed in mm/s. Typical: 25-100', example: '50' },
-    ],
-    example: '; Cap speeds for quiet printing:\nM203 X100 Y100 ; Limit to 100mm/s\n; Increase Z speed for faster layer changes:\nM203 Z10 ; Allow Z to move at 10mm/s',
-    template: 'M203 X200 Y200 Z5 E50',
-    firmware: { bambu: null, klipper: 'Use SET_VELOCITY_LIMIT VELOCITY=value instead.', marlin: null, reprap: null }
-  },
-  { code: 'M204', name: 'Set Default Acceleration', category: 'Stepper & Motion',
-    description: 'Set the default acceleration used for different types of moves. Print moves are slower (better quality), travel moves are faster (save time), retract can be fastest.',
-    params: [
-      { letter: 'P', name: 'Print move acceleration in mm/s\u00b2. Used when extruding. Typical: 500-2000', example: '1000' },
-      { letter: 'T', name: 'Travel move acceleration in mm/s\u00b2. Used for non-printing moves. Typical: 1000-5000', example: '2000' },
-      { letter: 'R', name: 'Retraction acceleration in mm/s\u00b2. Used for E-only moves. Typical: 1000-5000', example: '3000' },
-    ],
-    example: '; Slow down printing acceleration for quality:\nM204 P800 T2000 ; Gentle prints, fast travels\n; Speed up for draft prints:\nM204 P2000 T5000 ; Aggressive acceleration',
-    template: 'M204 P1000 T2000',
-    firmware: { bambu: null, klipper: 'Use SET_VELOCITY_LIMIT ACCEL=value. Klipper uses a single acceleration value.', marlin: null, reprap: null }
-  },
-  { code: 'M205', name: 'Set Jerk / Junction Deviation', category: 'Stepper & Motion',
-    description: 'Set jerk limits — the maximum speed the printer can instantly change direction at. Lower values = smoother prints but slower corners. Higher values = faster corners but more vibration.',
-    params: [
-      { letter: 'X', name: 'X jerk in mm/s — max instant speed change for X axis. Typical: 5-15', example: '8' },
-      { letter: 'Y', name: 'Y jerk in mm/s. Usually same as X', example: '8' },
-      { letter: 'Z', name: 'Z jerk in mm/s. Usually very low (0.2-0.5)', example: '0.4' },
-      { letter: 'E', name: 'Extruder jerk in mm/s. Typical: 2-10', example: '5' },
-      { letter: 'J', name: 'Junction deviation in mm (modern alternative to jerk). Typical: 0.01-0.02', example: '0.013' },
-    ],
-    example: '; Reduce jerk for quieter, smoother printing:\nM205 X5 Y5 ; Lower jerk = less vibration\n; Increase for speed (may cause ringing):\nM205 X12 Y12 ; Higher jerk = faster corners',
-    template: 'M205 X8 Y8 Z0.4 E5',
-    firmware: { bambu: null, klipper: 'Klipper uses square_corner_velocity in printer.cfg instead of jerk.', marlin: 'J parameter enables Junction Deviation mode (alternative to classic jerk).', reprap: 'RepRapFirmware uses M566 for jerk settings, not M205.' }
-  },
-  { code: 'M220', name: 'Set Speed Factor', category: 'Stepper & Motion',
-    description: 'Override ALL print speeds as a percentage. Like the speed dial on your printer. 100% = normal, 50% = half speed, 200% = double speed. Useful for slowing down tricky sections mid-print.',
-    params: [
-      { letter: 'S', name: 'Speed as a percentage. 100 = normal speed. Range: 10-999', example: '100' },
-    ],
-    example: 'M220 S50 ; Half speed (50%) — for tricky overhangs\nM220 S100 ; Back to normal speed\nM220 S150 ; 50% faster than normal',
-    template: 'M220 S100',
-    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
-  },
-  { code: 'M221', name: 'Set Flow Rate', category: 'Stepper & Motion',
-    description: 'Override the extrusion flow rate as a percentage. Adjusts how much plastic comes out. Useful for fine-tuning: 95% if over-extruding, 105% if under-extruding.',
-    params: [
-      { letter: 'S', name: 'Flow as a percentage. 100 = normal flow. Common adjustments: 90-110', example: '100' },
-    ],
-    example: 'M221 S95 ; Reduce flow to 95% (fixing slight over-extrusion)\nM221 S100 ; Back to normal flow\nM221 S105 ; Increase flow to 105% (filling gaps)',
-    template: 'M221 S100',
-    firmware: { bambu: null, klipper: 'Use SET_PRESSURE_ADVANCE for flow tuning instead.', marlin: null, reprap: null }
-  },
-
-  // ── Filament & Material ──
-  { code: 'M1020', name: 'Bambu AMS Filament Change', category: 'Filament & Material',
-    description: 'Bambu Lab-specific command to switch which filament the AMS (Automatic Material System) feeds. The AMS has 4 slots numbered 0-3. Plays an audio notification when changing.',
-    params: [
-      { letter: 'S', name: 'AMS slot number (0-3). S0 = Slot 1, S1 = Slot 2, S2 = Slot 3, S3 = Slot 4', example: '1' },
-    ],
-    example: '; Switch to second AMS slot (red filament):\nM1020 S1 ; Load from AMS slot 2\n; Switch back to first slot (white filament):\nM1020 S0 ; Load from AMS slot 1',
-    template: 'M1020 S0',
-    firmware: { bambu: 'Primary AMS filament change command. Slots: S0=slot 1, S1=slot 2, S2=slot 3, S3=slot 4.', klipper: 'Not supported \u2014 Bambu Lab specific.', marlin: 'Not supported \u2014 Bambu Lab specific.', reprap: 'Not supported \u2014 Bambu Lab specific.' }
-  },
-  { code: 'T0', name: 'Select Extruder', category: 'Filament & Material',
-    description: 'Select which extruder to use on multi-extruder printers. T0 = first extruder, T1 = second, T2 = third, etc. Used for dual-color or multi-material printing.',
-    params: [],
-    example: '; Switch between extruders for dual-color print:\nT0 ; Use first extruder (e.g., white PLA)\nG1 X50 Y50 E10 ; Print with extruder 0\nT1 ; Switch to second extruder (e.g., black PLA)\nG1 X60 Y50 E10 ; Print with extruder 1',
-    template: 'T0',
-    firmware: { bambu: 'Bambu Lab uses T commands internally with AMS.', klipper: 'Requires [extruder] and [extruder1] etc. in printer.cfg.', marlin: 'Requires EXTRUDERS > 1 in Configuration.h.', reprap: 'Runs the tool-change macro (tpre0.g, tpost0.g, tfree0.g).' }
-  },
-
-  // ── Display & Communication ──
-  { code: 'M117', name: 'Set LCD Message', category: 'Display & Communication',
-    description: 'Display a custom message on the printer\'s LCD/touchscreen. Great for showing layer count, time remaining, or reminders. The message stays until replaced by another M117.',
-    params: [
-      { letter: '', name: 'Message text — everything after "M117 " is displayed. No quotes needed', example: 'Layer 50 of 200' },
-    ],
-    example: 'M117 Printing base layers ; Show status\nM117 Insert magnet NOW! ; Show reminder\nM117 ; Clear the message (empty)',
-    template: 'M117 Your message here',
-    firmware: { bambu: 'May not display on Bambu Lab touchscreen.', klipper: 'Requires [display] in printer.cfg. Also supports SET_DISPLAY_TEXT.', marlin: null, reprap: 'Displays on PanelDue or web interface.' }
-  },
-  { code: 'M118', name: 'Serial Message', category: 'Display & Communication',
-    description: 'Send a text message to the connected host software (OctoPrint, Mainsail, Pronterface, etc.). Useful for logging, triggering plugins, or debugging G-code scripts.',
-    params: [
-      { letter: '', name: 'Message text — sent to the host over serial/USB', example: 'Print checkpoint reached' },
-    ],
-    example: 'M118 Starting layer 50 ; Log message to host\nM118 Filament change needed ; Alert the host software',
-    template: 'M118 Message here',
-    firmware: { bambu: null, klipper: 'Use RESPOND MSG="text" for Klipper host messaging.', marlin: null, reprap: null }
-  },
-  { code: 'M73', name: 'Set Print Progress', category: 'Display & Communication',
-    description: 'Tell the printer how far along the print is (percentage) and estimated time remaining. Slicers usually insert these automatically. The printer displays this info on the LCD.',
-    params: [
-      { letter: 'P', name: 'Progress percentage, 0 to 100', example: '50' },
-      { letter: 'R', name: 'Remaining time in minutes. 30 = about 30 minutes left', example: '30' },
-    ],
-    example: 'M73 P0 R120 ; 0% done, about 2 hours remaining\nM73 P50 R60 ; 50% done, about 1 hour left\nM73 P100 R0 ; 100% complete',
-    template: 'M73 P__ R__',
-    firmware: { bambu: 'Bambu Lab uses this to display progress on the touchscreen.', klipper: 'Supported with [display] and SET_DISPLAY_TEXT.', marlin: 'Requires SET_PROGRESS_MANUALLY enabled.', reprap: null }
-  },
-
-  // ── PID & Advanced ──
-  { code: 'M303', name: 'PID Autotune', category: 'PID & Advanced',
-    description: 'Automatically calibrate the PID temperature control for the hotend or bed. The printer cycles the heater on and off, measures the response, and calculates optimal P/I/D values for stable temperature.',
-    params: [
-      { letter: 'S', name: 'Target temperature in \u00b0C to tune at. Use your normal printing temp (e.g., 200 for PLA)', example: '200' },
-      { letter: 'E', name: 'Heater index: 0 = hotend (default), -1 = heated bed', example: '0' },
-      { letter: 'C', name: 'Number of heating cycles. More cycles = more accurate. 5-10 recommended', example: '8' },
-    ],
-    example: '; Tune hotend PID at 200\u00b0C:\nM303 S200 E0 C8 ; 8 cycles at 200\u00b0C\n; Printer will output values like: Kp=22.2 Ki=1.08 Kd=114.0\n; Apply them: M301 P22.2 I1.08 D114.0\n; Save: M500\n\n; Tune bed PID at 60\u00b0C:\nM303 S60 E-1 C8 ; E-1 = bed heater',
-    template: 'M303 S200 E0 C8',
-    firmware: { bambu: 'Bambu Lab printers have factory-tuned PID. Manual tuning is not recommended.', klipper: 'Use PID_CALIBRATE HEATER=extruder TARGET=200 instead.', marlin: 'After tuning, apply values with M301 (hotend) or M304 (bed), then M500 to save.', reprap: 'Use M303 H1 S200 for the hotend heater.' }
-  },
-  { code: 'M301', name: 'Set Hotend PID', category: 'PID & Advanced',
-    description: 'Set the PID control parameters for the hotend heater. These values determine how accurately the nozzle holds temperature. Get values from M303 autotune. Save with M500.',
-    params: [
-      { letter: 'P', name: 'Proportional gain (Kp) — how aggressively to heat. Higher = faster response but may overshoot', example: '22.2' },
-      { letter: 'I', name: 'Integral gain (Ki) — corrects long-term drift. Too high = oscillation', example: '1.08' },
-      { letter: 'D', name: 'Derivative gain (Kd) — dampens overshoot. Higher = smoother but slower', example: '114.0' },
-    ],
-    example: '; Apply PID values from autotune:\nM301 P22.2 I1.08 D114.0\nM500 ; Save to EEPROM so they survive reboot',
-    template: 'M301 P__ I__ D__',
-    firmware: { bambu: 'Not user-configurable on Bambu Lab.', klipper: 'PID values are set in printer.cfg under [extruder] section.', marlin: 'Save to EEPROM with M500 after setting.', reprap: 'Use M307 for heater model tuning instead.' }
-  },
-  { code: 'M304', name: 'Set Bed PID', category: 'PID & Advanced',
-    description: 'Set PID parameters for the heated bed. Same concept as M301 but for the bed heater. Bed PID values are typically very different from hotend values because beds are much larger and slower.',
-    params: [
-      { letter: 'P', name: 'Proportional gain (Kp). Bed values are usually much higher than hotend (100-400)', example: '70.3' },
-      { letter: 'I', name: 'Integral gain (Ki)', example: '1.6' },
-      { letter: 'D', name: 'Derivative gain (Kd)', example: '350.0' },
-    ],
-    example: '; Apply bed PID values from M303 autotune:\nM304 P70.3 I1.6 D350.0\nM500 ; Save to EEPROM',
-    template: 'M304 P__ I__ D__',
-    firmware: { bambu: 'Not user-configurable on Bambu Lab.', klipper: 'PID values are set in printer.cfg under [heater_bed] section.', marlin: null, reprap: 'Use M307 for heater model tuning instead.' }
-  },
-];
-
-let currentFirmware = 'bambu';
-
-function onFirmwareChange(fw) {
-  currentFirmware = fw;
-  const profile = FIRMWARE[fw];
-
-  // Update pause radio buttons (main pause tab)
-  renderRadioGroup('pauseTypeGroup', 'pauseType', profile.pause);
-  document.getElementById('pauseHint').textContent = profile.pauseHint;
-
-  // Update insert pause radio buttons
-  renderRadioGroup('insertPauseTypeGroup', 'insertPauseType', profile.pause);
-
-  // Update filament command dropdown
-  const filamentCmd = document.getElementById('filamentCmd');
-  filamentCmd.innerHTML = profile.filament.map(f =>
-    `<option value="${f.value}"${f.default ? ' selected' : ''}>${f.label}</option>`
-  ).join('');
-  document.getElementById('filamentHint').textContent = profile.filamentHint;
-
-  // Show/hide AMS slot selector
-  document.getElementById('filamentSlotGroup').style.display = profile.hasAMS ? '' : 'none';
-
-  // Update eject hint
-  document.getElementById('ejectHint').textContent = profile.ejectHint;
-
-  // Update reference tab if rendered
-  if (document.getElementById('refContent').children.length > 0) renderReference();
-}
-
-function renderRadioGroup(containerId, radioName, options) {
-  const container = document.getElementById(containerId);
-  container.innerHTML = options.map((opt, i) => {
-    const id = `${radioName}_${i}`;
-    return `<div class="radio-opt"><input type="radio" name="${radioName}" id="${id}" value="${opt.value}"${opt.default ? ' checked' : ''}><label for="${id}">${opt.label}</label></div>`;
-  }).join('');
-}
-
-// ===== APP STATE =====
-const parser = new GcodeParser();
-const modifier = new GcodeModifier();
-const holeDetector = new HoleDetector();
-const insertManager = new InsertManager();
-const undoStack = new UndoStack();
-let selectedLayer = null;
-let holeDetectMode = false;
-let measureMode = false;
-let measurePoints = [];
-
-function toggleMeasureMode() {
-  measureMode = !measureMode;
-  measurePoints = [];
-  document.getElementById('measureToggle').classList.toggle('active', measureMode);
-  document.getElementById('viewerCanvas').style.cursor = measureMode ? 'crosshair' : '';
-  if (currentView === 'visual') viewer.render(viewer.currentLayer);
-}
-
-
-// Initialize firmware UI
-onFirmwareChange('bambu');
-
-// ===== FILE HANDLING =====
-const dropZone = document.getElementById('dropZone');
-const fileInput = document.getElementById('fileInput');
-
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.classList.remove('dragover');
-  const file = e.dataTransfer.files[0];
-  if (file) loadFile(file);
-});
-fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
-
-// ===== ONBOARDING HINTS =====
-const onboardState = JSON.parse(localStorage.getItem('gcode_onboard') || '{}');
-
-function showOnboardHint(key, targetId, text) {
-  if (onboardState[key]) return;
-  const target = document.getElementById(targetId);
-  if (!target) return;
-  const hint = document.createElement('div');
-  hint.className = 'onboard-hint below';
-  hint.textContent = text;
-  const dismiss = () => {
-    hint.style.transition = 'opacity .3s';
-    hint.style.opacity = '0';
-    setTimeout(() => hint.remove(), 300);
-    onboardState[key] = true;
-    localStorage.setItem('gcode_onboard', JSON.stringify(onboardState));
-  };
-  hint.onclick = dismiss;
-  target.style.position = 'relative';
-  target.appendChild(hint);
-  setTimeout(dismiss, 5000);
-}
-
-if (!onboardState.dropzone) {
-  setTimeout(() => showOnboardHint('dropzone', 'dropZone', 'Drop a .gcode or .bgcode file here to get started'), 500);
-}
-
-// ===== BGCODE DECODER =====
-
-// CRC32 lookup table and function
-const crc32Table = (() => {
-  const t = new Uint32Array(256);
-  for (let i = 0; i < 256; i++) {
-    let c = i;
-    for (let j = 0; j < 8; j++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-    t[i] = c;
-  }
-  return t;
-})();
-function crc32(buf) {
-  let c = 0xFFFFFFFF;
-  for (let i = 0; i < buf.length; i++) c = crc32Table[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
-  return (c ^ 0xFFFFFFFF) >>> 0;
-}
-
-// Heatshrink decoder
-function heatshrinkDecode(input, windowBits, lookaheadBits, outputSize) {
-  const windowSize = 1 << windowBits;
-  const lookaheadSize = 1 << lookaheadBits;
-  const indexBits = windowBits;
-  const backrefCountBits = lookaheadBits;
-  const ringBuf = new Uint8Array(windowSize);
-  const output = new Uint8Array(outputSize);
-  let ringPos = 0, outPos = 0;
-
-  // Bit reader
-  let bitPos = 0, bytePos = 0;
-  function bitsAvail() { return (input.length - bytePos) * 8 - bitPos; }
-  function readBits(count) {
-    let val = 0;
-    for (let i = 0; i < count; i++) {
-      if (bytePos >= input.length) return -1;
-      val = (val << 1) | ((input[bytePos] >> (7 - bitPos)) & 1);
-      bitPos++;
-      if (bitPos === 8) { bitPos = 0; bytePos++; }
-    }
-    return val;
-  }
-
-  while (outPos < outputSize) {
-    if (bitsAvail() < 1) break;
-    const tag = readBits(1);
-    if (tag === 1) {
-      // Literal byte
-      if (bitsAvail() < 8) break;
-      const byte = readBits(8);
-      ringBuf[ringPos & (windowSize - 1)] = byte;
-      ringPos++;
-      output[outPos++] = byte;
-    } else {
-      // Backref
-      if (bitsAvail() < indexBits + backrefCountBits) break;
-      const index = readBits(indexBits) + 1;
-      const count = readBits(backrefCountBits) + 1;
-      for (let i = 0; i < count; i++) {
-        const byte = ringBuf[(ringPos - index) & (windowSize - 1)];
-        ringBuf[ringPos & (windowSize - 1)] = byte;
-        ringPos++;
-        output[outPos++] = byte;
-        if (outPos >= outputSize) break;
-      }
-    }
-  }
-  return output;
-}
-
-// Deflate decoder (browser-native)
-async function deflateDecode(input, outputSize) {
-  const ds = new DecompressionStream('deflate-raw');
-  const writer = ds.writable.getWriter();
-  const reader = ds.readable.getReader();
-  const chunks = [];
-  let totalLen = 0;
-  const readAll = (async () => {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      totalLen += value.length;
-    }
-  })();
-  writer.write(input);
-  writer.close();
-  await readAll;
-  const result = new Uint8Array(totalLen);
-  let off = 0;
-  for (const c of chunks) { result.set(c, off); off += c.length; }
-  return result;
-}
-
-// MeatPack decoder (matches libbgcode unbinarize)
-function meatpackDecode(input) {
-  const CMD_SIGNAL = 0xFF;
-  const CMD_ENABLE  = 0xFB;  // EnablePacking
-  const CMD_DISABLE = 0xFA;  // DisablePacking
-  const CMD_NOSPACE_ON  = 0xF7;
-  const CMD_NOSPACE_OFF = 0xF6;
-  const CMD_RESET   = 0xF9;
-  const GLINE_PARAMS = new Set([88,89,90,69,70,73,74,82,83,71,80,87,72,67,65]); // X Y Z E F I J R S G P W H C A
-
-  let packing = false, noSpaces = false;
-  let cmdCount = 0, cmdActive = false;
-  let fullCharQueue = 0, charBuf = 0;
-  const output = [];
-  let lastChar = 0, addSpace = false;
-
-  function getChar(nibble) {
-    if (nibble <= 9) return 0x30 + nibble; // '0'-'9'
-    if (nibble === 0xA) return 0x2E; // '.'
-    if (nibble === 0xB) return noSpaces ? 0x45 : 0x20; // 'E' or ' '
-    if (nibble === 0xC) return 0x0A; // '\n'
-    if (nibble === 0xD) return 0x47; // 'G'
-    if (nibble === 0xE) return 0x58; // 'X'
-    return 0; // 0xF = escape marker
-  }
-
-  function emit(ch) {
-    // Suppress duplicate newlines
-    if (ch === 0x0A && lastChar === 0x0A) return;
-    // Insert spaces on G-lines between parameters
-    if (ch === 0x47 && (output.length === 0 || lastChar === 0x0A)) {
-      addSpace = true;
-    } else if (ch === 0x0A) {
-      addSpace = false;
-    } else if (addSpace && lastChar !== 0x20 && GLINE_PARAMS.has(ch)) {
-      output.push(0x20);
-      lastChar = 0x20;
-    }
-    output.push(ch);
-    lastChar = ch;
-  }
-
-  function handleCommand(c) {
-    if (c === CMD_ENABLE)  packing = true;
-    else if (c === CMD_DISABLE) packing = false;
-    else if (c === CMD_NOSPACE_ON) noSpaces = true;
-    else if (c === CMD_NOSPACE_OFF) noSpaces = false;
-    else if (c === CMD_RESET) { packing = false; noSpaces = false; }
-  }
-
-  function handleRxChar(c) {
-    if (packing) {
-      if (fullCharQueue > 0) {
-        emit(c);
-        if (charBuf > 0) { emit(charBuf); charBuf = 0; }
-        fullCharQueue--;
-      } else {
-        const lo = c & 0x0F;
-        const hi = (c >> 4) & 0x0F;
-        const loEsc = (lo === 0x0F);
-        const hiEsc = (hi === 0x0F);
-        if (loEsc) {
-          fullCharQueue++;
-          if (hiEsc) fullCharQueue++;
-          else charBuf = getChar(hi);
-        } else {
-          const ch0 = getChar(lo);
-          emit(ch0);
-          if (ch0 !== 0x0A) { // If first char is newline, skip second
-            if (hiEsc) fullCharQueue++;
-            else emit(getChar(hi));
-          }
-        }
-      }
-    } else {
-      emit(c); // passthrough
-    }
-  }
-
-  for (let i = 0; i < input.length; i++) {
-    const c = input[i];
-    if (c === CMD_SIGNAL) {
-      if (cmdCount > 0) { cmdActive = true; cmdCount = 0; }
-      else cmdCount++;
-    } else {
-      if (cmdActive) { handleCommand(c); cmdActive = false; }
-      else {
-        if (cmdCount > 0) { handleRxChar(CMD_SIGNAL); cmdCount = 0; }
-        handleRxChar(c);
-      }
-    }
-  }
-  return new Uint8Array(output);
-}
-
-// Block parser and orchestrator
-async function decodeBgcode(arrayBuffer) {
-  const view = new DataView(arrayBuffer);
-  const bytes = new Uint8Array(arrayBuffer);
-
-  // File header (10 bytes)
-  const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
-  if (magic !== 'GCDE') throw new Error('Not a valid bgcode file (bad magic)');
-  const version = view.getUint32(4, true);
-  const checksumType = view.getUint16(8, true); // 0=None, 1=CRC32
-
-  const progressEl = document.getElementById('parseProgress');
-  const barEl = document.getElementById('parseBar');
-  const labelEl = document.getElementById('parseLabel');
-  progressEl.style.display = '';
-  labelEl.textContent = 'Decoding binary G-code...';
-  barEl.style.width = '0%';
-
-  const gcodeChunks = [];
-  let offset = 10;
-  let blockIndex = 0;
-  const fileSize = arrayBuffer.byteLength;
-
-  while (offset < fileSize - 4) {
-    if (offset + 8 > fileSize) break;
-    const blockStart = offset;
-
-    // Block header
-    const blockType = view.getUint16(offset, true);
-    const compression = view.getUint16(offset + 2, true);
-    const uncompressedSize = view.getUint32(offset + 4, true);
-    offset += 8;
-
-    let compressedSize = uncompressedSize;
-    if (compression !== 0) {
-      compressedSize = view.getUint32(offset, true);
-      offset += 4;
-    }
-
-    // Block params (Thumbnail=6 bytes, others=2 bytes)
-    let encoding = 0;
-    if (blockType === 5) { // Thumbnail
-      offset += 6; // format + width + height
-    } else {
-      encoding = view.getUint16(offset, true);
-      offset += 2;
-    }
-
-    const dataSize = compression !== 0 ? compressedSize : uncompressedSize;
-    const blockData = bytes.subarray(offset, offset + dataSize);
-    offset += dataSize;
-
-    // CRC32 verification (covers header + params + data)
-    if (checksumType === 1) {
-      const storedCrc = view.getUint32(offset, true);
-      offset += 4;
-      if (blockType === 1) {
-        const computedCrc = crc32(bytes.subarray(blockStart, offset - 4));
-        if (computedCrc !== storedCrc) {
-          console.warn(`CRC32 mismatch in GCode block ${blockIndex}: expected ${storedCrc.toString(16)}, got ${computedCrc.toString(16)}`);
-        }
-      }
-    }
-
-    // Only process GCode blocks (type 1)
-    if (blockType !== 1) { blockIndex++; continue; }
-
-    // Decompress
-    let decompressed;
-    if (compression === 0) {
-      decompressed = blockData;
-    } else if (compression === 1) { // Deflate
-      decompressed = await deflateDecode(blockData, uncompressedSize);
-    } else if (compression === 2) { // Heatshrink 11,4
-      decompressed = heatshrinkDecode(blockData, 11, 4, uncompressedSize);
-    } else if (compression === 3) { // Heatshrink 12,4
-      decompressed = heatshrinkDecode(blockData, 12, 4, uncompressedSize);
-    } else {
-      throw new Error('Unknown compression type: ' + compression);
-    }
-
-    // Decode MeatPack
-    let decoded;
-    if (encoding === 0) {
-      decoded = decompressed;
-    } else if (encoding === 1 || encoding === 2) { // MeatPack / MeatPackComments
-      decoded = meatpackDecode(decompressed);
-    } else {
-      throw new Error('Unknown encoding type: ' + encoding);
-    }
-
-    gcodeChunks.push(decoded);
-    blockIndex++;
-
-    // Update progress
-    const pct = Math.min(offset / fileSize, 1);
-    barEl.style.width = (pct * 100).toFixed(0) + '%';
-    labelEl.textContent = `Decoding binary G-code... ${(pct * 100).toFixed(0)}%`;
-    // Yield to UI thread periodically
-    if (blockIndex % 4 === 0) await new Promise(r => setTimeout(r, 0));
-  }
-
-  // Concatenate all decoded chunks into a single string
-  const totalLen = gcodeChunks.reduce((s, c) => s + c.length, 0);
-  const merged = new Uint8Array(totalLen);
-  let pos = 0;
-  for (const chunk of gcodeChunks) { merged.set(chunk, pos); pos += chunk.length; }
-
-  return new TextDecoder().decode(merged);
-}
-
-function loadFile(file) {
-  const isBgcode = file.name.toLowerCase().endsWith('.bgcode');
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    let text;
-    if (isBgcode) {
-      try {
-        text = await decodeBgcode(e.target.result);
-      } catch (err) {
-        document.getElementById('parseProgress').style.display = 'none';
-        document.getElementById('gcodePreview').innerHTML =
-          `<div class="empty-state"><p style="color:var(--red)">Failed to decode bgcode file: ${err.message}</p></div>`;
-        return;
-      }
-    } else {
-      text = e.target.result;
-    }
-
-    const progressEl = document.getElementById('parseProgress');
-    const barEl = document.getElementById('parseBar');
-    const labelEl = document.getElementById('parseLabel');
-    const lineCount = (text.match(/\n/g) || []).length;
-
-    if (lineCount > 50000) {
-      progressEl.style.display = '';
-      labelEl.textContent = 'Parsing...';
-      barEl.style.width = '0%';
-    }
-
-    await parser.parseAsync(text, file.name, pct => {
-      barEl.style.width = (pct * 100).toFixed(0) + '%';
-      labelEl.textContent = `Parsing... ${(pct * 100).toFixed(0)}%`;
-    });
-
-    progressEl.style.display = 'none';
-
-    if (parser.layers.length === 0) {
-      document.getElementById('gcodePreview').innerHTML =
-        '<div class="empty-state"><p style="color:var(--red)">No layers detected in this file. It may not be a valid G-code file, or the slicer format is not yet supported.</p></div>';
-      document.getElementById('parseProgress').style.display = 'none';
-      return;
-    }
-    if (parser.skippedLines > 0) {
-      showToast(parser.skippedLines + ' lines skipped during parsing', 'warning');
-    }
-
-    holeDetector.clearCache();
-    viewer.clearBuffers();
-    insertManager.clear();
-    modifier.modifications = [];
-    undoStack.push(modifier.modifications);
-    holeDetectMode = false;
-    document.getElementById('holeDetectToggle').classList.remove('active');
-    document.getElementById('viewerCanvas').classList.remove('hole-mode');
-
-    // Update UI
-    document.getElementById('fileName').textContent = file.name;
-    const slicerName = parser.slicerType !== 'unknown' ? ` · ${parser.slicerType}` : '';
-    document.getElementById('fileMeta').textContent =
-      `${parser.layers.length} layers  ·  ${parser.lines.length.toLocaleString()} lines${slicerName}`;
-    document.getElementById('fileInfo').style.display = 'inline';
-    document.getElementById('exportBtn').style.display = 'inline-flex';
-    dropZone.innerHTML = `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg><span>Replace file</span>`;
-
-    renderLayerList();
-    // Setup viewer
-    viewer.resize();
-    viewer.fitBounds();
-    updateSlider();
-    if (parser.layers.length > 0) selectLayer(parser.layers[0].number);
-    else renderFullPreview();
-
-    showOnboardHint('visual', 'viewVisualBtn', 'Try the 3D Visual view');
-  };
-  if (isBgcode) reader.readAsArrayBuffer(file);
-  else reader.readAsText(file);
-}
-
-// ===== LAYER LIST =====
-function getModdedLayers() {
-  const moddedLayers = new Set(modifier.modifications.filter(m => m.layer !== Infinity && m.layer !== 'end' && m.type !== 'zoffset').map(m => m.layer));
-  for (const mod of modifier.modifications.filter(m => m.type === 'zoffset')) {
-    for (const layer of parser.layers) {
-      if (layer.number >= mod.layer && (mod.endLayer == null || layer.number <= mod.endLayer)) {
-        moddedLayers.add(layer.number);
-      }
-    }
-  }
-  return moddedLayers;
-}
-
-function renderLayerList() {
-  const container = document.getElementById('layerList');
-  const moddedLayers = getModdedLayers();
-
-  if (parser.layers.length === 0) {
-    container.innerHTML = '<div class="empty-state"><p>No layers detected in this file</p></div>';
-    return;
-  }
-
-  let html = '';
-  for (const layer of parser.layers) {
-    const active = selectedLayer === layer.number ? ' active' : '';
-    const hasMod = moddedLayers.has(layer.number);
-    html += `<div class="layer-item${active}" data-layer="${layer.number}" onclick="selectLayer(${layer.number})">
-      ${hasMod ? '<div class="layer-mod-badge"></div>' : ''}
-      <span class="layer-num">${layer.number}</span>
-      <span class="layer-z">${layer.zHeight !== null ? 'Z' + layer.zHeight.toFixed(2) : ''}</span>
-      <span class="layer-lines">${layer.lineCount} ln</span>
-    </div>`;
-  }
-  container.innerHTML = html;
-}
-
-function filterLayers(query) {
-  const items = document.querySelectorAll('.layer-item');
-  const q = query.trim().toLowerCase();
-  items.forEach(item => {
-    const text = item.textContent.toLowerCase();
-    item.style.display = (!q || text.includes(q)) ? '' : 'none';
-  });
-}
-
-function selectLayer(num) {
-  selectedLayer = num;
-  renderLayerList();
-  renderPreview(num);
-  updateSlider();
-
-  // Update visual viewer if active
-  if (currentView === 'visual') {
-    viewer.maxVisibleLayer = num;
-    viewer.render(num);
-    updateViewerOverlay(num);
-  }
-
-  // Fill layer number into active tab's layer input
-  const activeTab = document.querySelector('.tab.active')?.dataset.tab;
-  if (activeTab === 'pause') document.getElementById('pauseLayer').value = num;
-  else if (activeTab === 'filament') document.getElementById('filamentLayer').value = num;
-  else if (activeTab === 'zoffset') document.getElementById('zoffsetLayer').value = num;
-  else if (activeTab === 'recovery') { document.getElementById('recoveryLayer').value = num; syncRecoveryFromLayer(); }
-
-  // Update hole list if holes were detected
-  if (holeDetector.scannedHoles.length > 0 || holeDetector.holes.has(num)) {
-    renderHoleList();
-  }
-}
-
-function jumpToLayer(num) {
-  const layer = parser.getLayerByNumber(num);
-  if (layer) selectLayer(num);
-}
-
-// ===== PREVIEW =====
-function renderPreview(layerNum) {
-  const container = document.getElementById('gcodePreview');
-  const previewEmpty = document.getElementById('previewEmpty');
-  if (previewEmpty) previewEmpty.remove();
-
-  const layer = parser.getLayerByNumber(layerNum);
-  if (!layer) return;
-
-  const contextBefore = 5;
-  const contextAfter = 10;
-  const startLine = Math.max(0, layer.startLine - contextBefore);
-  const endLine = Math.min(parser.lines.length - 1, layer.endLine + contextAfter);
-
-  // Find modification lines for this layer
-  const modLayers = new Set(modifier.modifications.filter(m => {
-    if (m.type === 'zoffset') return layerNum >= m.layer && (m.endLayer == null || layerNum <= m.endLayer);
-    return m.layer === layerNum;
-  }).map(m => m.id));
-
-  let html = '<table class="code-table"><tbody>';
-  for (let i = startLine; i <= endLine; i++) {
-    const raw = parser.lines[i];
-    const isLayerStart = raw.trim().match(/^;LAYER:\d+/i);
-    const isHighlight = i >= layer.startLine && i <= layer.endLine;
-    const classes = [];
-    if (isLayerStart) classes.push('layer-start');
-    if (isHighlight) classes.push('highlight');
-
-    html += `<tr class="${classes.join(' ')}"><td class="ln">${i + 1}</td><td>${syntaxHighlight(raw)}</td></tr>`;
-  }
-
-  // Show modification preview snippets
-  if (modLayers.size > 0) {
-    html += '<tr class="layer-start"><td class="ln" style="color:var(--orange)">+</td><td style="color:var(--orange);font-weight:600">; ── Modifications to be inserted ──</td></tr>';
-    for (const mod of modifier.modifications.filter(m => {
-      if (m.type === 'zoffset') return layerNum >= m.layer && (m.endLayer == null || layerNum <= m.endLayer);
-      return m.layer === layerNum;
-    })) {
-      const snippet = modifier.getSnippet(mod);
-      for (const line of snippet) {
-        html += `<tr class="mod-line"><td class="ln">+</td><td>${syntaxHighlight(line)}</td></tr>`;
-      }
-    }
-  }
-
-  html += '</tbody></table>';
-  container.innerHTML = html;
-
-  document.getElementById('previewInfo').textContent =
-    `Layer ${layer.number}  ·  Z${layer.zHeight?.toFixed(2) || '?'}mm  ·  Lines ${layer.startLine + 1}–${layer.endLine + 1}`;
-}
-
-function renderFullPreview() {
-  const container = document.getElementById('gcodePreview');
-  const previewEmpty = document.getElementById('previewEmpty');
-  if (previewEmpty) previewEmpty.remove();
-
-  // Show first 200 lines (Bambu headers can be very long)
-  const end = Math.min(200, parser.lines.length);
-  let html = '<table class="code-table"><tbody>';
-  for (let i = 0; i < end; i++) {
-    html += `<tr><td class="ln">${i + 1}</td><td>${syntaxHighlight(parser.lines[i])}</td></tr>`;
-  }
-  if (parser.lines.length > 200) {
-    html += `<tr><td class="ln">...</td><td style="color:var(--text-dim)">... ${(parser.lines.length - 200).toLocaleString()} more lines ...</td></tr>`;
-  }
-  html += '</tbody></table>';
-  container.innerHTML = html;
-}
-
-function syntaxHighlight(line) {
-  if (!line) return '';
-  let escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-  // Comments
-  if (escaped.trim().startsWith(';')) {
-    return `<span class="syn-comment">${escaped}</span>`;
-  }
-
-  // Inline comments
-  const commentIdx = escaped.indexOf(';');
-  let main = commentIdx > -1 ? escaped.substring(0, commentIdx) : escaped;
-  let comment = commentIdx > -1 ? `<span class="syn-comment">${escaped.substring(commentIdx)}</span>` : '';
-
-  // G commands
-  main = main.replace(/\b(G\d+(\.\d+)?)/g, '<span class="syn-g">$1</span>');
-  // M commands
-  main = main.replace(/\b(M\d+)/g, '<span class="syn-m">$1</span>');
-  // Parameters (letters followed by numbers)
-  main = main.replace(/\b([XYZEFIJKRSTPQAB])([-\d.]+)/g, '<span class="syn-param">$1</span><span class="syn-value">$2</span>');
-
-  return main + comment;
-}
-
-// ===== TOAST NOTIFICATIONS =====
-function showToast(message, type = 'success', duration = 4000) {
-  const container = document.getElementById('toastContainer');
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.innerHTML = `<span>${message}</span><button class="toast-close" onclick="this.parentElement.remove()">&times;</button>`;
-  container.appendChild(toast);
-  if (duration > 0) setTimeout(() => toast.remove(), duration);
-}
-
-// ===== TAB SWITCHING =====
-function switchTab(tabName) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
-  document.querySelectorAll('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === 'tab-' + tabName));
-  if (tabName === 'reference' && document.getElementById('refContent').children.length === 0) {
-    renderReference();
-  }
-}
-
-// ===== REFERENCE TAB =====
-function renderReference() {
-  const fw = currentFirmware;
-  const fwName = FIRMWARE[fw].name;
-  document.getElementById('refFirmwareBadge').innerHTML = 'Showing notes for: <span>' + fwName + '</span>';
-
-  const categories = [];
-  const catMap = {};
-  GCODE_REFERENCE.forEach(cmd => {
-    if (!catMap[cmd.category]) {
-      catMap[cmd.category] = [];
-      categories.push(cmd.category);
-    }
-    catMap[cmd.category].push(cmd);
-  });
-
-  let html = '';
-  categories.forEach(cat => {
-    html += '<div class="ref-category" data-category="' + cat + '">';
-    html += '<div class="ref-category-header" onclick="this.parentElement.classList.toggle(\'collapsed\')">' + cat + '</div>';
-    html += '<div class="ref-category-cards">';
-    catMap[cat].forEach(cmd => {
-      const fwNote = cmd.firmware[fw];
-      html += '<div class="ref-card" data-search="' + (cmd.code + ' ' + cmd.name + ' ' + cmd.description).toLowerCase().replace(/"/g, '&quot;') + '">';
-      html += '<div class="ref-card-head"><span class="ref-card-code">' + cmd.code + '</span><span class="ref-card-name">' + cmd.name + '</span>';
-      html += '<button class="ref-card-insert" onclick="insertRefCommand(\'' + cmd.code.replace(/'/g, "\\'") + '\');event.stopPropagation()">Insert</button></div>';
-      html += '<div class="ref-card-desc">' + cmd.description + '</div>';
-      if (cmd.params.length > 0) {
-        html += '<table class="ref-card-params"><tr><th>Param</th><th>Description</th><th>Example</th></tr>';
-        cmd.params.forEach(p => {
-          html += '<tr><td>' + p.letter + '</td><td>' + p.name + '</td><td>' + p.example + '</td></tr>';
-        });
-        html += '</table>';
-      }
-      html += '<div class="ref-card-example">' + cmd.example.replace(/\n/g, '<br>') + '</div>';
-      if (fwNote) {
-        html += '<div class="ref-card-firmware">' + fwName + ': ' + fwNote + '</div>';
-      }
-      html += '</div>';
-    });
-    html += '</div></div>';
-  });
-
-  document.getElementById('refContent').innerHTML = html;
-}
-
-function filterReferenceCards() {
-  const query = document.getElementById('refSearch').value.toLowerCase().trim();
-  const categories = document.querySelectorAll('#refContent .ref-category');
-  let anyVisible = false;
-
-  categories.forEach(cat => {
-    const cards = cat.querySelectorAll('.ref-card');
-    let catVisible = false;
-    cards.forEach(card => {
-      const match = !query || card.dataset.search.includes(query);
-      card.style.display = match ? '' : 'none';
-      if (match) catVisible = true;
-    });
-    cat.style.display = catVisible ? '' : 'none';
-    if (catVisible) anyVisible = true;
-  });
-
-  let noRes = document.getElementById('refNoResults');
-  if (!anyVisible) {
-    if (!noRes) {
-      noRes = document.createElement('div');
-      noRes.id = 'refNoResults';
-      noRes.className = 'ref-no-results';
-      noRes.textContent = 'No commands found matching your search.';
-      document.getElementById('refContent').appendChild(noRes);
-    }
-    noRes.style.display = '';
-  } else if (noRes) {
-    noRes.style.display = 'none';
-  }
-}
-
-function insertRefCommand(code) {
-  const cmd = GCODE_REFERENCE.find(c => c.code === code);
-  if (!cmd) return;
-  switchTab('custom');
-  const textarea = document.getElementById('customGcode');
-  textarea.value = cmd.template;
-  const layerInput = document.getElementById('customLayer');
-  if (selectedLayer != null && layerInput.value === '') {
-    layerInput.value = selectedLayer;
-  }
-  showToast(cmd.code + ' inserted into Custom G-code tab', 'success');
-}
-
-// ===== ADD MODIFICATIONS =====
-function addPause() {
-  const layer = parseInt(document.getElementById('pauseLayer').value);
-  if (isNaN(layer)) { showToast('Please enter a valid layer number.', 'error'); return; }
-  if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
-
-  const msg = document.getElementById('pauseMsg').value;
-  const pauseType = document.querySelector('input[name="pauseType"]:checked').value;
-  const moveHead = document.getElementById('pauseMoveHead').checked;
-
-  modifier.addPause(layer, msg, pauseType, moveHead);
-  refreshAfterMod();
-  showToast('Pause added at layer ' + layer, 'success');
-}
-
-function addFilamentChange() {
-  const layer = parseInt(document.getElementById('filamentLayer').value);
-  if (isNaN(layer)) { showToast('Please enter a valid layer number.', 'error'); return; }
-  if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
-
-  const slot = document.getElementById('filamentSlot').value;
-  const cmd = document.getElementById('filamentCmd').value;
-
-  modifier.addFilament(layer, slot, cmd);
-  refreshAfterMod();
-  showToast('Filament change added at layer ' + layer, 'success');
-}
-
-function addEject() {
-  const config = {
-    bedY: parseInt(document.getElementById('ejectY').value) || 220,
-    headZ: parseInt(document.getElementById('ejectZ').value) || 10,
-    feedRate: parseInt(document.getElementById('ejectFeed').value) || 6000,
-    heatersOff: document.getElementById('ejectHeatersOff').checked,
-    homeZ: document.getElementById('ejectHomeZ').checked,
-    loop: document.getElementById('ejectLoop').checked,
-  };
-  modifier.addEject(config);
-  refreshAfterMod();
-  showToast('Eject sequence added', 'success');
-}
-
-function syncRecoveryFromLayer() {
-  const layerNum = parseInt(document.getElementById('recoveryLayer').value);
-  if (isNaN(layerNum) || !parser.layers.length) return;
-  const layer = parser.getLayerByNumber(layerNum);
-  if (layer && layer.zHeight != null) {
-    document.getElementById('recoveryHeight').value = layer.zHeight.toFixed(2);
-  }
-}
-
-function syncRecoveryFromHeight() {
-  const height = parseFloat(document.getElementById('recoveryHeight').value);
-  if (isNaN(height) || !parser.layers.length) return;
-  // Find the last layer at or below the given height
-  let best = null;
-  for (const layer of parser.layers) {
-    if (layer.zHeight != null && layer.zHeight <= height + 0.001) {
-      best = layer;
-    }
-  }
-  if (best) {
-    document.getElementById('recoveryLayer').value = best.number;
-  }
-}
-
-function addRecovery() {
-  const layer = parseInt(document.getElementById('recoveryLayer').value);
-  if (isNaN(layer)) { showToast('Please enter a layer number or height.', 'error'); return; }
-  if (layer === 0) { showToast('Layer 0 is already the first layer — no recovery needed.', 'warning'); return; }
-  if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
-  const lastLayer = parser.layers[parser.layers.length - 1];
-  if (lastLayer && layer === lastLayer.number) {
-    showToast('Warning: recovery print will only contain the final layer.', 'warning');
-  }
-  modifier.addRecovery(layer);
-  refreshAfterMod();
-  showToast(`Recovery added: resume from layer ${layer}`, 'success');
-}
-
-function addZOffset() {
-  const layer = parseInt(document.getElementById('zoffsetLayer').value);
-  if (isNaN(layer)) { showToast('Please enter a valid start layer number.', 'error'); return; }
-  if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
-
-  const endLayerInput = document.getElementById('zoffsetEndLayer').value.trim();
-  let endLayer = null;
-  if (endLayerInput !== '') {
-    endLayer = parseInt(endLayerInput);
-    if (isNaN(endLayer)) { showToast('Please enter a valid end layer number or leave blank.', 'error'); return; }
-    if (!parser.getLayerByNumber(endLayer)) { showToast(`Layer ${endLayer} not found in the file.`, 'error'); return; }
-    if (endLayer < layer) { showToast('End layer must be >= start layer.', 'error'); return; }
-  }
-
-  const offset = parseFloat(document.getElementById('zoffsetValue').value);
-  if (isNaN(offset) || offset === 0) { showToast('Please enter a non-zero Z-offset value.', 'error'); return; }
-
-  const note = document.getElementById('zoffsetNote').value.trim();
-
-  modifier.addZOffset(layer, endLayer, offset, note);
-  refreshAfterMod();
-  showToast('Z-offset added at layer ' + layer, 'success');
-}
-
-function addCustom() {
-  let layerInput = document.getElementById('customLayer').value.trim();
-  const gcode = document.getElementById('customGcode').value.trim();
-  if (!gcode) { showToast('Please enter some G-code.', 'error'); return; }
-
-  let layer;
-  if (layerInput.toLowerCase() === 'end') {
-    layer = 'end';
-  } else {
-    layer = parseInt(layerInput);
-    if (isNaN(layer)) { showToast('Please enter a valid layer number or "end".', 'error'); return; }
-    if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
-  }
-
-  modifier.addCustom(layer, gcode);
-  refreshAfterMod();
-  showToast('Custom G-code added at layer ' + layer, 'success');
-}
-
-function refreshAfterMod() {
-  undoStack.push(modifier.modifications);
-  renderModsList();
-  renderLayerList();
-  updateSliderTicks();
-  if (selectedLayer !== null) {
-    renderPreview(selectedLayer);
-    if (currentView === 'visual') {
-      viewer.maxVisibleLayer = selectedLayer;
-      viewer.render(selectedLayer);
-      updateViewerOverlay(selectedLayer);
-    }
-  }
-  if (modifier.modifications.length === 1) {
-    showOnboardHint('export', 'exportBtn', 'Export to save your changes');
-  }
-}
-
-// ===== MODIFICATIONS LIST =====
-function renderModsList() {
-  const container = document.getElementById('modsList');
-  const noMods = document.getElementById('noMods');
-  const count = modifier.modifications.length;
-  document.getElementById('modsCount').textContent = count;
-
-  if (count === 0) {
-    container.innerHTML = '<div class="no-mods" id="noMods">No modifications added yet</div>';
-    return;
-  }
-
-  let html = '';
-  for (const mod of modifier.modifications) {
-    const badge = mod.type;
-    let desc = '';
-    switch (mod.type) {
-      case 'pause':
-        desc = `Layer ${mod.layer}${mod.message ? ' – ' + mod.message : ''}`;
-        break;
-      case 'filament':
-        desc = mod.command === 'M1020' ? `Layer ${mod.layer} → Slot ${mod.slot + 1} (${mod.command})` : `Layer ${mod.layer} (${mod.command})`;
-        break;
-      case 'eject':
-        desc = `End of file${mod.loop ? ' (loop)' : ''}`;
-        break;
-      case 'zoffset': {
-        const sign = mod.offset >= 0 ? '+' : '';
-        const range = mod.endLayer != null ? `L${mod.layer}–${mod.endLayer}` : `L${mod.layer}+`;
-        desc = `${range}: ${sign}${mod.offset}mm${mod.note ? ' – ' + mod.note : ''}`;
-        break;
-      }
-      case 'custom':
-        desc = mod.layer === 'end' ? 'End of file' : `Layer ${mod.layer}`;
-        break;
-      case 'recovery':
-        desc = `Resume from layer ${mod.resumeLayer}`;
-        break;
-    }
-
-    html += `<div class="mod-item" data-id="${mod.id}" draggable="true"
-  ondragstart="onModDragStart(event,'${mod.id}')"
-  ondragover="onModDragOver(event)"
-  ondrop="onModDrop(event,'${mod.id}')"
-  ondragend="onModDragEnd()">
-      <span class="mod-badge ${badge}">${badge}</span>
-      <span class="mod-desc" title="${desc}">${desc}</span>
-      <div class="mod-actions">
-        <button class="mod-action delete" onclick="modifier.remove('${mod.id}');refreshAfterMod()" title="Delete">&times;</button>
-      </div>
-    </div>`;
-  }
-  container.innerHTML = html;
-}
-
-
-let dragModId = null;
-
-function onModDragStart(e, modId) {
-  dragModId = modId;
-  e.dataTransfer.effectAllowed = 'move';
-  e.target.style.opacity = '0.4';
-}
-
-function onModDragOver(e) {
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  const item = e.target.closest('.mod-item');
-  document.querySelectorAll('.mod-item').forEach(el => el.style.borderTop = '');
-  if (item) item.style.borderTop = '2px solid var(--accent)';
-}
-
-function onModDrop(e, targetId) {
-  e.preventDefault();
-  if (!dragModId || dragModId === targetId) return;
-
-  const mods = modifier.modifications;
-  const fromIdx = mods.findIndex(m => m.id === dragModId);
-  const toIdx = mods.findIndex(m => m.id === targetId);
-  if (fromIdx < 0 || toIdx < 0) return;
-
-  const [moved] = mods.splice(fromIdx, 1);
-  mods.splice(toIdx, 0, moved);
-
-  refreshAfterMod();
-}
-
-function onModDragEnd() {
-  dragModId = null;
-  document.querySelectorAll('.mod-item').forEach(el => {
-    el.style.opacity = '';
-    el.style.borderTop = '';
-  });
-}
-
-// ===== VIEW TOGGLE =====
-let currentView = 'code';
-
-function setView(view) {
-  currentView = view;
-  document.getElementById('viewCodeBtn').classList.toggle('active', view === 'code');
-  document.getElementById('viewVisualBtn').classList.toggle('active', view === 'visual');
-  document.getElementById('gcodePreview').classList.toggle('hidden', view === 'visual');
-  document.getElementById('viewerWrap').classList.toggle('active', view === 'visual');
-  if (view === 'visual' && selectedLayer !== null) {
-    viewer.resize();
-    viewer.fitBounds();
-    viewer.maxVisibleLayer = selectedLayer;
-    viewer.render(selectedLayer);
-    updateViewerOverlay(selectedLayer);
-  }
-}
-
-function onSliderChange(val) {
-  // Map slider index to layer number
-  if (parser.layers[val]) {
-    selectLayer(parser.layers[val].number);
-    document.getElementById('sliderLabel').textContent = `Layer ${parser.layers[val].number}`;
-  }
-}
-
-function updateSlider() {
-  const slider = document.getElementById('layerSlider');
-  slider.max = Math.max(0, parser.layers.length - 1);
-  const idx = parser.layers.findIndex(l => l.number === selectedLayer);
-  if (idx >= 0) slider.value = idx;
-  document.getElementById('sliderLabel').textContent = `Layer ${selectedLayer ?? 0}`;
-  updateSliderTicks();
-}
-
-function updateSliderTicks() {
-  const container = document.getElementById('sliderTicks');
-  const moddedLayers = getModdedLayers();
-  if (parser.layers.length === 0 || moddedLayers.size === 0) { container.innerHTML = ''; return; }
-  let html = '';
-  for (const mod of modifier.modifications) {
-    if (mod.layer === Infinity || mod.layer === 'end') continue;
-    const idx = parser.layers.findIndex(l => l.number === mod.layer);
-    if (idx < 0) continue;
-    const pct = (idx / Math.max(1, parser.layers.length - 1)) * 100;
-    const color = mod.type === 'pause' ? 'var(--yellow)' : mod.type === 'filament' ? 'var(--purple)' : mod.type === 'zoffset' ? 'var(--orange)' : 'var(--accent)';
-    html += `<div class="slider-tick" style="left:${pct}%;background:${color}"></div>`;
-  }
-  container.innerHTML = html;
-}
-
-function updateViewerOverlay(layerNum) {
-  const overlay = document.getElementById('viewerOverlay');
-  const layer = parser.getLayerByNumber(layerNum);
-  if (!layer) { overlay.innerHTML = ''; return; }
-
-  let html = `<div class="viewer-info">Layer ${layer.number} · Z${layer.zHeight?.toFixed(2) || '?'}mm · ${layer.lineCount} lines</div>`;
-
-  // Show modification banners
-  const mods = modifier.modifications.filter(m => {
-    if (m.type === 'zoffset') return layerNum >= m.layer && (m.endLayer == null || layerNum <= m.endLayer);
-    return m.layer === layerNum;
-  });
-  for (const mod of mods) {
-    if (mod.type === 'pause') {
-      html += `<div class="viewer-mod-banner pause">⏸ Pause at this layer${mod.message ? ': ' + mod.message : ''}</div>`;
-    } else if (mod.type === 'filament') {
-      html += `<div class="viewer-mod-banner filament">🔄 Filament change${mod.command === 'M1020' ? ' → Slot ' + (mod.slot + 1) : ''} (${mod.command})</div>`;
-    } else if (mod.type === 'zoffset') {
-      const sign = mod.offset >= 0 ? '+' : '';
-      html += `<div class="viewer-mod-banner pause">↕ Z-Offset: ${sign}${mod.offset}mm${mod.note ? ' – ' + mod.note : ''}</div>`;
-    } else if (mod.type === 'custom') {
-      html += `<div class="viewer-mod-banner custom">⚙ Custom G-code inserted</div>`;
-    } else if (mod.type === 'recovery') {
-      html += `<div class="viewer-mod-banner recovery">Recovery: resume from layer ${mod.resumeLayer}</div>`;
-    }
-  }
-  overlay.innerHTML = html;
 }
 
 // ===== GCODE VIEWER (old Canvas 2D removed — now using GcodeViewer3D) =====
@@ -4137,7 +3363,744 @@ class GcodeViewer3D {
   }
 }
 
-const viewer = new GcodeViewer3D('viewerCanvas');
+// UI rendering and interaction functions.
+// References globals (parser, modifier, viewer, selectedLayer, etc.) from app.js.
+// In the built single-file output, everything shares one script scope.
+
+function onFirmwareChange(fw) {
+  currentFirmware = fw;
+  const profile = FIRMWARE[fw];
+
+  // Update pause radio buttons (main pause tab)
+  renderRadioGroup('pauseTypeGroup', 'pauseType', profile.pause);
+  document.getElementById('pauseHint').textContent = profile.pauseHint;
+
+  // Update insert pause radio buttons
+  renderRadioGroup('insertPauseTypeGroup', 'insertPauseType', profile.pause);
+
+  // Update filament command dropdown
+  const filamentCmd = document.getElementById('filamentCmd');
+  filamentCmd.innerHTML = profile.filament.map(f =>
+    `<option value="${f.value}"${f.default ? ' selected' : ''}>${f.label}</option>`
+  ).join('');
+  document.getElementById('filamentHint').textContent = profile.filamentHint;
+
+  // Show/hide AMS slot selector
+  document.getElementById('filamentSlotGroup').style.display = profile.hasAMS ? '' : 'none';
+
+  // Update eject hint
+  document.getElementById('ejectHint').textContent = profile.ejectHint;
+
+  // Update reference tab if rendered
+  if (document.getElementById('refContent').children.length > 0) renderReference();
+}
+
+function renderRadioGroup(containerId, radioName, options) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = options.map((opt, i) => {
+    const id = `${radioName}_${i}`;
+    return `<div class="radio-opt"><input type="radio" name="${radioName}" id="${id}" value="${opt.value}"${opt.default ? ' checked' : ''}><label for="${id}">${opt.label}</label></div>`;
+  }).join('');
+}
+
+function toggleMeasureMode() {
+  measureMode = !measureMode;
+  measurePoints = [];
+  document.getElementById('measureToggle').classList.toggle('active', measureMode);
+  document.getElementById('viewerCanvas').style.cursor = measureMode ? 'crosshair' : '';
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+// ===== ONBOARDING HINTS =====
+function showOnboardHint(key, targetId, text) {
+  if (onboardState[key]) return;
+  const target = document.getElementById(targetId);
+  if (!target) return;
+  const hint = document.createElement('div');
+  hint.className = 'onboard-hint below';
+  hint.textContent = text;
+  const dismiss = () => {
+    hint.style.transition = 'opacity .3s';
+    hint.style.opacity = '0';
+    setTimeout(() => hint.remove(), 300);
+    onboardState[key] = true;
+    localStorage.setItem('gcode_onboard', JSON.stringify(onboardState));
+  };
+  hint.onclick = dismiss;
+  target.style.position = 'relative';
+  target.appendChild(hint);
+  setTimeout(dismiss, 5000);
+}
+
+function loadFile(file) {
+  const isBgcode = file.name.toLowerCase().endsWith('.bgcode');
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    let text;
+    if (isBgcode) {
+      try {
+        text = await decodeBgcode(e.target.result);
+      } catch (err) {
+        document.getElementById('parseProgress').style.display = 'none';
+        document.getElementById('gcodePreview').innerHTML =
+          `<div class="empty-state"><p style="color:var(--red)">Failed to decode bgcode file: ${err.message}</p></div>`;
+        return;
+      }
+    } else {
+      text = e.target.result;
+    }
+
+    const progressEl = document.getElementById('parseProgress');
+    const barEl = document.getElementById('parseBar');
+    const labelEl = document.getElementById('parseLabel');
+    const lineCount = (text.match(/\n/g) || []).length;
+
+    if (lineCount > 50000) {
+      progressEl.style.display = '';
+      labelEl.textContent = 'Parsing...';
+      barEl.style.width = '0%';
+    }
+
+    await parser.parseAsync(text, file.name, pct => {
+      barEl.style.width = (pct * 100).toFixed(0) + '%';
+      labelEl.textContent = `Parsing... ${(pct * 100).toFixed(0)}%`;
+    });
+
+    progressEl.style.display = 'none';
+
+    if (parser.layers.length === 0) {
+      document.getElementById('gcodePreview').innerHTML =
+        '<div class="empty-state"><p style="color:var(--red)">No layers detected in this file. It may not be a valid G-code file, or the slicer format is not yet supported.</p></div>';
+      document.getElementById('parseProgress').style.display = 'none';
+      return;
+    }
+    if (parser.skippedLines > 0) {
+      showToast(parser.skippedLines + ' lines skipped during parsing', 'warning');
+    }
+
+    holeDetector.clearCache();
+    viewer.clearBuffers();
+    insertManager.clear();
+    modifier.modifications = [];
+    undoStack.push(modifier.modifications);
+    holeDetectMode = false;
+    document.getElementById('holeDetectToggle').classList.remove('active');
+    document.getElementById('viewerCanvas').classList.remove('hole-mode');
+
+    // Update UI
+    document.getElementById('fileName').textContent = file.name;
+    const slicerName = parser.slicerType !== 'unknown' ? ` · ${parser.slicerType}` : '';
+    document.getElementById('fileMeta').textContent =
+      `${parser.layers.length} layers  ·  ${parser.lines.length.toLocaleString()} lines${slicerName}`;
+    document.getElementById('fileInfo').style.display = 'inline';
+    document.getElementById('exportBtn').style.display = 'inline-flex';
+    dropZone.innerHTML = `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg><span>Replace file</span>`;
+
+    renderLayerList();
+    // Setup viewer
+    viewer.resize();
+    viewer.fitBounds();
+    updateSlider();
+    if (parser.layers.length > 0) selectLayer(parser.layers[0].number);
+    else renderFullPreview();
+
+    showOnboardHint('visual', 'viewVisualBtn', 'Try the 3D Visual view');
+  };
+  if (isBgcode) reader.readAsArrayBuffer(file);
+  else reader.readAsText(file);
+}
+
+// ===== LAYER LIST =====
+function getModdedLayers() {
+  const moddedLayers = new Set(modifier.modifications.filter(m => m.layer !== Infinity && m.layer !== 'end' && m.type !== 'zoffset').map(m => m.layer));
+  for (const mod of modifier.modifications.filter(m => m.type === 'zoffset')) {
+    for (const layer of parser.layers) {
+      if (layer.number >= mod.layer && (mod.endLayer == null || layer.number <= mod.endLayer)) {
+        moddedLayers.add(layer.number);
+      }
+    }
+  }
+  return moddedLayers;
+}
+
+function renderLayerList() {
+  const container = document.getElementById('layerList');
+  const moddedLayers = getModdedLayers();
+
+  if (parser.layers.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>No layers detected in this file</p></div>';
+    return;
+  }
+
+  let html = '';
+  for (const layer of parser.layers) {
+    const active = selectedLayer === layer.number ? ' active' : '';
+    const hasMod = moddedLayers.has(layer.number);
+    html += `<div class="layer-item${active}" data-layer="${layer.number}" onclick="selectLayer(${layer.number})">
+      ${hasMod ? '<div class="layer-mod-badge"></div>' : ''}
+      <span class="layer-num">${layer.number}</span>
+      <span class="layer-z">${layer.zHeight !== null ? 'Z' + layer.zHeight.toFixed(2) : ''}</span>
+      <span class="layer-lines">${layer.lineCount} ln</span>
+    </div>`;
+  }
+  container.innerHTML = html;
+}
+
+function filterLayers(query) {
+  const items = document.querySelectorAll('.layer-item');
+  const q = query.trim().toLowerCase();
+  items.forEach(item => {
+    const text = item.textContent.toLowerCase();
+    item.style.display = (!q || text.includes(q)) ? '' : 'none';
+  });
+}
+
+function selectLayer(num) {
+  selectedLayer = num;
+  renderLayerList();
+  renderPreview(num);
+  updateSlider();
+
+  // Update visual viewer if active
+  if (currentView === 'visual') {
+    viewer.maxVisibleLayer = num;
+    viewer.render(num);
+    updateViewerOverlay(num);
+  }
+
+  // Fill layer number into active tab's layer input
+  const activeTab = document.querySelector('.tab.active')?.dataset.tab;
+  if (activeTab === 'pause') document.getElementById('pauseLayer').value = num;
+  else if (activeTab === 'filament') document.getElementById('filamentLayer').value = num;
+  else if (activeTab === 'zoffset') document.getElementById('zoffsetLayer').value = num;
+  else if (activeTab === 'recovery') { document.getElementById('recoveryLayer').value = num; syncRecoveryFromLayer(); }
+
+  // Update hole list if holes were detected
+  if (holeDetector.scannedHoles.length > 0 || holeDetector.holes.has(num)) {
+    renderHoleList();
+  }
+}
+
+function jumpToLayer(num) {
+  const layer = parser.getLayerByNumber(num);
+  if (layer) selectLayer(num);
+}
+
+// ===== PREVIEW =====
+function renderPreview(layerNum) {
+  const container = document.getElementById('gcodePreview');
+  const previewEmpty = document.getElementById('previewEmpty');
+  if (previewEmpty) previewEmpty.remove();
+
+  const layer = parser.getLayerByNumber(layerNum);
+  if (!layer) return;
+
+  const contextBefore = 5;
+  const contextAfter = 10;
+  const startLine = Math.max(0, layer.startLine - contextBefore);
+  const endLine = Math.min(parser.lines.length - 1, layer.endLine + contextAfter);
+
+  // Find modification lines for this layer
+  const modLayers = new Set(modifier.modifications.filter(m => {
+    if (m.type === 'zoffset') return layerNum >= m.layer && (m.endLayer == null || layerNum <= m.endLayer);
+    return m.layer === layerNum;
+  }).map(m => m.id));
+
+  let html = '<table class="code-table"><tbody>';
+  for (let i = startLine; i <= endLine; i++) {
+    const raw = parser.lines[i];
+    const isLayerStart = raw.trim().match(/^;LAYER:\d+/i);
+    const isHighlight = i >= layer.startLine && i <= layer.endLine;
+    const classes = [];
+    if (isLayerStart) classes.push('layer-start');
+    if (isHighlight) classes.push('highlight');
+
+    html += `<tr class="${classes.join(' ')}"><td class="ln">${i + 1}</td><td>${syntaxHighlight(raw)}</td></tr>`;
+  }
+
+  // Show modification preview snippets
+  if (modLayers.size > 0) {
+    html += '<tr class="layer-start"><td class="ln" style="color:var(--orange)">+</td><td style="color:var(--orange);font-weight:600">; ── Modifications to be inserted ──</td></tr>';
+    for (const mod of modifier.modifications.filter(m => {
+      if (m.type === 'zoffset') return layerNum >= m.layer && (m.endLayer == null || layerNum <= m.endLayer);
+      return m.layer === layerNum;
+    })) {
+      const snippet = modifier.getSnippet(mod);
+      for (const line of snippet) {
+        html += `<tr class="mod-line"><td class="ln">+</td><td>${syntaxHighlight(line)}</td></tr>`;
+      }
+    }
+  }
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+
+  document.getElementById('previewInfo').textContent =
+    `Layer ${layer.number}  ·  Z${layer.zHeight?.toFixed(2) || '?'}mm  ·  Lines ${layer.startLine + 1}–${layer.endLine + 1}`;
+}
+
+function renderFullPreview() {
+  const container = document.getElementById('gcodePreview');
+  const previewEmpty = document.getElementById('previewEmpty');
+  if (previewEmpty) previewEmpty.remove();
+
+  // Show first 200 lines (Bambu headers can be very long)
+  const end = Math.min(200, parser.lines.length);
+  let html = '<table class="code-table"><tbody>';
+  for (let i = 0; i < end; i++) {
+    html += `<tr><td class="ln">${i + 1}</td><td>${syntaxHighlight(parser.lines[i])}</td></tr>`;
+  }
+  if (parser.lines.length > 200) {
+    html += `<tr><td class="ln">...</td><td style="color:var(--text-dim)">... ${(parser.lines.length - 200).toLocaleString()} more lines ...</td></tr>`;
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function syntaxHighlight(line) {
+  if (!line) return '';
+  let escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // Comments
+  if (escaped.trim().startsWith(';')) {
+    return `<span class="syn-comment">${escaped}</span>`;
+  }
+
+  // Inline comments
+  const commentIdx = escaped.indexOf(';');
+  let main = commentIdx > -1 ? escaped.substring(0, commentIdx) : escaped;
+  let comment = commentIdx > -1 ? `<span class="syn-comment">${escaped.substring(commentIdx)}</span>` : '';
+
+  // G commands
+  main = main.replace(/\b(G\d+(\.\d+)?)/g, '<span class="syn-g">$1</span>');
+  // M commands
+  main = main.replace(/\b(M\d+)/g, '<span class="syn-m">$1</span>');
+  // Parameters (letters followed by numbers)
+  main = main.replace(/\b([XYZEFIJKRSTPQAB])([-\d.]+)/g, '<span class="syn-param">$1</span><span class="syn-value">$2</span>');
+
+  return main + comment;
+}
+
+// ===== TOAST NOTIFICATIONS =====
+function showToast(message, type = 'success', duration = 4000) {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `<span>${message}</span><button class="toast-close" onclick="this.parentElement.remove()">&times;</button>`;
+  container.appendChild(toast);
+  if (duration > 0) setTimeout(() => toast.remove(), duration);
+}
+
+// ===== TAB SWITCHING =====
+function switchTab(tabName) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
+  document.querySelectorAll('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === 'tab-' + tabName));
+  if (tabName === 'reference' && document.getElementById('refContent').children.length === 0) {
+    renderReference();
+  }
+}
+
+// ===== REFERENCE TAB =====
+function renderReference() {
+  const fw = currentFirmware;
+  const fwName = FIRMWARE[fw].name;
+  document.getElementById('refFirmwareBadge').innerHTML = 'Showing notes for: <span>' + fwName + '</span>';
+
+  const categories = [];
+  const catMap = {};
+  GCODE_REFERENCE.forEach(cmd => {
+    if (!catMap[cmd.category]) {
+      catMap[cmd.category] = [];
+      categories.push(cmd.category);
+    }
+    catMap[cmd.category].push(cmd);
+  });
+
+  let html = '';
+  categories.forEach(cat => {
+    html += '<div class="ref-category" data-category="' + cat + '">';
+    html += '<div class="ref-category-header" onclick="this.parentElement.classList.toggle(\'collapsed\')">' + cat + '</div>';
+    html += '<div class="ref-category-cards">';
+    catMap[cat].forEach(cmd => {
+      const fwNote = cmd.firmware[fw];
+      html += '<div class="ref-card" data-search="' + (cmd.code + ' ' + cmd.name + ' ' + cmd.description).toLowerCase().replace(/"/g, '&quot;') + '">';
+      html += '<div class="ref-card-head"><span class="ref-card-code">' + cmd.code + '</span><span class="ref-card-name">' + cmd.name + '</span>';
+      html += '<button class="ref-card-insert" onclick="insertRefCommand(\'' + cmd.code.replace(/'/g, "\\'") + '\');event.stopPropagation()">Insert</button></div>';
+      html += '<div class="ref-card-desc">' + cmd.description + '</div>';
+      if (cmd.params.length > 0) {
+        html += '<table class="ref-card-params"><tr><th>Param</th><th>Description</th><th>Example</th></tr>';
+        cmd.params.forEach(p => {
+          html += '<tr><td>' + p.letter + '</td><td>' + p.name + '</td><td>' + p.example + '</td></tr>';
+        });
+        html += '</table>';
+      }
+      html += '<div class="ref-card-example">' + cmd.example.replace(/\n/g, '<br>') + '</div>';
+      if (fwNote) {
+        html += '<div class="ref-card-firmware">' + fwName + ': ' + fwNote + '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div></div>';
+  });
+
+  document.getElementById('refContent').innerHTML = html;
+}
+
+function filterReferenceCards() {
+  const query = document.getElementById('refSearch').value.toLowerCase().trim();
+  const categories = document.querySelectorAll('#refContent .ref-category');
+  let anyVisible = false;
+
+  categories.forEach(cat => {
+    const cards = cat.querySelectorAll('.ref-card');
+    let catVisible = false;
+    cards.forEach(card => {
+      const match = !query || card.dataset.search.includes(query);
+      card.style.display = match ? '' : 'none';
+      if (match) catVisible = true;
+    });
+    cat.style.display = catVisible ? '' : 'none';
+    if (catVisible) anyVisible = true;
+  });
+
+  let noRes = document.getElementById('refNoResults');
+  if (!anyVisible) {
+    if (!noRes) {
+      noRes = document.createElement('div');
+      noRes.id = 'refNoResults';
+      noRes.className = 'ref-no-results';
+      noRes.textContent = 'No commands found matching your search.';
+      document.getElementById('refContent').appendChild(noRes);
+    }
+    noRes.style.display = '';
+  } else if (noRes) {
+    noRes.style.display = 'none';
+  }
+}
+
+function insertRefCommand(code) {
+  const cmd = GCODE_REFERENCE.find(c => c.code === code);
+  if (!cmd) return;
+  switchTab('custom');
+  const textarea = document.getElementById('customGcode');
+  textarea.value = cmd.template;
+  const layerInput = document.getElementById('customLayer');
+  if (selectedLayer != null && layerInput.value === '') {
+    layerInput.value = selectedLayer;
+  }
+  showToast(cmd.code + ' inserted into Custom G-code tab', 'success');
+}
+
+// ===== ADD MODIFICATIONS =====
+function addPause() {
+  const layer = parseInt(document.getElementById('pauseLayer').value);
+  if (isNaN(layer)) { showToast('Please enter a valid layer number.', 'error'); return; }
+  if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
+
+  const msg = document.getElementById('pauseMsg').value;
+  const pauseType = document.querySelector('input[name="pauseType"]:checked').value;
+  const moveHead = document.getElementById('pauseMoveHead').checked;
+
+  modifier.addPause(layer, msg, pauseType, moveHead);
+  refreshAfterMod();
+  showToast('Pause added at layer ' + layer, 'success');
+}
+
+function addFilamentChange() {
+  const layer = parseInt(document.getElementById('filamentLayer').value);
+  if (isNaN(layer)) { showToast('Please enter a valid layer number.', 'error'); return; }
+  if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
+
+  const slot = document.getElementById('filamentSlot').value;
+  const cmd = document.getElementById('filamentCmd').value;
+
+  modifier.addFilament(layer, slot, cmd);
+  refreshAfterMod();
+  showToast('Filament change added at layer ' + layer, 'success');
+}
+
+function addEject() {
+  const config = {
+    bedY: parseInt(document.getElementById('ejectY').value) || 220,
+    headZ: parseInt(document.getElementById('ejectZ').value) || 10,
+    feedRate: parseInt(document.getElementById('ejectFeed').value) || 6000,
+    heatersOff: document.getElementById('ejectHeatersOff').checked,
+    homeZ: document.getElementById('ejectHomeZ').checked,
+    loop: document.getElementById('ejectLoop').checked,
+  };
+  modifier.addEject(config);
+  refreshAfterMod();
+  showToast('Eject sequence added', 'success');
+}
+
+function syncRecoveryFromLayer() {
+  const layerNum = parseInt(document.getElementById('recoveryLayer').value);
+  if (isNaN(layerNum) || !parser.layers.length) return;
+  const layer = parser.getLayerByNumber(layerNum);
+  if (layer && layer.zHeight != null) {
+    document.getElementById('recoveryHeight').value = layer.zHeight.toFixed(2);
+  }
+}
+
+function syncRecoveryFromHeight() {
+  const height = parseFloat(document.getElementById('recoveryHeight').value);
+  if (isNaN(height) || !parser.layers.length) return;
+  // Find the last layer at or below the given height
+  let best = null;
+  for (const layer of parser.layers) {
+    if (layer.zHeight != null && layer.zHeight <= height + 0.001) {
+      best = layer;
+    }
+  }
+  if (best) {
+    document.getElementById('recoveryLayer').value = best.number;
+  }
+}
+
+function addRecovery() {
+  const layer = parseInt(document.getElementById('recoveryLayer').value);
+  if (isNaN(layer)) { showToast('Please enter a layer number or height.', 'error'); return; }
+  if (layer === 0) { showToast('Layer 0 is already the first layer — no recovery needed.', 'warning'); return; }
+  if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
+  const lastLayer = parser.layers[parser.layers.length - 1];
+  if (lastLayer && layer === lastLayer.number) {
+    showToast('Warning: recovery print will only contain the final layer.', 'warning');
+  }
+  modifier.addRecovery(layer);
+  refreshAfterMod();
+  showToast(`Recovery added: resume from layer ${layer}`, 'success');
+}
+
+function addZOffset() {
+  const layer = parseInt(document.getElementById('zoffsetLayer').value);
+  if (isNaN(layer)) { showToast('Please enter a valid start layer number.', 'error'); return; }
+  if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
+
+  const endLayerInput = document.getElementById('zoffsetEndLayer').value.trim();
+  let endLayer = null;
+  if (endLayerInput !== '') {
+    endLayer = parseInt(endLayerInput);
+    if (isNaN(endLayer)) { showToast('Please enter a valid end layer number or leave blank.', 'error'); return; }
+    if (!parser.getLayerByNumber(endLayer)) { showToast(`Layer ${endLayer} not found in the file.`, 'error'); return; }
+    if (endLayer < layer) { showToast('End layer must be >= start layer.', 'error'); return; }
+  }
+
+  const offset = parseFloat(document.getElementById('zoffsetValue').value);
+  if (isNaN(offset) || offset === 0) { showToast('Please enter a non-zero Z-offset value.', 'error'); return; }
+
+  const note = document.getElementById('zoffsetNote').value.trim();
+
+  modifier.addZOffset(layer, endLayer, offset, note);
+  refreshAfterMod();
+  showToast('Z-offset added at layer ' + layer, 'success');
+}
+
+function addCustom() {
+  let layerInput = document.getElementById('customLayer').value.trim();
+  const gcode = document.getElementById('customGcode').value.trim();
+  if (!gcode) { showToast('Please enter some G-code.', 'error'); return; }
+
+  let layer;
+  if (layerInput.toLowerCase() === 'end') {
+    layer = 'end';
+  } else {
+    layer = parseInt(layerInput);
+    if (isNaN(layer)) { showToast('Please enter a valid layer number or "end".', 'error'); return; }
+    if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
+  }
+
+  modifier.addCustom(layer, gcode);
+  refreshAfterMod();
+  showToast('Custom G-code added at layer ' + layer, 'success');
+}
+
+function refreshAfterMod() {
+  undoStack.push(modifier.modifications);
+  renderModsList();
+  renderLayerList();
+  updateSliderTicks();
+  if (selectedLayer !== null) {
+    renderPreview(selectedLayer);
+    if (currentView === 'visual') {
+      viewer.maxVisibleLayer = selectedLayer;
+      viewer.render(selectedLayer);
+      updateViewerOverlay(selectedLayer);
+    }
+  }
+  if (modifier.modifications.length === 1) {
+    showOnboardHint('export', 'exportBtn', 'Export to save your changes');
+  }
+}
+
+// ===== MODIFICATIONS LIST =====
+function renderModsList() {
+  const container = document.getElementById('modsList');
+  const noMods = document.getElementById('noMods');
+  const count = modifier.modifications.length;
+  document.getElementById('modsCount').textContent = count;
+
+  if (count === 0) {
+    container.innerHTML = '<div class="no-mods" id="noMods">No modifications added yet</div>';
+    return;
+  }
+
+  let html = '';
+  for (const mod of modifier.modifications) {
+    const badge = mod.type;
+    let desc = '';
+    switch (mod.type) {
+      case 'pause':
+        desc = `Layer ${mod.layer}${mod.message ? ' – ' + mod.message : ''}`;
+        break;
+      case 'filament':
+        desc = mod.command === 'M1020' ? `Layer ${mod.layer} → Slot ${mod.slot + 1} (${mod.command})` : `Layer ${mod.layer} (${mod.command})`;
+        break;
+      case 'eject':
+        desc = `End of file${mod.loop ? ' (loop)' : ''}`;
+        break;
+      case 'zoffset': {
+        const sign = mod.offset >= 0 ? '+' : '';
+        const range = mod.endLayer != null ? `L${mod.layer}–${mod.endLayer}` : `L${mod.layer}+`;
+        desc = `${range}: ${sign}${mod.offset}mm${mod.note ? ' – ' + mod.note : ''}`;
+        break;
+      }
+      case 'custom':
+        desc = mod.layer === 'end' ? 'End of file' : `Layer ${mod.layer}`;
+        break;
+      case 'recovery':
+        desc = `Resume from layer ${mod.resumeLayer}`;
+        break;
+    }
+
+    html += `<div class="mod-item" data-id="${mod.id}" draggable="true"
+  ondragstart="onModDragStart(event,'${mod.id}')"
+  ondragover="onModDragOver(event)"
+  ondrop="onModDrop(event,'${mod.id}')"
+  ondragend="onModDragEnd()">
+      <span class="mod-badge ${badge}">${badge}</span>
+      <span class="mod-desc" title="${desc}">${desc}</span>
+      <div class="mod-actions">
+        <button class="mod-action delete" onclick="modifier.remove('${mod.id}');refreshAfterMod()" title="Delete">&times;</button>
+      </div>
+    </div>`;
+  }
+  container.innerHTML = html;
+}
+
+function onModDragStart(e, modId) {
+  dragModId = modId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.target.style.opacity = '0.4';
+}
+
+function onModDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const item = e.target.closest('.mod-item');
+  document.querySelectorAll('.mod-item').forEach(el => el.style.borderTop = '');
+  if (item) item.style.borderTop = '2px solid var(--accent)';
+}
+
+function onModDrop(e, targetId) {
+  e.preventDefault();
+  if (!dragModId || dragModId === targetId) return;
+
+  const mods = modifier.modifications;
+  const fromIdx = mods.findIndex(m => m.id === dragModId);
+  const toIdx = mods.findIndex(m => m.id === targetId);
+  if (fromIdx < 0 || toIdx < 0) return;
+
+  const [moved] = mods.splice(fromIdx, 1);
+  mods.splice(toIdx, 0, moved);
+
+  refreshAfterMod();
+}
+
+function onModDragEnd() {
+  dragModId = null;
+  document.querySelectorAll('.mod-item').forEach(el => {
+    el.style.opacity = '';
+    el.style.borderTop = '';
+  });
+}
+
+// ===== VIEW TOGGLE =====
+function setView(view) {
+  currentView = view;
+  document.getElementById('viewCodeBtn').classList.toggle('active', view === 'code');
+  document.getElementById('viewVisualBtn').classList.toggle('active', view === 'visual');
+  document.getElementById('gcodePreview').classList.toggle('hidden', view === 'visual');
+  document.getElementById('viewerWrap').classList.toggle('active', view === 'visual');
+  if (view === 'visual' && selectedLayer !== null) {
+    viewer.resize();
+    viewer.fitBounds();
+    viewer.maxVisibleLayer = selectedLayer;
+    viewer.render(selectedLayer);
+    updateViewerOverlay(selectedLayer);
+  }
+}
+
+function onSliderChange(val) {
+  // Map slider index to layer number
+  if (parser.layers[val]) {
+    selectLayer(parser.layers[val].number);
+    document.getElementById('sliderLabel').textContent = `Layer ${parser.layers[val].number}`;
+  }
+}
+
+function updateSlider() {
+  const slider = document.getElementById('layerSlider');
+  slider.max = Math.max(0, parser.layers.length - 1);
+  const idx = parser.layers.findIndex(l => l.number === selectedLayer);
+  if (idx >= 0) slider.value = idx;
+  document.getElementById('sliderLabel').textContent = `Layer ${selectedLayer ?? 0}`;
+  updateSliderTicks();
+}
+
+function updateSliderTicks() {
+  const container = document.getElementById('sliderTicks');
+  const moddedLayers = getModdedLayers();
+  if (parser.layers.length === 0 || moddedLayers.size === 0) { container.innerHTML = ''; return; }
+  let html = '';
+  for (const mod of modifier.modifications) {
+    if (mod.layer === Infinity || mod.layer === 'end') continue;
+    const idx = parser.layers.findIndex(l => l.number === mod.layer);
+    if (idx < 0) continue;
+    const pct = (idx / Math.max(1, parser.layers.length - 1)) * 100;
+    const color = mod.type === 'pause' ? 'var(--yellow)' : mod.type === 'filament' ? 'var(--purple)' : mod.type === 'zoffset' ? 'var(--orange)' : 'var(--accent)';
+    html += `<div class="slider-tick" style="left:${pct}%;background:${color}"></div>`;
+  }
+  container.innerHTML = html;
+}
+
+function updateViewerOverlay(layerNum) {
+  const overlay = document.getElementById('viewerOverlay');
+  const layer = parser.getLayerByNumber(layerNum);
+  if (!layer) { overlay.innerHTML = ''; return; }
+
+  let html = `<div class="viewer-info">Layer ${layer.number} · Z${layer.zHeight?.toFixed(2) || '?'}mm · ${layer.lineCount} lines</div>`;
+
+  // Show modification banners
+  const mods = modifier.modifications.filter(m => {
+    if (m.type === 'zoffset') return layerNum >= m.layer && (m.endLayer == null || layerNum <= m.endLayer);
+    return m.layer === layerNum;
+  });
+  for (const mod of mods) {
+    if (mod.type === 'pause') {
+      html += `<div class="viewer-mod-banner pause">⏸ Pause at this layer${mod.message ? ': ' + mod.message : ''}</div>`;
+    } else if (mod.type === 'filament') {
+      html += `<div class="viewer-mod-banner filament">🔄 Filament change${mod.command === 'M1020' ? ' → Slot ' + (mod.slot + 1) : ''} (${mod.command})</div>`;
+    } else if (mod.type === 'zoffset') {
+      const sign = mod.offset >= 0 ? '+' : '';
+      html += `<div class="viewer-mod-banner pause">↕ Z-Offset: ${sign}${mod.offset}mm${mod.note ? ' – ' + mod.note : ''}</div>`;
+    } else if (mod.type === 'custom') {
+      html += `<div class="viewer-mod-banner custom">⚙ Custom G-code inserted</div>`;
+    } else if (mod.type === 'recovery') {
+      html += `<div class="viewer-mod-banner recovery">Recovery: resume from layer ${mod.resumeLayer}</div>`;
+    }
+  }
+  overlay.innerHTML = html;
+}
 
 // ===== HOLE DETECTION UI =====
 function toggleHoleMode() {
@@ -4361,14 +4324,6 @@ function addInsertsForSelection() {
   showToast(addedCount + ' insert pause(s) added successfully', 'success');
 }
 
-// Update computed info when insert height changes
-document.addEventListener('DOMContentLoaded', () => {
-  const heightInput = document.getElementById('insertHeight');
-  const unitSelect = document.getElementById('insertHeightUnit');
-  if (heightInput) heightInput.addEventListener('input', updateComputedPauseInfo);
-  if (unitSelect) unitSelect.addEventListener('change', updateComputedPauseInfo);
-});
-
 // ===== EXPORT =====
 function exportGcode() {
   if (parser.lines.length === 0) return;
@@ -4457,6 +4412,88 @@ function toggleShortcutsOverlay() {
   });
 })();
 
+// ===== THEME SUPPORT =====
+function getPreferredTheme() {
+  const stored = localStorage.getItem('gcode_theme');
+  if (stored) return stored;
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('themeIcon').textContent = theme === 'light' ? '\u2600' : '\u263D';
+  localStorage.setItem('gcode_theme', theme);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+// App initialization, state, and event wiring.
+// UI functions are defined in ui.js and available via global scope in the built output.
+
+
+
+
+
+
+
+
+
+
+let currentFirmware = 'bambu';
+
+// ===== APP STATE =====
+const parser = new GcodeParser();
+const modifier = new GcodeModifier();
+const holeDetector = new HoleDetector();
+const insertManager = new InsertManager();
+const undoStack = new UndoStack();
+let selectedLayer = null;
+let holeDetectMode = false;
+let measureMode = false;
+let measurePoints = [];
+
+// Initialize firmware UI
+onFirmwareChange('bambu');
+
+// ===== FILE HANDLING =====
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+// ===== ONBOARDING HINTS =====
+const onboardState = JSON.parse(localStorage.getItem('gcode_onboard') || '{}');
+
+if (!onboardState.dropzone) {
+  setTimeout(() => showOnboardHint('dropzone', 'dropZone', 'Drop a .gcode or .bgcode file here to get started'), 500);
+}
+
+let dragModId = null;
+
+let currentView = 'code';
+
+const viewer = new GcodeViewer3D('viewerCanvas');
+
+// Update computed info when insert height changes
+document.addEventListener('DOMContentLoaded', () => {
+  const heightInput = document.getElementById('insertHeight');
+  const unitSelect = document.getElementById('insertHeightUnit');
+  if (heightInput) heightInput.addEventListener('input', updateComputedPauseInfo);
+  if (unitSelect) unitSelect.addEventListener('change', updateComputedPauseInfo);
+});
+
 window.addEventListener('keydown', e => {
   const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT';
 
@@ -4500,26 +4537,8 @@ window.addEventListener('keydown', e => {
   if (e.key === '?') { toggleShortcutsOverlay(); return; }
 });
 
-// ===== THEME SUPPORT =====
-function getPreferredTheme() {
-  const stored = localStorage.getItem('gcode_theme');
-  if (stored) return stored;
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-}
-
-function applyTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme);
-  document.getElementById('themeIcon').textContent = theme === 'light' ? '\u2600' : '\u263D';
-  localStorage.setItem('gcode_theme', theme);
-}
-
-function toggleTheme() {
-  const current = document.documentElement.getAttribute('data-theme') || 'dark';
-  applyTheme(current === 'dark' ? 'light' : 'dark');
-  if (currentView === 'visual') viewer.render(viewer.currentLayer);
-}
-
 applyTheme(getPreferredTheme());
+
 </script>
 </body>
 </html>

@@ -1,0 +1,22 @@
+name: Build
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node build.js
+      - name: Verify built file is up to date
+        run: |
+          if git diff --exit-code gcode-modifier.html; then
+            echo "Build output is up to date."
+          else
+            echo "ERROR: gcode-modifier.html is stale. Run 'node build.js' and commit the output."
+            exit 1
+          fi
+      - name: Run tests
+        run: node --test test/*.test.js
