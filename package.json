@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "playwright": "^1.58.2"
+  }
+}
