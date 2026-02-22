@@ -3363,17 +3363,9 @@ class GcodeViewer3D {
   }
 }
 
-
-
-
-
-
-
-
-
-
-
-let currentFirmware = 'bambu';
+// UI rendering and interaction functions.
+// References globals (parser, modifier, viewer, selectedLayer, etc.) from app.js.
+// In the built single-file output, everything shares one script scope.
 
 function onFirmwareChange(fw) {
   currentFirmware = fw;
@@ -3411,17 +3403,6 @@ function renderRadioGroup(containerId, radioName, options) {
   }).join('');
 }
 
-// ===== APP STATE =====
-const parser = new GcodeParser();
-const modifier = new GcodeModifier();
-const holeDetector = new HoleDetector();
-const insertManager = new InsertManager();
-const undoStack = new UndoStack();
-let selectedLayer = null;
-let holeDetectMode = false;
-let measureMode = false;
-let measurePoints = [];
-
 function toggleMeasureMode() {
   measureMode = !measureMode;
   measurePoints = [];
@@ -3430,27 +3411,7 @@ function toggleMeasureMode() {
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
 
-
-// Initialize firmware UI
-onFirmwareChange('bambu');
-
-// ===== FILE HANDLING =====
-const dropZone = document.getElementById('dropZone');
-const fileInput = document.getElementById('fileInput');
-
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.classList.remove('dragover');
-  const file = e.dataTransfer.files[0];
-  if (file) loadFile(file);
-});
-fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
-
 // ===== ONBOARDING HINTS =====
-const onboardState = JSON.parse(localStorage.getItem('gcode_onboard') || '{}');
-
 function showOnboardHint(key, targetId, text) {
   if (onboardState[key]) return;
   const target = document.getElementById(targetId);
@@ -3469,10 +3430,6 @@ function showOnboardHint(key, targetId, text) {
   target.style.position = 'relative';
   target.appendChild(hint);
   setTimeout(dismiss, 5000);
-}
-
-if (!onboardState.dropzone) {
-  setTimeout(() => showOnboardHint('dropzone', 'dropZone', 'Drop a .gcode or .bgcode file here to get started'), 500);
 }
 
 function loadFile(file) {
@@ -4030,9 +3987,6 @@ function renderModsList() {
   container.innerHTML = html;
 }
 
-
-let dragModId = null;
-
 function onModDragStart(e, modId) {
   dragModId = modId;
   e.dataTransfer.effectAllowed = 'move';
@@ -4071,8 +4025,6 @@ function onModDragEnd() {
 }
 
 // ===== VIEW TOGGLE =====
-let currentView = 'code';
-
 function setView(view) {
   currentView = view;
   document.getElementById('viewCodeBtn').classList.toggle('active', view === 'code');
@@ -4149,8 +4101,6 @@ function updateViewerOverlay(layerNum) {
   }
   overlay.innerHTML = html;
 }
-
-const viewer = new GcodeViewer3D('viewerCanvas');
 
 // ===== HOLE DETECTION UI =====
 function toggleHoleMode() {
@@ -4374,14 +4324,6 @@ function addInsertsForSelection() {
   showToast(addedCount + ' insert pause(s) added successfully', 'success');
 }
 
-// Update computed info when insert height changes
-document.addEventListener('DOMContentLoaded', () => {
-  const heightInput = document.getElementById('insertHeight');
-  const unitSelect = document.getElementById('insertHeightUnit');
-  if (heightInput) heightInput.addEventListener('input', updateComputedPauseInfo);
-  if (unitSelect) unitSelect.addEventListener('change', updateComputedPauseInfo);
-});
-
 // ===== EXPORT =====
 function exportGcode() {
   if (parser.lines.length === 0) return;
@@ -4470,6 +4412,88 @@ function toggleShortcutsOverlay() {
   });
 })();
 
+// ===== THEME SUPPORT =====
+function getPreferredTheme() {
+  const stored = localStorage.getItem('gcode_theme');
+  if (stored) return stored;
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('themeIcon').textContent = theme === 'light' ? '\u2600' : '\u263D';
+  localStorage.setItem('gcode_theme', theme);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+// App initialization, state, and event wiring.
+// UI functions are defined in ui.js and available via global scope in the built output.
+
+
+
+
+
+
+
+
+
+
+let currentFirmware = 'bambu';
+
+// ===== APP STATE =====
+const parser = new GcodeParser();
+const modifier = new GcodeModifier();
+const holeDetector = new HoleDetector();
+const insertManager = new InsertManager();
+const undoStack = new UndoStack();
+let selectedLayer = null;
+let holeDetectMode = false;
+let measureMode = false;
+let measurePoints = [];
+
+// Initialize firmware UI
+onFirmwareChange('bambu');
+
+// ===== FILE HANDLING =====
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+// ===== ONBOARDING HINTS =====
+const onboardState = JSON.parse(localStorage.getItem('gcode_onboard') || '{}');
+
+if (!onboardState.dropzone) {
+  setTimeout(() => showOnboardHint('dropzone', 'dropZone', 'Drop a .gcode or .bgcode file here to get started'), 500);
+}
+
+let dragModId = null;
+
+let currentView = 'code';
+
+const viewer = new GcodeViewer3D('viewerCanvas');
+
+// Update computed info when insert height changes
+document.addEventListener('DOMContentLoaded', () => {
+  const heightInput = document.getElementById('insertHeight');
+  const unitSelect = document.getElementById('insertHeightUnit');
+  if (heightInput) heightInput.addEventListener('input', updateComputedPauseInfo);
+  if (unitSelect) unitSelect.addEventListener('change', updateComputedPauseInfo);
+});
+
 window.addEventListener('keydown', e => {
   const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT';
 
@@ -4512,25 +4536,6 @@ window.addEventListener('keydown', e => {
   // Help overlay
   if (e.key === '?') { toggleShortcutsOverlay(); return; }
 });
-
-// ===== THEME SUPPORT =====
-function getPreferredTheme() {
-  const stored = localStorage.getItem('gcode_theme');
-  if (stored) return stored;
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-}
-
-function applyTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme);
-  document.getElementById('themeIcon').textContent = theme === 'light' ? '\u2600' : '\u263D';
-  localStorage.setItem('gcode_theme', theme);
-}
-
-function toggleTheme() {
-  const current = document.documentElement.getAttribute('data-theme') || 'dark';
-  applyTheme(current === 'dark' ? 'light' : 'dark');
-  if (currentView === 'visual') viewer.render(viewer.currentLayer);
-}
 
 applyTheme(getPreferredTheme());
 
