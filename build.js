@@ -7,6 +7,7 @@ const SRC = path.join(__dirname, 'src');
 const FILES = [
   'firmware.js',
   'bgcode.js',
+  'undo-stack.js',
   'app.js',
 ];
 
