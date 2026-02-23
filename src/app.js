@@ -22,6 +22,8 @@ let selectedLayer = null;
 let holeDetectMode = false;
 let measureMode = false;
 let measurePoints = [];
+let pauseSelectMode = false;
+let selectedMove = null;
 
 // Initialize firmware UI
 onFirmwareChange('bambu');

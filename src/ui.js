@@ -40,9 +40,38 @@ function renderRadioGroup(containerId, radioName, options) {
 
 function toggleMeasureMode() {
   measureMode = !measureMode;
+  // Mutual exclusion with pause select mode
+  if (measureMode && pauseSelectMode) {
+    pauseSelectMode = false;
+    selectedMove = null;
+    document.getElementById('pauseSelectToggle').classList.remove('active');
+  }
   measurePoints = [];
   document.getElementById('measureToggle').classList.toggle('active', measureMode);
   document.getElementById('viewerCanvas').style.cursor = measureMode ? 'crosshair' : '';
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function togglePauseSelectMode() {
+  pauseSelectMode = !pauseSelectMode;
+  selectedMove = null;
+  document.getElementById('pauseSelectToggle').classList.toggle('active', pauseSelectMode);
+  document.getElementById('viewerCanvas').style.cursor = pauseSelectMode ? 'crosshair' : '';
+
+  // Mutual exclusion with measure mode
+  if (pauseSelectMode && measureMode) {
+    measureMode = false;
+    measurePoints = [];
+    document.getElementById('measureToggle').classList.remove('active');
+  }
+
+  // Auto-switch to visual view and pause tab
+  if (pauseSelectMode) {
+    if (currentView !== 'visual') setView('visual');
+    const activeTab = document.querySelector('.tab.active')?.dataset.tab;
+    if (activeTab !== 'pause') switchTab('pause');
+  }
+
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
 
@@ -121,6 +150,10 @@ function loadFile(file) {
     holeDetectMode = false;
     document.getElementById('holeDetectToggle').classList.remove('active');
     document.getElementById('viewerCanvas').classList.remove('hole-mode');
+    pauseSelectMode = false;
+    selectedMove = null;
+    document.getElementById('pauseSelectToggle').classList.remove('active');
+    document.getElementById('viewerCanvas').style.cursor = '';
 
     // Update UI
     document.getElementById('fileName').textContent = file.name;
@@ -193,6 +226,7 @@ function filterLayers(query) {
 
 function selectLayer(num) {
   selectedLineNumber = null;
+  selectedMove = null;
   selectedLayer = num;
   renderLayerList();
   updateSectionForLayer(num);
@@ -915,6 +949,7 @@ function addPause() {
   modifier.addPause(layer, msg, pauseType, moveHead, lineNumber);
   document.getElementById('pauseLineNumber').value = '';
   refreshAfterMod();
+  selectedMove = null;
   const lineInfo = lineNumber != null ? `, line ${lineNumber + 1}` : '';
   showToast(`Pause added at layer ${layer}${lineInfo}`, 'success');
 }

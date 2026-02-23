@@ -403,6 +403,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <input type="number" class="jump-input" id="jumpLayer" min="0" placeholder="#" onchange="jumpToLayer(+this.value)">
         <button class="hole-detect-btn" id="holeDetectToggle" onclick="toggleHoleMode()" title="Toggle hole detection mode">Hole Detect</button>
         <button class="hole-detect-btn" id="measureToggle" onclick="toggleMeasureMode()" title="Measure distance">Measure</button>
+        <button class="hole-detect-btn" id="pauseSelectToggle" onclick="togglePauseSelectMode()" title="Click in 3D view to select pause point">Pause Select</button>
         <span style="margin-left:auto" id="previewInfo"></span>
       </div>
       <div id="gcodePreview">
@@ -2169,7 +2170,7 @@ class GcodeParser {
         if (newX !== curX || newY !== curY) {
           this.layerMoves[currentLayer.number].push({
             x1: curX, y1: curY, x2: newX, y2: newY,
-            type: currentType, extrude: isExtrude && !isG0
+            type: currentType, extrude: isExtrude && !isG0, lineIndex: i
           });
           this.bounds.minX = Math.min(this.bounds.minX, curX, newX);
           this.bounds.maxX = Math.max(this.bounds.maxX, curX, newX);
@@ -2221,7 +2222,7 @@ class GcodeParser {
             const ay = s === segments ? newY : cy + r * Math.sin(angle);
             this.layerMoves[currentLayer.number].push({
               x1: prevAX, y1: prevAY, x2: ax, y2: ay,
-              type: currentType, extrude: isExtrude
+              type: currentType, extrude: isExtrude, lineIndex: i
             });
             this.bounds.minX = Math.min(this.bounds.minX, ax);
             this.bounds.maxX = Math.max(this.bounds.maxX, ax);
@@ -3088,6 +3089,7 @@ class GcodeViewer3D {
     this._drawModMarkers(mvp);
     this._drawHoleHighlights(mvp);
     this._drawMeasurement(mvp);
+    this._drawSelectedMove(mvp);
   }
 
   _drawModMarkers(mvp) {
@@ -3260,6 +3262,28 @@ class GcodeViewer3D {
     return { x: near[0] + t * (far[0] - near[0]), y: near[1] + t * (far[1] - near[1]), z: layerZ };
   }
 
+  findNearestMove(worldX, worldY, layerNum) {
+    const moves = parser.layerMoves[layerNum];
+    if (!moves || moves.length === 0) return null;
+    let best = null, bestDist = Infinity;
+    for (const move of moves) {
+      if (!move.extrude) continue;
+      const dx = move.x2 - move.x1, dy = move.y2 - move.y1;
+      const lenSq = dx * dx + dy * dy;
+      let d;
+      if (lenSq === 0) {
+        d = Math.hypot(worldX - move.x1, worldY - move.y1);
+      } else {
+        let t = ((worldX - move.x1) * dx + (worldY - move.y1) * dy) / lenSq;
+        t = Math.max(0, Math.min(1, t));
+        const projX = move.x1 + t * dx, projY = move.y1 + t * dy;
+        d = Math.hypot(worldX - projX, worldY - projY);
+      }
+      if (d < bestDist) { bestDist = d; best = move; }
+    }
+    return best;
+  }
+
   _drawMeasurement(mvp) {
     if (!measureMode || measurePoints.length === 0) return;
     const gl = this.gl;
@@ -3278,6 +3302,56 @@ class GcodeViewer3D {
     }
 
     if (verts.length === 0) return;
+    const data = new Float32Array(verts);
+    const stride = 7 * 4;
+    gl.useProgram(this.lineProg);
+    gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STREAM_DRAW);
+    gl.enableVertexAttribArray(this.line_a_pos);
+    gl.vertexAttribPointer(this.line_a_pos, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(this.line_a_color);
+    gl.vertexAttribPointer(this.line_a_color, 4, gl.FLOAT, false, stride, 12);
+    gl.drawArrays(gl.LINES, 0, verts.length / 7);
+    gl.deleteBuffer(vbo);
+  }
+
+  _drawSelectedMove(mvp) {
+    if (!selectedMove || !pauseSelectMode) return;
+    const gl = this.gl;
+    const layer = parser.getLayerByNumber(this.currentLayer);
+    const z = (layer?.zHeight || 0) + 0.1;
+
+    // Theme-aware accent color
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    const color = isLight
+      ? [0.0, 0.533, 0.8, 1.0]   // --accent in light mode
+      : [0.0, 0.784, 1.0, 1.0];  // --accent in dark mode
+
+    const m = selectedMove;
+    const verts = [];
+    // Draw the segment as a thick line with slight offsets for visibility
+    const dx = m.x2 - m.x1, dy = m.y2 - m.y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.001) return;
+    const nx = -dy / len * 0.15, ny = dx / len * 0.15;
+
+    // Main line
+    verts.push(m.x1, m.y1, z, ...color);
+    verts.push(m.x2, m.y2, z, ...color);
+    // Offset lines for thickness
+    verts.push(m.x1 + nx, m.y1 + ny, z, ...color);
+    verts.push(m.x2 + nx, m.y2 + ny, z, ...color);
+    verts.push(m.x1 - nx, m.y1 - ny, z, ...color);
+    verts.push(m.x2 - nx, m.y2 - ny, z, ...color);
+
+    // Crosshair at midpoint
+    const mx = (m.x1 + m.x2) / 2, my = (m.y1 + m.y2) / 2;
+    const s = 0.8;
+    verts.push(mx - s, my, z, ...color, mx + s, my, z, ...color);
+    verts.push(mx, my - s, z, ...color, mx, my + s, z, ...color);
+
     const data = new Float32Array(verts);
     const stride = 7 * 4;
     gl.useProgram(this.lineProg);
@@ -3412,23 +3486,44 @@ class GcodeViewer3D {
     });
 
 
-    // Measurement click handler
     c.addEventListener('click', e => {
-      if (!measureMode || this._mouseMoved) return;
+      if (this._mouseMoved) return;
       const rect = c.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
       const layer = parser.getLayerByNumber(this.currentLayer);
       const z = layer?.zHeight || 0;
-      const pt = this.screenToLayerPoint(sx, sy, z);
-      if (pt) {
-        measurePoints.push(pt);
-        if (measurePoints.length > 2) measurePoints = [measurePoints[measurePoints.length - 1]];
-        this.render(this.currentLayer);
-        if (measurePoints.length === 2) {
-          const [a, b] = measurePoints;
-          const dist = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
-          showToast('Distance: ' + dist.toFixed(2) + ' mm', 'success', 6000);
+
+      // Measurement mode click
+      if (measureMode) {
+        const pt = this.screenToLayerPoint(sx, sy, z);
+        if (pt) {
+          measurePoints.push(pt);
+          if (measurePoints.length > 2) measurePoints = [measurePoints[measurePoints.length - 1]];
+          this.render(this.currentLayer);
+          if (measurePoints.length === 2) {
+            const [a, b] = measurePoints;
+            const dist = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+            showToast('Distance: ' + dist.toFixed(2) + ' mm', 'success', 6000);
+          }
+        }
+        return;
+      }
+
+      // Pause select mode click
+      if (pauseSelectMode && selectedLayer !== null) {
+        const pt = this.screenToLayerPoint(sx, sy, z);
+        if (!pt) return;
+        const move = this.findNearestMove(pt.x, pt.y, selectedLayer);
+        if (move) {
+          selectedMove = move;
+          selectedLineNumber = move.lineIndex;
+          document.getElementById('pauseLayer').value = selectedLayer;
+          document.getElementById('pauseLineNumber').value = move.lineIndex + 1;
+          this.render(this.currentLayer);
+          showToast(`Selected line ${move.lineIndex + 1} — click Add Pause to confirm`, 'success');
+        } else {
+          showToast('No extrusion move found near click point', 'warning');
         }
       }
     });
@@ -3482,9 +3577,38 @@ function renderRadioGroup(containerId, radioName, options) {
 
 function toggleMeasureMode() {
   measureMode = !measureMode;
+  // Mutual exclusion with pause select mode
+  if (measureMode && pauseSelectMode) {
+    pauseSelectMode = false;
+    selectedMove = null;
+    document.getElementById('pauseSelectToggle').classList.remove('active');
+  }
   measurePoints = [];
   document.getElementById('measureToggle').classList.toggle('active', measureMode);
   document.getElementById('viewerCanvas').style.cursor = measureMode ? 'crosshair' : '';
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function togglePauseSelectMode() {
+  pauseSelectMode = !pauseSelectMode;
+  selectedMove = null;
+  document.getElementById('pauseSelectToggle').classList.toggle('active', pauseSelectMode);
+  document.getElementById('viewerCanvas').style.cursor = pauseSelectMode ? 'crosshair' : '';
+
+  // Mutual exclusion with measure mode
+  if (pauseSelectMode && measureMode) {
+    measureMode = false;
+    measurePoints = [];
+    document.getElementById('measureToggle').classList.remove('active');
+  }
+
+  // Auto-switch to visual view and pause tab
+  if (pauseSelectMode) {
+    if (currentView !== 'visual') setView('visual');
+    const activeTab = document.querySelector('.tab.active')?.dataset.tab;
+    if (activeTab !== 'pause') switchTab('pause');
+  }
+
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
 
@@ -3563,6 +3687,10 @@ function loadFile(file) {
     holeDetectMode = false;
     document.getElementById('holeDetectToggle').classList.remove('active');
     document.getElementById('viewerCanvas').classList.remove('hole-mode');
+    pauseSelectMode = false;
+    selectedMove = null;
+    document.getElementById('pauseSelectToggle').classList.remove('active');
+    document.getElementById('viewerCanvas').style.cursor = '';
 
     // Update UI
     document.getElementById('fileName').textContent = file.name;
@@ -3635,6 +3763,7 @@ function filterLayers(query) {
 
 function selectLayer(num) {
   selectedLineNumber = null;
+  selectedMove = null;
   selectedLayer = num;
   renderLayerList();
   updateSectionForLayer(num);
@@ -4357,6 +4486,7 @@ function addPause() {
   modifier.addPause(layer, msg, pauseType, moveHead, lineNumber);
   document.getElementById('pauseLineNumber').value = '';
   refreshAfterMod();
+  selectedMove = null;
   const lineInfo = lineNumber != null ? `, line ${lineNumber + 1}` : '';
   showToast(`Pause added at layer ${layer}${lineInfo}`, 'success');
 }
@@ -5016,6 +5146,8 @@ let selectedLayer = null;
 let holeDetectMode = false;
 let measureMode = false;
 let measurePoints = [];
+let pauseSelectMode = false;
+let selectedMove = null;
 
 // Initialize firmware UI
 onFirmwareChange('bambu');
