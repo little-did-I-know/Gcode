@@ -226,6 +226,149 @@ function jumpToLayer(num) {
 let sectionStates = []; // tracks {type, startLine, endLine, expanded, layerNum, zHeight, lineCount}
 let currentExpandedLayer = null;
 
+// ===== SEARCH =====
+let searchMatches = [];
+let currentMatchIdx = -1;
+let searchQuery = '';
+let searchDebounceTimer = null;
+const SEARCH_MAX_MATCHES = 10000;
+const SEARCH_LIVE_THRESHOLD = 50000;
+
+function executeSearch(query) {
+  searchQuery = query;
+  searchMatches = [];
+  currentMatchIdx = -1;
+
+  if (!query) {
+    updateSearchCount();
+    renderSectionPreview();
+    return;
+  }
+
+  const q = query.toLowerCase();
+  for (let i = 0; i < parser.lines.length && searchMatches.length < SEARCH_MAX_MATCHES; i++) {
+    if (parser.lines[i].toLowerCase().includes(q)) {
+      let sectionIdx = -1;
+      for (let s = 0; s < sectionStates.length; s++) {
+        if (i >= sectionStates[s].startLine && i <= sectionStates[s].endLine) {
+          sectionIdx = s;
+          break;
+        }
+      }
+      searchMatches.push({ lineNum: i, sectionIdx });
+    }
+  }
+
+  if (searchMatches.length > 0) {
+    currentMatchIdx = 0;
+    navigateToMatch(0);
+  } else {
+    updateSearchCount();
+    renderSectionPreview();
+  }
+}
+
+function navigateToMatch(idx) {
+  if (searchMatches.length === 0) return;
+  currentMatchIdx = ((idx % searchMatches.length) + searchMatches.length) % searchMatches.length;
+  const match = searchMatches[currentMatchIdx];
+
+  for (let s = 0; s < sectionStates.length; s++) {
+    const sec = sectionStates[s];
+    if (s === match.sectionIdx) {
+      sec.expanded = true;
+    } else if (sec.type === 'layer' && sec.expanded && sec.layerNum !== selectedLayer) {
+      sec.expanded = false;
+    }
+  }
+
+  updateSearchCount();
+  renderSectionPreview();
+
+  requestAnimationFrame(() => {
+    const row = document.querySelector(`tr[data-line="${match.lineNum}"]`);
+    if (row) {
+      row.scrollIntoView({ block: 'center', behavior: 'instant' });
+    }
+  });
+}
+
+function nextMatch() {
+  if (searchMatches.length === 0) return;
+  navigateToMatch(currentMatchIdx + 1);
+}
+
+function prevMatch() {
+  if (searchMatches.length === 0) return;
+  navigateToMatch(currentMatchIdx - 1);
+}
+
+function showSearchBar() {
+  const bar = document.getElementById('searchBar');
+  if (!bar) return;
+  bar.classList.remove('hidden');
+  const input = bar.querySelector('input');
+  if (input) {
+    input.focus();
+    input.select();
+  }
+}
+
+function hideSearchBar() {
+  const bar = document.getElementById('searchBar');
+  if (!bar) return;
+  bar.classList.add('hidden');
+
+  searchQuery = '';
+  searchMatches = [];
+  currentMatchIdx = -1;
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+
+  renderSectionPreview();
+}
+
+function updateSearchCount() {
+  const el = document.getElementById('searchCount');
+  if (!el) return;
+
+  if (!searchQuery) {
+    el.textContent = '';
+  } else if (searchMatches.length === 0) {
+    el.textContent = 'No matches';
+  } else if (searchMatches.length >= SEARCH_MAX_MATCHES) {
+    el.textContent = `${currentMatchIdx + 1} of ${SEARCH_MAX_MATCHES}+`;
+  } else {
+    el.textContent = `${currentMatchIdx + 1} of ${searchMatches.length}`;
+  }
+}
+
+function onSearchInput(value) {
+  if (parser.lines.length >= SEARCH_LIVE_THRESHOLD) {
+    const el = document.getElementById('searchCount');
+    if (el && value) el.textContent = 'Press Enter';
+    return;
+  }
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => executeSearch(value), 300);
+}
+
+function onSearchKeydown(e) {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    hideSearchBar();
+  } else if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    if (searchMatches.length > 0 && searchQuery === e.target.value) {
+      nextMatch();
+    } else {
+      executeSearch(e.target.value);
+    }
+  } else if (e.key === 'Enter' && e.shiftKey) {
+    e.preventDefault();
+    prevMatch();
+  }
+}
+
 function buildSections() {
   sectionStates = [];
   if (parser.lines.length === 0) return;
@@ -294,7 +437,13 @@ function renderSectionPreview() {
 
   if (sectionStates.length === 0) return;
 
-  let html = '';
+  let html = `<div class="search-bar hidden" id="searchBar">` +
+    `<input type="text" placeholder="Find in file..." value="${searchQuery.replace(/"/g, '&quot;')}" oninput="onSearchInput(this.value)" onkeydown="onSearchKeydown(event)">` +
+    `<span class="search-count" id="searchCount"></span>` +
+    `<button onclick="prevMatch()" title="Previous (Shift+Enter)">&#9650;</button>` +
+    `<button onclick="nextMatch()" title="Next (Enter)">&#9660;</button>` +
+    `<button onclick="hideSearchBar()" title="Close (Esc)">&times;</button>` +
+    `</div>`;
   for (let idx = 0; idx < sectionStates.length; idx++) {
     const section = sectionStates[idx];
     const stateClass = section.expanded ? 'expanded' : 'collapsed';
@@ -322,6 +471,22 @@ function renderSectionPreview() {
     if (section.expanded && section.lineCount > 200) {
       scheduleChunkedRender(section, idx);
     }
+  }
+
+  // Restore search bar visibility and refocus if search is active
+  if (searchQuery) {
+    const bar = document.getElementById('searchBar');
+    if (bar) {
+      bar.classList.remove('hidden');
+      const input = bar.querySelector('input');
+      if (input) {
+        input.focus();
+        // Place cursor at end of input
+        const len = input.value.length;
+        input.setSelectionRange(len, len);
+      }
+    }
+    updateSearchCount();
   }
 
   // Scroll to selected layer section
@@ -374,7 +539,10 @@ function renderSectionLines(section, sectionIdx) {
     const classes = [];
     if (isLayerStart) classes.push('layer-start');
     if (isSelectedLayer) classes.push('highlight');
-    html += `<tr class="${classes.join(' ')}"><td class="ln">${i + 1}</td><td>${syntaxHighlight(raw)}</td></tr>`;
+    const isSearchActive = searchQuery && searchMatches.length > 0 && currentMatchIdx >= 0 && searchMatches[currentMatchIdx].lineNum === i;
+    if (isSearchActive) classes.push('search-active');
+    const lineContent = searchQuery ? highlightSearchMatch(syntaxHighlight(raw), searchQuery) : syntaxHighlight(raw);
+    html += `<tr class="${classes.join(' ')}" data-line="${i}"><td class="ln">${i + 1}</td><td>${lineContent}</td></tr>`;
   }
   html += '</tbody></table>';
 
@@ -431,7 +599,10 @@ function scheduleChunkedRender(section, sectionIdx) {
       const classes = [];
       if (isLayerStart) classes.push('layer-start');
       if (isSelectedLayer) classes.push('highlight');
-      html += `<tr class="${classes.join(' ')}"><td class="ln">${i + 1}</td><td>${syntaxHighlight(raw)}</td></tr>`;
+      const isSearchActive = searchQuery && searchMatches.length > 0 && currentMatchIdx >= 0 && searchMatches[currentMatchIdx].lineNum === i;
+      if (isSearchActive) classes.push('search-active');
+      const lineContent = searchQuery ? highlightSearchMatch(syntaxHighlight(raw), searchQuery) : syntaxHighlight(raw);
+      html += `<tr class="${classes.join(' ')}" data-line="${i}"><td class="ln">${i + 1}</td><td>${lineContent}</td></tr>`;
     }
     table.insertAdjacentHTML('beforeend', html);
     offset = end;
@@ -535,6 +706,16 @@ function syntaxHighlight(line) {
   main = main.replace(/\b([XYZEFIJKRSTPQAB])([-\d.]+)/g, '<span class="syn-param">$1</span><span class="syn-value">$2</span>');
 
   return main + comment;
+}
+
+function highlightSearchMatch(html, query) {
+  if (!query) return html;
+  const q = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${q})`, 'gi');
+  return html.replace(/(<[^>]+>)|([^<]+)/g, (match, tag, text) => {
+    if (tag) return tag;
+    return text.replace(regex, '<mark class="search-match">$1</mark>');
+  });
 }
 
 // ===== TOAST NOTIFICATIONS =====

@@ -71,6 +71,7 @@ window.addEventListener('keydown', e => {
   // Ctrl shortcuts (work everywhere)
   if ((e.ctrlKey || e.metaKey) && e.key === 'e') { e.preventDefault(); exportGcode(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); document.getElementById('fileInput').click(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); if (currentView === 'code') showSearchBar(); return; }
 
   if (isInput) return;
 

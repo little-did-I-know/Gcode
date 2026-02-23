@@ -103,6 +103,33 @@ main { display: flex; flex: 1; overflow: hidden; }
 .gcode-section-lines { padding: 0; font-family: var(--mono); font-size: 13px; line-height: 1.7; }
 .gcode-section-loading { padding: 8px 12px; font-size: 11px; color: var(--text-dim); font-style: italic; }
 
+/* SEARCH */
+.search-bar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px;
+  background: var(--surface2); border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.search-bar.hidden { display: none; }
+.search-bar input {
+  flex: 1; min-width: 0;
+  padding: 4px 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text); font-family: var(--mono); font-size: 13px;
+  outline: none;
+}
+.search-bar input:focus { border-color: var(--accent); }
+.search-bar .search-count { color: var(--text-dim); font-size: 11px; white-space: nowrap; min-width: 80px; text-align: center; }
+.search-bar button {
+  background: none; border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text-dim); cursor: pointer; padding: 2px 8px; font-size: 14px; line-height: 1;
+}
+.search-bar button:hover { background: var(--border); color: var(--text); }
+.code-table tr.search-active td { background: var(--accent-dim); }
+.code-table tr.search-active td:last-child mark { background: var(--accent); color: #000; border-radius: 2px; padding: 0 1px; }
+.code-table td mark.search-match { background: rgba(250,204,21,.35); color: inherit; border-radius: 2px; padding: 0 1px; }
+
 .syn-g { color: #60a5fa; }
 .syn-m { color: #4ade80; }
 .syn-comment { color: #6b7280; }
@@ -647,6 +674,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       <tr><td><kbd>1</kbd>–<kbd>8</kbd></td><td>Switch tool tab</td></tr>
       <tr><td><kbd>F</kbd></td><td>Reset camera</td></tr>
       <tr><td><kbd>?</kbd></td><td>This help</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>Find in file</td></tr>
     </table>
   </div>
 </div>
