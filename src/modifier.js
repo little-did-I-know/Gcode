@@ -7,10 +7,11 @@ export class GcodeModifier {
 
   _id() { return 'mod_' + (++this._idCounter) + '_' + Date.now(); }
 
-  addPause(layer, message, pauseType, moveHead) {
+  addPause(layer, message, pauseType, moveHead, lineNumber = null) {
     const mod = {
       id: this._id(), type: 'pause', layer,
-      message: message || '', pauseType, moveHead
+      message: message || '', pauseType, moveHead,
+      lineNumber
     };
     this.modifications.push(mod);
     return mod;
@@ -83,18 +84,20 @@ export class GcodeModifier {
     const lines = [];
     switch (mod.type) {
       case 'pause': {
-        lines.push(`; === PAUSE${mod.message ? ': ' + mod.message : ''} ===`);
+        const isMidLayer = mod.lineNumber != null;
+        const tag = isMidLayer ? 'MID-LAYER PAUSE' : 'PAUSE';
+        lines.push(`; === ${tag}${mod.message ? ': ' + mod.message : ''} ===`);
         if (mod.moveHead) {
           lines.push('G91 ; Relative positioning');
           lines.push('G1 Z5 F600 ; Lift Z');
           lines.push('G90 ; Absolute positioning');
           lines.push('G1 X5 Y5 F6000 ; Move head to front-left');
         }
-        const profile = FIRMWARE[currentFirmware];
+        const profile = typeof FIRMWARE !== 'undefined' ? FIRMWARE[currentFirmware] : undefined;
         const pauseGcode = profile?.pauseGcode?.[mod.pauseType];
         if (pauseGcode) lines.push(pauseGcode);
         else lines.push(`${mod.pauseType} ; Pause`);
-        lines.push('; === END PAUSE ===');
+        lines.push(`; === END ${tag} ===`);
         break;
       }
       case 'filament': {
@@ -317,7 +320,11 @@ export class GcodeModifier {
     const sorted = [...layerMods, ...zoffsetMods].sort((a, b) => {
       const la = a.layer === 'end' ? Infinity : a.layer;
       const lb = b.layer === 'end' ? Infinity : b.layer;
-      return lb - la;
+      if (lb !== la) return lb - la;
+      // Secondary sort: by lineNumber descending (null = layer start, treated as -Infinity for sorting)
+      const lna = (a.type === 'pause' && a.lineNumber != null) ? a.lineNumber : -1;
+      const lnb = (b.type === 'pause' && b.lineNumber != null) ? b.lineNumber : -1;
+      return lnb - lna;
     });
 
     for (const mod of sorted) {
@@ -330,10 +337,13 @@ export class GcodeModifier {
         // Skip mods targeting layers that were stripped by recovery
         if (recoveryMod && mod.layer < recoveryMod.resumeLayer) continue;
         const layer = parser.getLayerByNumber(mod.layer);
-        if (layer) {
-          insertLine = layer.startLine + 1 + recoveryLineShift; // Adjust for recovery line shift
+        if (!layer) continue;
+
+        if (mod.type === 'pause' && mod.lineNumber != null) {
+          // Mid-layer pause: insert before the specified line
+          insertLine = mod.lineNumber + recoveryLineShift;
         } else {
-          continue; // Skip if layer not found
+          insertLine = layer.startLine + 1 + recoveryLineShift;
         }
       }
       result.splice(insertLine, 0, ...snippet);

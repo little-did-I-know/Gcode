@@ -11,14 +11,14 @@
   --bg: #111214; --surface: #1c1e22; --surface2: #252830;
   --border: #33363d; --text: #e0e2e8; --text-dim: #8b8f9a;
   --accent: #00c8ff; --accent-dim: rgba(0,200,255,0.12);
-  --green: #4ade80; --yellow: #facc15; --red: #f87171; --orange: #fb923c; --purple: #a78bfa;
+  --green: #4ade80; --yellow: #facc15; --red: #f87171; --orange: #fb923c; --purple: #a78bfa; --teal: #2dd4bf;
   --radius: 8px; --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
 }
 [data-theme="light"] {
   --bg: #f5f5f7; --surface: #ffffff; --surface2: #f0f0f2;
   --border: #d4d4d8; --text: #1c1e22; --text-dim: #6b7280;
   --accent: #0088cc; --accent-dim: rgba(0,136,204,0.1);
-  --green: #16a34a; --yellow: #ca8a04; --red: #dc2626; --orange: #ea580c; --purple: #7c3aed;
+  --green: #16a34a; --yellow: #ca8a04; --red: #dc2626; --orange: #ea580c; --purple: #7c3aed; --teal: #0d9488;
 }
 [data-theme="light"] ::-webkit-scrollbar-thumb { background: #c4c4c8; }
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #a0a0a8; }
@@ -77,6 +77,8 @@ main { display: flex; flex: 1; overflow: hidden; }
 .code-table tr.highlight td { background: rgba(250,204,21,.08); }
 .code-table tr.mod-line td { background: rgba(251,146,60,.12); }
 .code-table tr.mod-line td:last-child { color: var(--orange); font-weight: 600; }
+.code-table tr.mod-line-midlayer td { background: rgba(45,212,191,.12); }
+.code-table tr.mod-line-midlayer td:last-child { color: var(--teal); font-weight: 600; }
 
 /* SECTION-BASED PREVIEW */
 .gcode-section { border-bottom: 1px solid var(--border); }
@@ -128,6 +130,8 @@ main { display: flex; flex: 1; overflow: hidden; }
 .search-bar button:hover { background: var(--border); color: var(--text); }
 .code-table tr.search-active td { background: var(--accent-dim); }
 .code-table tr.search-active td:last-child mark { background: var(--accent); color: #000; border-radius: 2px; padding: 0 1px; }
+.code-table tr[onclick]:hover td { cursor: pointer; }
+.code-table tr.line-selected td { background: var(--accent-dim); cursor: pointer; }
 .code-table td mark.search-match { background: rgba(250,204,21,.35); color: inherit; border-radius: 2px; padding: 0 1px; }
 
 .syn-g { color: #60a5fa; }
@@ -159,6 +163,7 @@ main { display: flex; flex: 1; overflow: hidden; }
 .viewer-mod-banner.filament { background: rgba(167,139,250,.2); color: var(--purple); border: 1px solid rgba(167,139,250,.3); }
 .viewer-mod-banner.custom { background: rgba(0,200,255,.15); color: var(--accent); border: 1px solid rgba(0,200,255,.25); }
 .viewer-mod-banner.recovery { background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.3); color: var(--red, #ef4444); }
+.viewer-mod-banner.mid-layer-pause { background: rgba(45,212,191,.2); color: var(--teal); border: 1px solid rgba(45,212,191,.3); }
 .viewer-legend { position: absolute; bottom: 12px; left: 12px; display: flex; flex-wrap: wrap; gap: 10px; pointer-events: none; }
 .legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-dim); }
 .legend-swatch { width: 14px; height: 3px; border-radius: 2px; }
@@ -446,6 +451,10 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div class="form-group">
           <label>Layer Number</label>
           <input type="number" class="input" id="pauseLayer" min="0" placeholder="e.g. 42">
+        </div>
+        <div class="form-group">
+          <label>Line Number <span style="opacity:0.5">(optional — leave empty for layer start)</span></label>
+          <input type="number" class="input" id="pauseLineNumber" min="1" placeholder="Click a line in code view or enter manually">
         </div>
         <div class="form-group">
           <label>Reminder Message (optional)</label>
@@ -2266,10 +2275,11 @@ class GcodeModifier {
 
   _id() { return 'mod_' + (++this._idCounter) + '_' + Date.now(); }
 
-  addPause(layer, message, pauseType, moveHead) {
+  addPause(layer, message, pauseType, moveHead, lineNumber = null) {
     const mod = {
       id: this._id(), type: 'pause', layer,
-      message: message || '', pauseType, moveHead
+      message: message || '', pauseType, moveHead,
+      lineNumber
     };
     this.modifications.push(mod);
     return mod;
@@ -2342,18 +2352,20 @@ class GcodeModifier {
     const lines = [];
     switch (mod.type) {
       case 'pause': {
-        lines.push(`; === PAUSE${mod.message ? ': ' + mod.message : ''} ===`);
+        const isMidLayer = mod.lineNumber != null;
+        const tag = isMidLayer ? 'MID-LAYER PAUSE' : 'PAUSE';
+        lines.push(`; === ${tag}${mod.message ? ': ' + mod.message : ''} ===`);
         if (mod.moveHead) {
           lines.push('G91 ; Relative positioning');
           lines.push('G1 Z5 F600 ; Lift Z');
           lines.push('G90 ; Absolute positioning');
           lines.push('G1 X5 Y5 F6000 ; Move head to front-left');
         }
-        const profile = FIRMWARE[currentFirmware];
+        const profile = typeof FIRMWARE !== 'undefined' ? FIRMWARE[currentFirmware] : undefined;
         const pauseGcode = profile?.pauseGcode?.[mod.pauseType];
         if (pauseGcode) lines.push(pauseGcode);
         else lines.push(`${mod.pauseType} ; Pause`);
-        lines.push('; === END PAUSE ===');
+        lines.push(`; === END ${tag} ===`);
         break;
       }
       case 'filament': {
@@ -2576,7 +2588,11 @@ class GcodeModifier {
     const sorted = [...layerMods, ...zoffsetMods].sort((a, b) => {
       const la = a.layer === 'end' ? Infinity : a.layer;
       const lb = b.layer === 'end' ? Infinity : b.layer;
-      return lb - la;
+      if (lb !== la) return lb - la;
+      // Secondary sort: by lineNumber descending (null = layer start, treated as -Infinity for sorting)
+      const lna = (a.type === 'pause' && a.lineNumber != null) ? a.lineNumber : -1;
+      const lnb = (b.type === 'pause' && b.lineNumber != null) ? b.lineNumber : -1;
+      return lnb - lna;
     });
 
     for (const mod of sorted) {
@@ -2589,10 +2605,13 @@ class GcodeModifier {
         // Skip mods targeting layers that were stripped by recovery
         if (recoveryMod && mod.layer < recoveryMod.resumeLayer) continue;
         const layer = parser.getLayerByNumber(mod.layer);
-        if (layer) {
-          insertLine = layer.startLine + 1 + recoveryLineShift; // Adjust for recovery line shift
+        if (!layer) continue;
+
+        if (mod.type === 'pause' && mod.lineNumber != null) {
+          // Mid-layer pause: insert before the specified line
+          insertLine = mod.lineNumber + recoveryLineShift;
         } else {
-          continue; // Skip if layer not found
+          insertLine = layer.startLine + 1 + recoveryLineShift;
         }
       }
       result.splice(insertLine, 0, ...snippet);
@@ -3085,7 +3104,11 @@ class GcodeViewer3D {
 
       let color;
       switch (mod.type) {
-        case 'pause': color = [0.980, 0.800, 0.082, 0.15]; break;
+        case 'pause':
+          color = mod.lineNumber != null
+            ? [0.0, 0.784, 0.784, 0.18]   // teal for mid-layer
+            : [0.980, 0.800, 0.082, 0.15]; // yellow for layer-start
+          break;
         case 'filament': color = [0.655, 0.545, 0.980, 0.15]; break;
         case 'zoffset': color = [0.984, 0.573, 0.235, 0.15]; break;
         case 'custom': color = [0.0, 0.784, 1.0, 0.15]; break;
@@ -3611,6 +3634,7 @@ function filterLayers(query) {
 }
 
 function selectLayer(num) {
+  selectedLineNumber = null;
   selectedLayer = num;
   renderLayerList();
   updateSectionForLayer(num);
@@ -3652,6 +3676,8 @@ let searchQuery = '';
 let searchDebounceTimer = null;
 const SEARCH_MAX_MATCHES = 10000;
 const SEARCH_LIVE_THRESHOLD = 50000;
+
+let selectedLineNumber = null;
 
 function executeSearch(query) {
   searchQuery = query;
@@ -3912,6 +3938,32 @@ function renderSectionPreview() {
   scrollToActiveSection();
 }
 
+function selectLineForPause(lineIdx, sectionIdx) {
+  const section = sectionStates[sectionIdx];
+  if (!section || section.type !== 'layer') return;
+
+  // Toggle: clicking same line deselects
+  if (selectedLineNumber === lineIdx) {
+    selectedLineNumber = null;
+    document.getElementById('pauseLineNumber').value = '';
+  } else {
+    selectedLineNumber = lineIdx;
+    // Auto-populate pause tab fields
+    document.getElementById('pauseLayer').value = section.layerNum;
+    document.getElementById('pauseLineNumber').value = lineIdx + 1; // 1-based display
+    // Switch to pause tab if not active
+    const activeTab = document.querySelector('.tab.active')?.dataset.tab;
+    if (activeTab !== 'pause') switchTab('pause');
+  }
+
+  // Update visual selection
+  document.querySelectorAll('.code-table tr.line-selected').forEach(el => el.classList.remove('line-selected'));
+  if (selectedLineNumber !== null) {
+    const row = document.querySelector(`tr[data-line="${selectedLineNumber}"]`);
+    if (row) row.classList.add('line-selected');
+  }
+}
+
 function renderSectionHeader(section, idx, isActive) {
   let label = '';
   let meta = '';
@@ -3951,8 +4003,22 @@ function renderSectionLines(section, sectionIdx) {
   const renderEnd = Math.min(section.startLine + 200, section.endLine + 1);
   const isSelectedLayer = section.type === 'layer' && section.layerNum === selectedLayer;
 
+  // Collect mid-layer pauses for this section
+  const midLayerMods = isSelectedLayer
+    ? modifier.modifications.filter(m => m.type === 'pause' && m.lineNumber != null && m.layer === section.layerNum)
+    : [];
+
   let html = '<table class="code-table"><tbody>';
   for (let i = section.startLine; i < renderEnd; i++) {
+    // Render mid-layer pause snippets before their target line
+    for (const mlMod of midLayerMods) {
+      if (mlMod.lineNumber === i) {
+        const snippet = modifier.getSnippet(mlMod);
+        for (const line of snippet) {
+          html += `<tr class="mod-line-midlayer"><td class="ln">+</td><td>${syntaxHighlight(line)}</td></tr>`;
+        }
+      }
+    }
     const raw = parser.lines[i];
     const isLayerStart = raw.trim().match(/^;LAYER:\d+/i);
     const classes = [];
@@ -3961,7 +4027,9 @@ function renderSectionLines(section, sectionIdx) {
     const isSearchActive = searchQuery && searchMatches.length > 0 && currentMatchIdx >= 0 && searchMatches[currentMatchIdx].lineNum === i;
     if (isSearchActive) classes.push('search-active');
     const lineContent = searchQuery ? highlightSearchMatch(syntaxHighlight(raw), searchQuery) : syntaxHighlight(raw);
-    html += `<tr class="${classes.join(' ')}" data-line="${i}"><td class="ln">${i + 1}</td><td>${lineContent}</td></tr>`;
+    const clickHandler = section.type === 'layer' ? ` onclick="selectLineForPause(${i}, ${sectionIdx})"` : '';
+    const selectedClass = (selectedLineNumber === i) ? ' line-selected' : '';
+    html += `<tr class="${classes.join(' ')}${selectedClass}" data-line="${i}"${clickHandler}><td class="ln">${i + 1}</td><td>${lineContent}</td></tr>`;
   }
   html += '</tbody></table>';
 
@@ -3978,6 +4046,7 @@ function renderSectionLines(section, sectionIdx) {
 
 function renderModificationsForLayer(layerNum) {
   const mods = modifier.modifications.filter(m => {
+    if (m.type === 'pause' && m.lineNumber != null) return false; // shown inline
     if (m.type === 'zoffset') return layerNum >= m.layer && (m.endLayer == null || layerNum <= m.endLayer);
     return m.layer === layerNum;
   });
@@ -4004,6 +4073,9 @@ function scheduleChunkedRender(section, sectionIdx) {
   if (!table) return;
 
   const isSelectedLayer = section.type === 'layer' && section.layerNum === selectedLayer;
+  const midLayerMods = isSelectedLayer
+    ? modifier.modifications.filter(m => m.type === 'pause' && m.lineNumber != null && m.layer === section.layerNum)
+    : [];
   let offset = section.startLine + 200;
   const batchSize = 500;
 
@@ -4013,6 +4085,15 @@ function scheduleChunkedRender(section, sectionIdx) {
     const end = Math.min(offset + batchSize, section.endLine + 1);
     let html = '';
     for (let i = offset; i < end; i++) {
+      // Render mid-layer pause snippets before their target line
+      for (const mlMod of midLayerMods) {
+        if (mlMod.lineNumber === i) {
+          const snippet = modifier.getSnippet(mlMod);
+          for (const line of snippet) {
+            html += `<tr class="mod-line-midlayer"><td class="ln">+</td><td>${syntaxHighlight(line)}</td></tr>`;
+          }
+        }
+      }
       const raw = parser.lines[i];
       const isLayerStart = raw.trim().match(/^;LAYER:\d+/i);
       const classes = [];
@@ -4021,7 +4102,9 @@ function scheduleChunkedRender(section, sectionIdx) {
       const isSearchActive = searchQuery && searchMatches.length > 0 && currentMatchIdx >= 0 && searchMatches[currentMatchIdx].lineNum === i;
       if (isSearchActive) classes.push('search-active');
       const lineContent = searchQuery ? highlightSearchMatch(syntaxHighlight(raw), searchQuery) : syntaxHighlight(raw);
-      html += `<tr class="${classes.join(' ')}" data-line="${i}"><td class="ln">${i + 1}</td><td>${lineContent}</td></tr>`;
+      const clickHandler = section.type === 'layer' ? ` onclick="selectLineForPause(${i}, ${sectionIdx})"` : '';
+      const selectedClass = (selectedLineNumber === i) ? ' line-selected' : '';
+      html += `<tr class="${classes.join(' ')}${selectedClass}" data-line="${i}"${clickHandler}><td class="ln">${i + 1}</td><td>${lineContent}</td></tr>`;
     }
     table.insertAdjacentHTML('beforeend', html);
     offset = end;
@@ -4251,15 +4334,31 @@ function insertRefCommand(code) {
 function addPause() {
   const layer = parseInt(document.getElementById('pauseLayer').value);
   if (isNaN(layer)) { showToast('Please enter a valid layer number.', 'error'); return; }
-  if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
+  const layerData = parser.getLayerByNumber(layer);
+  if (!layerData) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
+
+  const lineNumInput = document.getElementById('pauseLineNumber').value.trim();
+  let lineNumber = null;
+  if (lineNumInput !== '') {
+    lineNumber = parseInt(lineNumInput);
+    if (isNaN(lineNumber)) { showToast('Please enter a valid line number.', 'error'); return; }
+    // Convert 1-based display line to 0-based index
+    lineNumber = lineNumber - 1;
+    if (lineNumber < layerData.startLine || lineNumber > layerData.endLine) {
+      showToast(`Line ${lineNumber + 1} is not within layer ${layer} (lines ${layerData.startLine + 1}–${layerData.endLine + 1}).`, 'error');
+      return;
+    }
+  }
 
   const msg = document.getElementById('pauseMsg').value;
   const pauseType = document.querySelector('input[name="pauseType"]:checked').value;
   const moveHead = document.getElementById('pauseMoveHead').checked;
 
-  modifier.addPause(layer, msg, pauseType, moveHead);
+  modifier.addPause(layer, msg, pauseType, moveHead, lineNumber);
+  document.getElementById('pauseLineNumber').value = '';
   refreshAfterMod();
-  showToast('Pause added at layer ' + layer, 'success');
+  const lineInfo = lineNumber != null ? `, line ${lineNumber + 1}` : '';
+  showToast(`Pause added at layer ${layer}${lineInfo}`, 'success');
 }
 
 function addFilamentChange() {
@@ -4406,7 +4505,9 @@ function renderModsList() {
     let desc = '';
     switch (mod.type) {
       case 'pause':
-        desc = `Layer ${mod.layer}${mod.message ? ' – ' + mod.message : ''}`;
+        desc = mod.lineNumber != null
+          ? `Layer ${mod.layer}, line ${mod.lineNumber + 1}${mod.message ? ' – ' + mod.message : ''}`
+          : `Layer ${mod.layer}${mod.message ? ' – ' + mod.message : ''}`;
         break;
       case 'filament':
         desc = mod.command === 'M1020' ? `Layer ${mod.layer} → Slot ${mod.slot + 1} (${mod.command})` : `Layer ${mod.layer} (${mod.command})`;
@@ -4543,7 +4644,11 @@ function updateViewerOverlay(layerNum) {
   });
   for (const mod of mods) {
     if (mod.type === 'pause') {
-      html += `<div class="viewer-mod-banner pause">⏸ Pause at this layer${mod.message ? ': ' + mod.message : ''}</div>`;
+      if (mod.lineNumber != null) {
+        html += `<div class="viewer-mod-banner mid-layer-pause">⏸ Mid-layer pause at line ${mod.lineNumber + 1}${mod.message ? ': ' + mod.message : ''}</div>`;
+      } else {
+        html += `<div class="viewer-mod-banner pause">⏸ Pause at this layer${mod.message ? ': ' + mod.message : ''}</div>`;
+      }
     } else if (mod.type === 'filament') {
       html += `<div class="viewer-mod-banner filament">🔄 Filament change${mod.command === 'M1020' ? ' → Slot ' + (mod.slot + 1) : ''} (${mod.command})</div>`;
     } else if (mod.type === 'zoffset') {

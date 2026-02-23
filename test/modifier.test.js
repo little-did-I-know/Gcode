@@ -31,6 +31,16 @@ describe('GcodeModifier', () => {
       const result = mod.addPause(0, null, 'M0', false);
       assert.strictEqual(result.message, '');
     });
+
+    it('accepts optional lineNumber parameter', () => {
+      const result = mod.addPause(5, 'mid-layer', 'M0', false, 100);
+      assert.strictEqual(result.lineNumber, 100);
+    });
+
+    it('defaults lineNumber to null when not provided', () => {
+      const result = mod.addPause(5, '', 'M0', false);
+      assert.strictEqual(result.lineNumber, null);
+    });
   });
 
   // --- addZOffset ---
@@ -230,6 +240,21 @@ describe('GcodeModifier', () => {
       assert.ok(lines[0].includes('layer 10'));
       assert.ok(lines.some(l => l.includes('END RECOVERY HEADER')));
     });
+
+    it('generates mid-layer pause snippet when lineNumber is set', () => {
+      const m = mod.addPause(5, 'insert nut', 'M0', false, 100);
+      const lines = mod.getSnippet(m);
+      assert.ok(lines[0].includes('MID-LAYER PAUSE'));
+      assert.ok(lines[0].includes('insert nut'));
+      assert.ok(lines[lines.length - 1].includes('END MID-LAYER PAUSE'));
+    });
+
+    it('generates standard pause snippet when lineNumber is null', () => {
+      const m = mod.addPause(5, '', 'M0', false);
+      const lines = mod.getSnippet(m);
+      assert.ok(lines[0].includes('=== PAUSE'));
+      assert.ok(!lines[0].includes('MID-LAYER'));
+    });
   });
 
   // --- unique IDs ---
@@ -307,6 +332,76 @@ describe('GcodeModifier', () => {
       const result = mod.applyAll(lines, parser);
       assert.strictEqual(lines.length, 2);
       assert.ok(result.length > 2);
+    });
+
+    it('inserts mid-layer pause at correct line position', () => {
+      mod.addPause(0, 'mid', 'M0', false, 2);
+      const lines = [
+        '; header',
+        ';LAYER:0',
+        'G1 X10 Y10 Z0.2 E1',
+        'G1 X20 Y20 Z0.2 E2',
+        'G1 X30 Y30 Z0.2 E3',
+        ';LAYER:1',
+        'G1 X10 Y10 Z0.4 E4',
+      ];
+      const parser = {
+        layers: [
+          { number: 0, startLine: 1, endLine: 4, zHeight: 0.2 },
+          { number: 1, startLine: 5, endLine: 6, zHeight: 0.4 },
+        ],
+        getLayerByNumber(n) { return this.layers.find(l => l.number === n); },
+      };
+      const result = mod.applyAll(lines, parser);
+      const pauseIdx = result.findIndex(l => l.includes('MID-LAYER PAUSE'));
+      // Pause snippet should be inserted at line 2 (before G1 X10 Y10)
+      assert.strictEqual(pauseIdx, 2);
+      // The snippet is 3 lines (start marker, M0, end marker), so G1 X10 follows right after
+      const endIdx = result.findIndex(l => l.includes('END MID-LAYER PAUSE'));
+      assert.ok(result[endIdx + 1].includes('G1 X10'));
+    });
+
+    it('inserts multiple mid-layer pauses in same layer in correct order', () => {
+      mod.addPause(0, 'first', 'M0', false, 3);
+      mod.addPause(0, 'second', 'M0', false, 2);
+      const lines = [
+        '; header',
+        ';LAYER:0',
+        'G1 X10 Y10 Z0.2 E1',
+        'G1 X20 Y20 Z0.2 E2',
+        'G1 X30 Y30 Z0.2 E3',
+      ];
+      const parser = {
+        layers: [{ number: 0, startLine: 1, endLine: 4, zHeight: 0.2 }],
+        getLayerByNumber(n) { return this.layers.find(l => l.number === n); },
+      };
+      const result = mod.applyAll(lines, parser);
+      const firstIdx = result.findIndex(l => l.includes('first'));
+      const secondIdx = result.findIndex(l => l.includes('second'));
+      // 'second' targets line 2, 'first' targets line 3 — after descending sort insertion,
+      // 'second' should appear earlier in the output
+      assert.ok(secondIdx < firstIdx);
+    });
+
+    it('inserts both layer-start and mid-layer pauses correctly', () => {
+      mod.addPause(0, 'layer-start', 'M0', false);
+      mod.addPause(0, 'mid-layer', 'M0', false, 3);
+      const lines = [
+        '; header',
+        ';LAYER:0',
+        'G1 X10 Y10 Z0.2 E1',
+        'G1 X20 Y20 Z0.2 E2',
+        'G1 X30 Y30 Z0.2 E3',
+      ];
+      const parser = {
+        layers: [{ number: 0, startLine: 1, endLine: 4, zHeight: 0.2 }],
+        getLayerByNumber(n) { return this.layers.find(l => l.number === n); },
+      };
+      const result = mod.applyAll(lines, parser);
+      const layerStartIdx = result.findIndex(l => l.includes('layer-start'));
+      const midLayerIdx = result.findIndex(l => l.includes('mid-layer'));
+      // Layer-start pause inserts at layer start (line 2), mid-layer at line 3
+      assert.ok(layerStartIdx < midLayerIdx);
     });
   });
 });

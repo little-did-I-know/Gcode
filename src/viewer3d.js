@@ -475,7 +475,11 @@ export class GcodeViewer3D {
 
       let color;
       switch (mod.type) {
-        case 'pause': color = [0.980, 0.800, 0.082, 0.15]; break;
+        case 'pause':
+          color = mod.lineNumber != null
+            ? [0.0, 0.784, 0.784, 0.18]   // teal for mid-layer
+            : [0.980, 0.800, 0.082, 0.15]; // yellow for layer-start
+          break;
         case 'filament': color = [0.655, 0.545, 0.980, 0.15]; break;
         case 'zoffset': color = [0.984, 0.573, 0.235, 0.15]; break;
         case 'custom': color = [0.0, 0.784, 1.0, 0.15]; break;
