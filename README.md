@@ -178,6 +178,8 @@ In addition to pausing at the start of a layer, you can pause at a specific poin
 
 The color picker next to the Pause Select button lets you change the highlight color for better visibility against different extrusion types.
 
+**Currently this functionality has only been tested on Bambu Lab A1 Mini**
+
 ![Mid-Layer Pause Select](screenshots/15-mid-layer-pause-select.png)
 
 ### Filament Change
