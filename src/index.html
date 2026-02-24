@@ -164,9 +164,35 @@ main { display: flex; flex: 1; overflow: hidden; }
 .viewer-mod-banner.custom { background: rgba(0,200,255,.15); color: var(--accent); border: 1px solid rgba(0,200,255,.25); }
 .viewer-mod-banner.recovery { background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.3); color: var(--red, #ef4444); }
 .viewer-mod-banner.mid-layer-pause { background: rgba(45,212,191,.2); color: var(--teal); border: 1px solid rgba(45,212,191,.3); }
-.viewer-legend { position: absolute; bottom: 12px; left: 12px; display: flex; flex-wrap: wrap; gap: 10px; pointer-events: none; }
-.legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-dim); }
-.legend-swatch { width: 14px; height: 3px; border-radius: 2px; }
+.viewer-legend {
+  position: absolute; bottom: 12px; left: 12px; z-index: 5;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  min-width: 180px; max-width: 240px; pointer-events: auto; font-size: 12px;
+  max-height: calc(100% - 80px); display: flex; flex-direction: column;
+  color: var(--text);
+}
+.legend-header {
+  display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+  border-bottom: 1px solid var(--border); cursor: pointer; user-select: none;
+}
+.legend-header .legend-title { flex: 1; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); }
+.legend-header button { background: none; border: none; color: var(--text-dim); font-size: 11px; padding: 2px 4px; cursor: pointer; border-radius: 3px; }
+.legend-header button:hover { color: var(--text); background: var(--surface2); }
+.legend-body { overflow-y: auto; padding: 4px 0; }
+.legend-body.collapsed { display: none; }
+.legend-row {
+  display: flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 12px; color: var(--text);
+}
+.legend-row label { flex: 1; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.legend-row input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.legend-row input[type="color"] { width: 20px; height: 20px; border: 1px solid var(--border); border-radius: 3px; padding: 0; cursor: pointer; background: none; flex-shrink: 0; }
+.legend-row input[type="color"]::-webkit-color-swatch-wrapper { padding: 1px; }
+.legend-row input[type="color"]::-webkit-color-swatch { border: none; border-radius: 2px; }
+.legend-show-all {
+  padding: 4px 10px; font-size: 11px; color: var(--accent); cursor: pointer; text-align: center;
+  border-top: 1px solid var(--border); user-select: none;
+}
+.legend-show-all:hover { text-decoration: underline; }
 
 /* EMPTY STATES */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); text-align: center; padding: 40px; gap: 12px; }
@@ -432,14 +458,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div class="viewer-canvas-area">
         <canvas id="viewerCanvas"></canvas>
         <div class="viewer-overlay" id="viewerOverlay"></div>
-        <div class="viewer-legend" id="viewerLegend">
-          <div class="legend-item"><div class="legend-swatch" style="background:#60a5fa"></div>Outer Wall</div>
-          <div class="legend-item"><div class="legend-swatch" style="background:#93c5fd"></div>Inner Wall</div>
-          <div class="legend-item"><div class="legend-swatch" style="background:#4ade80"></div>Infill</div>
-          <div class="legend-item"><div class="legend-swatch" style="background:#facc15"></div>Support</div>
-          <div class="legend-item"><div class="legend-swatch" style="background:#fb923c"></div>Overhang</div>
-          <div class="legend-item"><div class="legend-swatch" style="background:#555;border-top:1px dashed #555"></div>Travel</div>
-        </div>
+        <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
         </div>
         <div class="layer-slider-wrap">
           <label id="sliderLabel">Layer 0</label>

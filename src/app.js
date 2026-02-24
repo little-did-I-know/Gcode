@@ -28,6 +28,128 @@ let hoveredMove = null;
 const _storedColor = localStorage.getItem('gcode_highlight_color');
 let highlightColor = /^#[0-9a-fA-F]{6}$/.test(_storedColor) ? _storedColor : '#ff3333';
 
+// Motion type display names for legend UI
+const MOTION_TYPE_LABELS = {
+  'WALL-OUTER': 'Outer Wall',
+  'WALL-INNER': 'Inner Wall',
+  'FILL': 'Infill',
+  'SOLID': 'Solid Fill',
+  'TOP': 'Top Surface',
+  'BOTTOM': 'Bottom Surface',
+  'SUPPORT': 'Support',
+  'SUPPORT-INTERFACE': 'Support Interface',
+  'OVERHANG': 'Overhang',
+  'GAP INFILL': 'Gap Fill',
+  'BRIDGE': 'Bridge',
+  'SKIRT': 'Skirt',
+  'BRIM': 'Brim',
+  'CUSTOM': 'Custom',
+  'TRAVEL': 'Travel',
+};
+
+// Default colors (hex) matching viewer3d.js TYPE_COLORS
+const DEFAULT_MOTION_COLORS = {
+  'WALL-OUTER': '#60a5fa',
+  'WALL-INNER': '#93c5fd',
+  'FILL': '#4ade80',
+  'SOLID': '#4ade80',
+  'TOP': '#22d3ee',
+  'BOTTOM': '#22d3ee',
+  'SUPPORT': '#facc15',
+  'SUPPORT-INTERFACE': '#fde68a',
+  'OVERHANG': '#fb923c',
+  'GAP INFILL': '#fb923c',
+  'BRIDGE': '#f97316',
+  'SKIRT': '#a78bfa',
+  'BRIM': '#a78bfa',
+  'CUSTOM': '#a78bfa',
+  'TRAVEL': '#555555',
+};
+
+let motionTypeVisibility = {};
+let motionTypeColors = {};
+let detectedTypes = new Set();
+let motionLegendExpanded = true;
+let motionLegendShowAll = false;
+
+const MOTION_TYPE_ALIASES = {
+  'OUTER WALL': 'WALL-OUTER', 'INNER WALL': 'WALL-INNER',
+  'SOLID INFILL': 'SOLID', 'SPARSE INFILL': 'FILL', 'SPARSE': 'FILL',
+  'INTERNAL SOLID INFILL': 'SOLID', 'TOP SURFACE': 'TOP', 'BOTTOM SURFACE': 'BOTTOM',
+};
+
+function initMotionTypeState() {
+  // Collect detected types from parsed moves
+  detectedTypes = new Set();
+  for (const layerNum in parser.layerMoves) {
+    for (const move of parser.layerMoves[layerNum]) {
+      if (move.extrude) {
+        const upper = move.type.toUpperCase();
+        detectedTypes.add(MOTION_TYPE_ALIASES[upper] || upper);
+      } else {
+        detectedTypes.add('TRAVEL');
+      }
+    }
+  }
+
+  // Load saved state or use defaults
+  const savedVis = localStorage.getItem('gcode_motion_visibility');
+  const savedColors = localStorage.getItem('gcode_motion_colors');
+
+  motionTypeVisibility = {};
+  motionTypeColors = {};
+
+  // Initialize all known types to defaults
+  for (const type of Object.keys(DEFAULT_MOTION_COLORS)) {
+    motionTypeVisibility[type] = true;
+    motionTypeColors[type] = DEFAULT_MOTION_COLORS[type];
+  }
+  // Also include any detected types not in defaults
+  for (const type of detectedTypes) {
+    if (!(type in motionTypeVisibility)) {
+      motionTypeVisibility[type] = true;
+      motionTypeColors[type] = '#e0e2e8';
+    }
+  }
+
+  // Merge saved preferences
+  if (savedVis) {
+    try {
+      const parsed = JSON.parse(savedVis);
+      for (const [type, vis] of Object.entries(parsed)) {
+        if (type in motionTypeVisibility) motionTypeVisibility[type] = vis;
+      }
+    } catch (e) { /* ignore corrupt data */ }
+  }
+  if (savedColors) {
+    try {
+      const parsed = JSON.parse(savedColors);
+      for (const [type, color] of Object.entries(parsed)) {
+        if (type in motionTypeColors && /^#[0-9a-fA-F]{6}$/.test(color)) {
+          motionTypeColors[type] = color;
+        }
+      }
+    } catch (e) { /* ignore corrupt data */ }
+  }
+}
+
+function saveMotionTypeState() {
+  localStorage.setItem('gcode_motion_visibility', JSON.stringify(motionTypeVisibility));
+  localStorage.setItem('gcode_motion_colors', JSON.stringify(motionTypeColors));
+}
+
+function resetMotionTypeState() {
+  localStorage.removeItem('gcode_motion_visibility');
+  localStorage.removeItem('gcode_motion_colors');
+  for (const type of Object.keys(motionTypeVisibility)) {
+    motionTypeVisibility[type] = true;
+    motionTypeColors[type] = DEFAULT_MOTION_COLORS[type] || '#e0e2e8';
+  }
+  renderMotionLegend();
+  viewer.clearBuffers();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
 // Initialize firmware UI
 onFirmwareChange('bambu');
 
