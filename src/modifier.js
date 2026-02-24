@@ -80,7 +80,7 @@ export class GcodeModifier {
     if (idx < this.modifications.length - 1) [this.modifications[idx], this.modifications[idx + 1]] = [this.modifications[idx + 1], this.modifications[idx]];
   }
 
-  getSnippet(mod) {
+  getSnippet(mod, context) {
     const lines = [];
     switch (mod.type) {
       case 'pause': {
@@ -97,6 +97,19 @@ export class GcodeModifier {
         const pauseGcode = profile?.pauseGcode?.[mod.pauseType];
         if (pauseGcode) lines.push(pauseGcode);
         else lines.push(`${mod.pauseType} ; Pause`);
+        const restores = profile?.restoresPosition?.includes(mod.pauseType);
+        if (mod.moveHead && context && !restores) {
+          lines.push('; --- Restore position after pause ---');
+          if (context.x != null && context.y != null) {
+            lines.push(`G1 X${context.x.toFixed(3)} Y${context.y.toFixed(3)} F6000 ; Return to XY`);
+          }
+          if (context.z != null) {
+            lines.push(`G1 Z${context.z.toFixed(3)} F600 ; Return to Z`);
+          }
+          if (context.f != null) {
+            lines.push(`G1 F${context.f.toFixed(0)} ; Restore feedrate`);
+          }
+        }
         lines.push(`; === END ${tag} ===`);
         break;
       }
@@ -144,6 +157,20 @@ export class GcodeModifier {
       }
     }
     return lines;
+  }
+
+  _scanLastPosition(lines, beforeLine) {
+    let x = null, y = null, z = null, f = null;
+    for (let i = beforeLine - 1; i >= 0; i--) {
+      const line = lines[i].trim();
+      if (!/^G[01]\s/i.test(line)) continue;
+      if (x === null) { const m = line.match(/X([-\d.]+)/i); if (m) x = parseFloat(m[1]); }
+      if (y === null) { const m = line.match(/Y([-\d.]+)/i); if (m) y = parseFloat(m[1]); }
+      if (z === null) { const m = line.match(/Z([-\d.]+)/i); if (m) z = parseFloat(m[1]); }
+      if (f === null) { const m = line.match(/F([-\d.]+)/i); if (m) f = parseFloat(m[1]); }
+      if (x !== null && y !== null && z !== null && f !== null) break;
+    }
+    return { x, y, z, f };
   }
 
   applyAll(originalLines, parser) {
@@ -328,7 +355,6 @@ export class GcodeModifier {
     });
 
     for (const mod of sorted) {
-      const snippet = this.getSnippet(mod);
       let insertLine;
 
       if (mod.layer === 'end') {
@@ -346,6 +372,12 @@ export class GcodeModifier {
           insertLine = layer.startLine + 1 + recoveryLineShift;
         }
       }
+
+      let context = null;
+      if (mod.type === 'pause' && mod.moveHead) {
+        context = this._scanLastPosition(result, insertLine);
+      }
+      const snippet = this.getSnippet(mod, context);
       result.splice(insertLine, 0, ...snippet);
     }
 
