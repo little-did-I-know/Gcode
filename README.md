@@ -14,6 +14,8 @@ By using this tool, you agree that:
 
 The modified gcode from this tool has been tested on an Ender V3 SE and a Bambu Labs A1 Mini.
 
+The gcode files provided are for demonstration purposes and should not be uploaded to your printer as a print.
+
 # G-Code Modifier
 
 A browser-based G-code editor for 3D printing. Load a `.gcode` file, visually inspect layers in 3D, add modifications (pauses, filament changes, Z-offsets, custom commands), measure distances, detect holes for insert placement, and export the modified file — all without installing anything.
@@ -162,6 +164,23 @@ M400 U1 ; Bambu pause
 ```
 
 ![Pause Modification in Visual View](screenshots/05-visual-with-mod.png)
+
+#### Mid-Layer Pause
+
+In addition to pausing at the start of a layer, you can pause at a specific point *within* a layer. This is useful when you need precise control over where the printer stops — for example, pausing partway through an infill pattern to place an insert before the remaining infill covers it.
+
+1. Switch to the **Visual** view and open the **Pause** tab.
+2. Click the **Pause Select** button in the toolbar — the cursor changes to a crosshair.
+3. Hover over the 3D view to preview extrusion moves. The nearest move highlights as you move the mouse.
+4. Click on a move to select it. The line number is automatically populated in the pause form.
+5. Optionally add a reminder message and configure head movement.
+6. Click **Add Pause** to insert the pause at that exact point in the layer.
+
+The color picker next to the Pause Select button lets you change the highlight color for better visibility against different extrusion types.
+
+**Currently this functionality has only been tested on Bambu Lab A1 Mini**
+
+![Mid-Layer Pause Select](screenshots/15-mid-layer-pause-select.png)
 
 ### Filament Change
 

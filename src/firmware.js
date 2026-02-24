@@ -11,6 +11,7 @@ export const FIRMWARE = {
       'M400U1': 'M400 U1 ; Bambu pause',
       'M600': 'M600 ; Filament change pause',
     },
+    restoresPosition: ['M600'],
     filament: [
       { value: 'M1020', label: 'M1020 (AMS)', default: true },
       { value: 'M600', label: 'M600 (Standard)' },
@@ -32,6 +33,7 @@ export const FIRMWARE = {
       'M600': 'M600 ; Filament change',
       'M0': 'M0 ; Pause (unconditional stop)',
     },
+    restoresPosition: ['PAUSE'],
     filament: [
       { value: 'M600', label: 'M600', default: true },
     ],
@@ -52,6 +54,7 @@ export const FIRMWARE = {
       'M600': 'M600 ; Filament change pause',
       'M25': 'M25 ; Pause SD print',
     },
+    restoresPosition: ['M600'],
     filament: [
       { value: 'M600', label: 'M600 (Standard)', default: true },
     ],
@@ -72,6 +75,7 @@ export const FIRMWARE = {
       'M600': 'M600 ; Filament change',
       'M0': 'M0 ; Stop print (RRF)',
     },
+    restoresPosition: ['M226', 'M600'],
     filament: [
       { value: 'M600', label: 'M600 (Standard)', default: true },
     ],

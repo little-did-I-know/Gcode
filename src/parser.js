@@ -242,7 +242,7 @@ export class GcodeParser {
         if (newX !== curX || newY !== curY) {
           this.layerMoves[currentLayer.number].push({
             x1: curX, y1: curY, x2: newX, y2: newY,
-            type: currentType, extrude: isExtrude && !isG0
+            type: currentType, extrude: isExtrude && !isG0, lineIndex: i
           });
           this.bounds.minX = Math.min(this.bounds.minX, curX, newX);
           this.bounds.maxX = Math.max(this.bounds.maxX, curX, newX);
@@ -294,7 +294,7 @@ export class GcodeParser {
             const ay = s === segments ? newY : cy + r * Math.sin(angle);
             this.layerMoves[currentLayer.number].push({
               x1: prevAX, y1: prevAY, x2: ax, y2: ay,
-              type: currentType, extrude: isExtrude
+              type: currentType, extrude: isExtrude, lineIndex: i
             });
             this.bounds.minX = Math.min(this.bounds.minX, ax);
             this.bounds.maxX = Math.max(this.bounds.maxX, ax);

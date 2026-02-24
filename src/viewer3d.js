@@ -459,6 +459,7 @@ export class GcodeViewer3D {
     this._drawModMarkers(mvp);
     this._drawHoleHighlights(mvp);
     this._drawMeasurement(mvp);
+    this._drawPauseSelectOverlays(mvp);
   }
 
   _drawModMarkers(mvp) {
@@ -475,7 +476,11 @@ export class GcodeViewer3D {
 
       let color;
       switch (mod.type) {
-        case 'pause': color = [0.980, 0.800, 0.082, 0.15]; break;
+        case 'pause':
+          color = mod.lineNumber != null
+            ? [0.0, 0.784, 0.784, 0.18]   // teal for mid-layer
+            : [0.980, 0.800, 0.082, 0.15]; // yellow for layer-start
+          break;
         case 'filament': color = [0.655, 0.545, 0.980, 0.15]; break;
         case 'zoffset': color = [0.984, 0.573, 0.235, 0.15]; break;
         case 'custom': color = [0.0, 0.784, 1.0, 0.15]; break;
@@ -627,6 +632,28 @@ export class GcodeViewer3D {
     return { x: near[0] + t * (far[0] - near[0]), y: near[1] + t * (far[1] - near[1]), z: layerZ };
   }
 
+  findNearestMove(worldX, worldY, layerNum) {
+    const moves = parser.layerMoves[layerNum];
+    if (!moves || moves.length === 0) return null;
+    let best = null, bestDist = Infinity;
+    for (const move of moves) {
+      if (!move.extrude) continue;
+      const dx = move.x2 - move.x1, dy = move.y2 - move.y1;
+      const lenSq = dx * dx + dy * dy;
+      let d;
+      if (lenSq === 0) {
+        d = Math.hypot(worldX - move.x1, worldY - move.y1);
+      } else {
+        let t = ((worldX - move.x1) * dx + (worldY - move.y1) * dy) / lenSq;
+        t = Math.max(0, Math.min(1, t));
+        const projX = move.x1 + t * dx, projY = move.y1 + t * dy;
+        d = Math.hypot(worldX - projX, worldY - projY);
+      }
+      if (d < bestDist) { bestDist = d; best = move; }
+    }
+    return best;
+  }
+
   _drawMeasurement(mvp) {
     if (!measureMode || measurePoints.length === 0) return;
     const gl = this.gl;
@@ -658,6 +685,75 @@ export class GcodeViewer3D {
     gl.vertexAttribPointer(this.line_a_color, 4, gl.FLOAT, false, stride, 12);
     gl.drawArrays(gl.LINES, 0, verts.length / 7);
     gl.deleteBuffer(vbo);
+  }
+
+  _drawMoveHighlight(mvp, move, color, alpha, lineOffset, crosshairSize) {
+    const gl = this.gl;
+    const layer = parser.getLayerByNumber(this.currentLayer);
+    const z = (layer?.zHeight || 0) + 0.1;
+
+    const c = [...color.slice(0, 3), alpha];
+    const m = move;
+    const verts = [];
+    const dx = m.x2 - m.x1, dy = m.y2 - m.y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.001) return;
+
+    // Main line
+    verts.push(m.x1, m.y1, z, ...c);
+    verts.push(m.x2, m.y2, z, ...c);
+
+    // Offset lines for thickness
+    const steps = Math.round(lineOffset / 0.15);
+    for (let i = 1; i <= steps; i++) {
+      const nx = -dy / len * 0.15 * i, ny = dx / len * 0.15 * i;
+      verts.push(m.x1 + nx, m.y1 + ny, z, ...c);
+      verts.push(m.x2 + nx, m.y2 + ny, z, ...c);
+      verts.push(m.x1 - nx, m.y1 - ny, z, ...c);
+      verts.push(m.x2 - nx, m.y2 - ny, z, ...c);
+    }
+
+    // Crosshair at midpoint
+    const mx = (m.x1 + m.x2) / 2, my = (m.y1 + m.y2) / 2;
+    const s = crosshairSize;
+    verts.push(mx - s, my, z, ...c, mx + s, my, z, ...c);
+    verts.push(mx, my - s, z, ...c, mx, my + s, z, ...c);
+
+    const data = new Float32Array(verts);
+    const stride = 7 * 4;
+    gl.useProgram(this.lineProg);
+    gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STREAM_DRAW);
+    gl.enableVertexAttribArray(this.line_a_pos);
+    gl.vertexAttribPointer(this.line_a_pos, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(this.line_a_color);
+    gl.vertexAttribPointer(this.line_a_color, 4, gl.FLOAT, false, stride, 12);
+    gl.drawArrays(gl.LINES, 0, verts.length / 7);
+    gl.deleteBuffer(vbo);
+  }
+
+  _hexToRgb(hex) {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    return [r, g, b, 1.0];
+  }
+
+  _drawPauseSelectOverlays(mvp) {
+    if (!pauseSelectMode) return;
+    const color = this._hexToRgb(highlightColor);
+
+    // Draw hovered move (preview — dimmer, thinner)
+    if (hoveredMove && hoveredMove !== selectedMove) {
+      this._drawMoveHighlight(mvp, hoveredMove, color, 0.5, 0.2, 1.0);
+    }
+
+    // Draw selected move (bold — full opacity, thicker)
+    if (selectedMove) {
+      this._drawMoveHighlight(mvp, selectedMove, color, 1.0, 0.3, 1.5);
+    }
   }
 
   fitBounds() {
@@ -700,6 +796,37 @@ export class GcodeViewer3D {
 
       this._lastMouse = { x: e.clientX, y: e.clientY };
       this.render(this.currentLayer);
+    });
+
+    // Hover preview for pause select mode
+    let hoverRafPending = false;
+    c.addEventListener('mousemove', e => {
+      if (!pauseSelectMode || this._dragging) return;
+      if (hoverRafPending) return;
+      hoverRafPending = true;
+      requestAnimationFrame(() => {
+        hoverRafPending = false;
+        if (!pauseSelectMode || this._dragging) return;
+        const rect = c.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const layer = parser.getLayerByNumber(this.currentLayer);
+        const z = layer?.zHeight || 0;
+        const pt = this.screenToLayerPoint(sx, sy, z);
+        if (!pt) { if (hoveredMove) { hoveredMove = null; this.render(this.currentLayer); } return; }
+        const move = this.findNearestMove(pt.x, pt.y, selectedLayer);
+        if (move !== hoveredMove) {
+          hoveredMove = move;
+          this.render(this.currentLayer);
+        }
+      });
+    });
+
+    c.addEventListener('mouseleave', () => {
+      if (hoveredMove) {
+        hoveredMove = null;
+        if (pauseSelectMode) this.render(this.currentLayer);
+      }
     });
 
     window.addEventListener('mouseup', () => { this._dragging = false; });
@@ -779,23 +906,44 @@ export class GcodeViewer3D {
     });
 
 
-    // Measurement click handler
     c.addEventListener('click', e => {
-      if (!measureMode || this._mouseMoved) return;
+      if (this._mouseMoved) return;
       const rect = c.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
       const layer = parser.getLayerByNumber(this.currentLayer);
       const z = layer?.zHeight || 0;
-      const pt = this.screenToLayerPoint(sx, sy, z);
-      if (pt) {
-        measurePoints.push(pt);
-        if (measurePoints.length > 2) measurePoints = [measurePoints[measurePoints.length - 1]];
-        this.render(this.currentLayer);
-        if (measurePoints.length === 2) {
-          const [a, b] = measurePoints;
-          const dist = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
-          showToast('Distance: ' + dist.toFixed(2) + ' mm', 'success', 6000);
+
+      // Measurement mode click
+      if (measureMode) {
+        const pt = this.screenToLayerPoint(sx, sy, z);
+        if (pt) {
+          measurePoints.push(pt);
+          if (measurePoints.length > 2) measurePoints = [measurePoints[measurePoints.length - 1]];
+          this.render(this.currentLayer);
+          if (measurePoints.length === 2) {
+            const [a, b] = measurePoints;
+            const dist = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+            showToast('Distance: ' + dist.toFixed(2) + ' mm', 'success', 6000);
+          }
+        }
+        return;
+      }
+
+      // Pause select mode click
+      if (pauseSelectMode && selectedLayer !== null) {
+        const pt = this.screenToLayerPoint(sx, sy, z);
+        if (!pt) return;
+        const move = this.findNearestMove(pt.x, pt.y, selectedLayer);
+        if (move) {
+          selectedMove = move;
+          selectedLineNumber = move.lineIndex;
+          document.getElementById('pauseLayer').value = selectedLayer;
+          document.getElementById('pauseLineNumber').value = move.lineIndex + 1;
+          this.render(this.currentLayer);
+          showToast(`Selected line ${move.lineIndex + 1} — click Add Pause to confirm`, 'success');
+        } else {
+          showToast('No extrusion move found near click point', 'warning');
         }
       }
     });

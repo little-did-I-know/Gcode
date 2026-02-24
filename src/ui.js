@@ -40,11 +40,63 @@ function renderRadioGroup(containerId, radioName, options) {
 
 function toggleMeasureMode() {
   measureMode = !measureMode;
+  // Mutual exclusion with pause select mode
+  if (measureMode && pauseSelectMode) {
+    pauseSelectMode = false;
+    selectedMove = null;
+    document.getElementById('pauseSelectToggle').classList.remove('active');
+  }
   measurePoints = [];
   document.getElementById('measureToggle').classList.toggle('active', measureMode);
   document.getElementById('viewerCanvas').style.cursor = measureMode ? 'crosshair' : '';
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
+
+function togglePauseSelectMode() {
+  pauseSelectMode = !pauseSelectMode;
+  selectedMove = null;
+  hoveredMove = null;
+  document.getElementById('pauseSelectToggle').classList.toggle('active', pauseSelectMode);
+  document.getElementById('colorPickerRow').classList.toggle('visible', pauseSelectMode);
+  document.getElementById('viewerCanvas').style.cursor = pauseSelectMode ? 'crosshair' : '';
+
+  // Mutual exclusion with measure mode
+  if (pauseSelectMode && measureMode) {
+    measureMode = false;
+    measurePoints = [];
+    document.getElementById('measureToggle').classList.remove('active');
+  }
+
+  // Auto-switch to visual view and pause tab
+  if (pauseSelectMode) {
+    if (currentView !== 'visual') setView('visual');
+    const activeTab = document.querySelector('.tab.active')?.dataset.tab;
+    if (activeTab !== 'pause') switchTab('pause');
+  }
+
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function setHighlightColor(hex) {
+  hex = hex.toLowerCase();
+  highlightColor = hex;
+  localStorage.setItem('gcode_highlight_color', hex);
+  // Update swatch active states
+  document.querySelectorAll('.color-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.color === hex);
+  });
+  document.getElementById('customColorInput').value = hex;
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+// Sync color picker UI with stored preference on load
+document.addEventListener('DOMContentLoaded', () => {
+  const stored = localStorage.getItem('gcode_highlight_color') || '#ff3333';
+  document.querySelectorAll('.color-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.color === stored);
+  });
+  document.getElementById('customColorInput').value = stored;
+});
 
 // ===== ONBOARDING HINTS =====
 function showOnboardHint(key, targetId, text) {
@@ -121,6 +173,11 @@ function loadFile(file) {
     holeDetectMode = false;
     document.getElementById('holeDetectToggle').classList.remove('active');
     document.getElementById('viewerCanvas').classList.remove('hole-mode');
+    pauseSelectMode = false;
+    selectedMove = null;
+    hoveredMove = null;
+    document.getElementById('pauseSelectToggle').classList.remove('active');
+    document.getElementById('viewerCanvas').style.cursor = '';
 
     // Update UI
     document.getElementById('fileName').textContent = file.name;
@@ -192,6 +249,9 @@ function filterLayers(query) {
 }
 
 function selectLayer(num) {
+  selectedLineNumber = null;
+  selectedMove = null;
+  hoveredMove = null;
   selectedLayer = num;
   renderLayerList();
   updateSectionForLayer(num);
@@ -233,6 +293,8 @@ let searchQuery = '';
 let searchDebounceTimer = null;
 const SEARCH_MAX_MATCHES = 10000;
 const SEARCH_LIVE_THRESHOLD = 50000;
+
+let selectedLineNumber = null;
 
 function executeSearch(query) {
   searchQuery = query;
@@ -493,6 +555,32 @@ function renderSectionPreview() {
   scrollToActiveSection();
 }
 
+function selectLineForPause(lineIdx, sectionIdx) {
+  const section = sectionStates[sectionIdx];
+  if (!section || section.type !== 'layer') return;
+
+  // Toggle: clicking same line deselects
+  if (selectedLineNumber === lineIdx) {
+    selectedLineNumber = null;
+    document.getElementById('pauseLineNumber').value = '';
+  } else {
+    selectedLineNumber = lineIdx;
+    // Auto-populate pause tab fields
+    document.getElementById('pauseLayer').value = section.layerNum;
+    document.getElementById('pauseLineNumber').value = lineIdx + 1; // 1-based display
+    // Switch to pause tab if not active
+    const activeTab = document.querySelector('.tab.active')?.dataset.tab;
+    if (activeTab !== 'pause') switchTab('pause');
+  }
+
+  // Update visual selection
+  document.querySelectorAll('.code-table tr.line-selected').forEach(el => el.classList.remove('line-selected'));
+  if (selectedLineNumber !== null) {
+    const row = document.querySelector(`tr[data-line="${selectedLineNumber}"]`);
+    if (row) row.classList.add('line-selected');
+  }
+}
+
 function renderSectionHeader(section, idx, isActive) {
   let label = '';
   let meta = '';
@@ -532,8 +620,22 @@ function renderSectionLines(section, sectionIdx) {
   const renderEnd = Math.min(section.startLine + 200, section.endLine + 1);
   const isSelectedLayer = section.type === 'layer' && section.layerNum === selectedLayer;
 
+  // Collect mid-layer pauses for this section
+  const midLayerMods = isSelectedLayer
+    ? modifier.modifications.filter(m => m.type === 'pause' && m.lineNumber != null && m.layer === section.layerNum)
+    : [];
+
   let html = '<table class="code-table"><tbody>';
   for (let i = section.startLine; i < renderEnd; i++) {
+    // Render mid-layer pause snippets before their target line
+    for (const mlMod of midLayerMods) {
+      if (mlMod.lineNumber === i) {
+        const snippet = modifier.getSnippet(mlMod);
+        for (const line of snippet) {
+          html += `<tr class="mod-line-midlayer"><td class="ln">+</td><td>${syntaxHighlight(line)}</td></tr>`;
+        }
+      }
+    }
     const raw = parser.lines[i];
     const isLayerStart = raw.trim().match(/^;LAYER:\d+/i);
     const classes = [];
@@ -542,7 +644,9 @@ function renderSectionLines(section, sectionIdx) {
     const isSearchActive = searchQuery && searchMatches.length > 0 && currentMatchIdx >= 0 && searchMatches[currentMatchIdx].lineNum === i;
     if (isSearchActive) classes.push('search-active');
     const lineContent = searchQuery ? highlightSearchMatch(syntaxHighlight(raw), searchQuery) : syntaxHighlight(raw);
-    html += `<tr class="${classes.join(' ')}" data-line="${i}"><td class="ln">${i + 1}</td><td>${lineContent}</td></tr>`;
+    const clickHandler = section.type === 'layer' ? ` onclick="selectLineForPause(${i}, ${sectionIdx})"` : '';
+    const selectedClass = (selectedLineNumber === i) ? ' line-selected' : '';
+    html += `<tr class="${classes.join(' ')}${selectedClass}" data-line="${i}"${clickHandler}><td class="ln">${i + 1}</td><td>${lineContent}</td></tr>`;
   }
   html += '</tbody></table>';
 
@@ -559,6 +663,7 @@ function renderSectionLines(section, sectionIdx) {
 
 function renderModificationsForLayer(layerNum) {
   const mods = modifier.modifications.filter(m => {
+    if (m.type === 'pause' && m.lineNumber != null) return false; // shown inline
     if (m.type === 'zoffset') return layerNum >= m.layer && (m.endLayer == null || layerNum <= m.endLayer);
     return m.layer === layerNum;
   });
@@ -585,6 +690,9 @@ function scheduleChunkedRender(section, sectionIdx) {
   if (!table) return;
 
   const isSelectedLayer = section.type === 'layer' && section.layerNum === selectedLayer;
+  const midLayerMods = isSelectedLayer
+    ? modifier.modifications.filter(m => m.type === 'pause' && m.lineNumber != null && m.layer === section.layerNum)
+    : [];
   let offset = section.startLine + 200;
   const batchSize = 500;
 
@@ -594,6 +702,15 @@ function scheduleChunkedRender(section, sectionIdx) {
     const end = Math.min(offset + batchSize, section.endLine + 1);
     let html = '';
     for (let i = offset; i < end; i++) {
+      // Render mid-layer pause snippets before their target line
+      for (const mlMod of midLayerMods) {
+        if (mlMod.lineNumber === i) {
+          const snippet = modifier.getSnippet(mlMod);
+          for (const line of snippet) {
+            html += `<tr class="mod-line-midlayer"><td class="ln">+</td><td>${syntaxHighlight(line)}</td></tr>`;
+          }
+        }
+      }
       const raw = parser.lines[i];
       const isLayerStart = raw.trim().match(/^;LAYER:\d+/i);
       const classes = [];
@@ -602,7 +719,9 @@ function scheduleChunkedRender(section, sectionIdx) {
       const isSearchActive = searchQuery && searchMatches.length > 0 && currentMatchIdx >= 0 && searchMatches[currentMatchIdx].lineNum === i;
       if (isSearchActive) classes.push('search-active');
       const lineContent = searchQuery ? highlightSearchMatch(syntaxHighlight(raw), searchQuery) : syntaxHighlight(raw);
-      html += `<tr class="${classes.join(' ')}" data-line="${i}"><td class="ln">${i + 1}</td><td>${lineContent}</td></tr>`;
+      const clickHandler = section.type === 'layer' ? ` onclick="selectLineForPause(${i}, ${sectionIdx})"` : '';
+      const selectedClass = (selectedLineNumber === i) ? ' line-selected' : '';
+      html += `<tr class="${classes.join(' ')}${selectedClass}" data-line="${i}"${clickHandler}><td class="ln">${i + 1}</td><td>${lineContent}</td></tr>`;
     }
     table.insertAdjacentHTML('beforeend', html);
     offset = end;
@@ -832,15 +951,32 @@ function insertRefCommand(code) {
 function addPause() {
   const layer = parseInt(document.getElementById('pauseLayer').value);
   if (isNaN(layer)) { showToast('Please enter a valid layer number.', 'error'); return; }
-  if (!parser.getLayerByNumber(layer)) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
+  const layerData = parser.getLayerByNumber(layer);
+  if (!layerData) { showToast(`Layer ${layer} not found in the file.`, 'error'); return; }
+
+  const lineNumInput = document.getElementById('pauseLineNumber').value.trim();
+  let lineNumber = null;
+  if (lineNumInput !== '') {
+    lineNumber = parseInt(lineNumInput);
+    if (isNaN(lineNumber)) { showToast('Please enter a valid line number.', 'error'); return; }
+    // Convert 1-based display line to 0-based index
+    lineNumber = lineNumber - 1;
+    if (lineNumber < layerData.startLine || lineNumber > layerData.endLine) {
+      showToast(`Line ${lineNumber + 1} is not within layer ${layer} (lines ${layerData.startLine + 1}–${layerData.endLine + 1}).`, 'error');
+      return;
+    }
+  }
 
   const msg = document.getElementById('pauseMsg').value;
   const pauseType = document.querySelector('input[name="pauseType"]:checked').value;
   const moveHead = document.getElementById('pauseMoveHead').checked;
 
-  modifier.addPause(layer, msg, pauseType, moveHead);
+  modifier.addPause(layer, msg, pauseType, moveHead, lineNumber);
+  document.getElementById('pauseLineNumber').value = '';
   refreshAfterMod();
-  showToast('Pause added at layer ' + layer, 'success');
+  selectedMove = null;
+  const lineInfo = lineNumber != null ? `, line ${lineNumber + 1}` : '';
+  showToast(`Pause added at layer ${layer}${lineInfo}`, 'success');
 }
 
 function addFilamentChange() {
@@ -987,7 +1123,9 @@ function renderModsList() {
     let desc = '';
     switch (mod.type) {
       case 'pause':
-        desc = `Layer ${mod.layer}${mod.message ? ' – ' + mod.message : ''}`;
+        desc = mod.lineNumber != null
+          ? `Layer ${mod.layer}, line ${mod.lineNumber + 1}${mod.message ? ' – ' + mod.message : ''}`
+          : `Layer ${mod.layer}${mod.message ? ' – ' + mod.message : ''}`;
         break;
       case 'filament':
         desc = mod.command === 'M1020' ? `Layer ${mod.layer} → Slot ${mod.slot + 1} (${mod.command})` : `Layer ${mod.layer} (${mod.command})`;
@@ -1124,7 +1262,11 @@ function updateViewerOverlay(layerNum) {
   });
   for (const mod of mods) {
     if (mod.type === 'pause') {
-      html += `<div class="viewer-mod-banner pause">⏸ Pause at this layer${mod.message ? ': ' + mod.message : ''}</div>`;
+      if (mod.lineNumber != null) {
+        html += `<div class="viewer-mod-banner mid-layer-pause">⏸ Mid-layer pause at line ${mod.lineNumber + 1}${mod.message ? ': ' + mod.message : ''}</div>`;
+      } else {
+        html += `<div class="viewer-mod-banner pause">⏸ Pause at this layer${mod.message ? ': ' + mod.message : ''}</div>`;
+      }
     } else if (mod.type === 'filament') {
       html += `<div class="viewer-mod-banner filament">🔄 Filament change${mod.command === 'M1020' ? ' → Slot ' + (mod.slot + 1) : ''} (${mod.command})</div>`;
     } else if (mod.type === 'zoffset') {

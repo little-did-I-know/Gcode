@@ -7,10 +7,11 @@ export class GcodeModifier {
 
   _id() { return 'mod_' + (++this._idCounter) + '_' + Date.now(); }
 
-  addPause(layer, message, pauseType, moveHead) {
+  addPause(layer, message, pauseType, moveHead, lineNumber = null) {
     const mod = {
       id: this._id(), type: 'pause', layer,
-      message: message || '', pauseType, moveHead
+      message: message || '', pauseType, moveHead,
+      lineNumber
     };
     this.modifications.push(mod);
     return mod;
@@ -79,22 +80,47 @@ export class GcodeModifier {
     if (idx < this.modifications.length - 1) [this.modifications[idx], this.modifications[idx + 1]] = [this.modifications[idx + 1], this.modifications[idx]];
   }
 
-  getSnippet(mod) {
+  getSnippet(mod, context) {
     const lines = [];
     switch (mod.type) {
       case 'pause': {
-        lines.push(`; === PAUSE${mod.message ? ': ' + mod.message : ''} ===`);
+        const isMidLayer = mod.lineNumber != null;
+        const tag = isMidLayer ? 'MID-LAYER PAUSE' : 'PAUSE';
+        lines.push(`; === ${tag}${mod.message ? ': ' + mod.message : ''} ===`);
+        const profile = typeof FIRMWARE !== 'undefined' ? FIRMWARE[currentFirmware] : undefined;
+        const restores = profile?.restoresPosition?.includes(mod.pauseType);
+        const needsRestore = mod.moveHead && context && !restores;
         if (mod.moveHead) {
+          if (needsRestore) {
+            lines.push('M83 ; Relative extrusion for retract');
+            lines.push('G1 E-2 F2400 ; Retract filament');
+          }
           lines.push('G91 ; Relative positioning');
           lines.push('G1 Z5 F600 ; Lift Z');
           lines.push('G90 ; Absolute positioning');
           lines.push('G1 X5 Y5 F6000 ; Move head to front-left');
         }
-        const profile = FIRMWARE[currentFirmware];
         const pauseGcode = profile?.pauseGcode?.[mod.pauseType];
         if (pauseGcode) lines.push(pauseGcode);
         else lines.push(`${mod.pauseType} ; Pause`);
-        lines.push('; === END PAUSE ===');
+        if (needsRestore) {
+          lines.push('; --- Restore position after pause ---');
+          if (context.x != null && context.y != null) {
+            lines.push(`G1 X${context.x.toFixed(3)} Y${context.y.toFixed(3)} F6000 ; Return to XY`);
+          }
+          if (context.z != null) {
+            lines.push(`G1 Z${context.z.toFixed(3)} F600 ; Return to Z`);
+          }
+          lines.push('M83 ; Relative extrusion for prime');
+          lines.push('G1 E2 F2400 ; Prime filament');
+          if (context.eMode) {
+            lines.push(`${context.eMode} ; Restore extrusion mode`);
+          }
+          if (context.f != null) {
+            lines.push(`G1 F${context.f.toFixed(0)} ; Restore feedrate`);
+          }
+        }
+        lines.push(`; === END ${tag} ===`);
         break;
       }
       case 'filament': {
@@ -141,6 +167,25 @@ export class GcodeModifier {
       }
     }
     return lines;
+  }
+
+  _scanLastPosition(lines, beforeLine) {
+    let x = null, y = null, z = null, f = null, eMode = null;
+    for (let i = beforeLine - 1; i >= 0; i--) {
+      const line = lines[i].trim();
+      if (eMode === null) {
+        if (/^M82\b/i.test(line)) eMode = 'M82';
+        else if (/^M83\b/i.test(line)) eMode = 'M83';
+      }
+      if (/^G[01]\s/i.test(line)) {
+        if (x === null) { const m = line.match(/X([-\d.]+)/i); if (m) x = parseFloat(m[1]); }
+        if (y === null) { const m = line.match(/Y([-\d.]+)/i); if (m) y = parseFloat(m[1]); }
+        if (z === null) { const m = line.match(/Z([-\d.]+)/i); if (m) z = parseFloat(m[1]); }
+        if (f === null) { const m = line.match(/F([-\d.]+)/i); if (m) f = parseFloat(m[1]); }
+      }
+      if (x !== null && y !== null && z !== null && f !== null && eMode !== null) break;
+    }
+    return { x, y, z, f, eMode };
   }
 
   applyAll(originalLines, parser) {
@@ -317,11 +362,14 @@ export class GcodeModifier {
     const sorted = [...layerMods, ...zoffsetMods].sort((a, b) => {
       const la = a.layer === 'end' ? Infinity : a.layer;
       const lb = b.layer === 'end' ? Infinity : b.layer;
-      return lb - la;
+      if (lb !== la) return lb - la;
+      // Secondary sort: by lineNumber descending (null = layer start, treated as -Infinity for sorting)
+      const lna = (a.type === 'pause' && a.lineNumber != null) ? a.lineNumber : -1;
+      const lnb = (b.type === 'pause' && b.lineNumber != null) ? b.lineNumber : -1;
+      return lnb - lna;
     });
 
     for (const mod of sorted) {
-      const snippet = this.getSnippet(mod);
       let insertLine;
 
       if (mod.layer === 'end') {
@@ -330,12 +378,21 @@ export class GcodeModifier {
         // Skip mods targeting layers that were stripped by recovery
         if (recoveryMod && mod.layer < recoveryMod.resumeLayer) continue;
         const layer = parser.getLayerByNumber(mod.layer);
-        if (layer) {
-          insertLine = layer.startLine + 1 + recoveryLineShift; // Adjust for recovery line shift
+        if (!layer) continue;
+
+        if (mod.type === 'pause' && mod.lineNumber != null) {
+          // Mid-layer pause: insert before the specified line
+          insertLine = mod.lineNumber + recoveryLineShift;
         } else {
-          continue; // Skip if layer not found
+          insertLine = layer.startLine + 1 + recoveryLineShift;
         }
       }
+
+      let context = null;
+      if (mod.type === 'pause' && mod.moveHead) {
+        context = this._scanLastPosition(result, insertLine);
+      }
+      const snippet = this.getSnippet(mod, context);
       result.splice(insertLine, 0, ...snippet);
     }
 

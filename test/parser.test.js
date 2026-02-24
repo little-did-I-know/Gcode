@@ -141,4 +141,40 @@ describe('GcodeParser', () => {
     await parser.parseAsync(';LAYER:0\nG1 X1 Y1 Z0.2', 'myfile.gcode');
     assert.strictEqual(parser.fileName, 'myfile.gcode');
   });
+
+  it('includes lineIndex on G0/G1 moves', async () => {
+    const parser = new GcodeParser();
+    const gcode = [
+      ';LAYER:0',
+      'G1 X10 Y20 Z0.2 E1 F1500',
+      'G1 X30 Y40 E2 F1500',
+    ].join('\n');
+    await parser.parseAsync(gcode, 'test.gcode');
+    const moves = parser.layerMoves[0];
+    assert.ok(moves.length >= 1);
+    // First move is from origin to (10,20), line index 1 (0-based)
+    assert.strictEqual(moves[0].lineIndex, 1);
+    // Second move from (10,20) to (30,40), line index 2
+    assert.strictEqual(moves[1].lineIndex, 2);
+  });
+
+  it('includes lineIndex on G2/G3 arc segments sharing parent line', async () => {
+    const parser = new GcodeParser();
+    const gcode = [
+      ';LAYER:0',
+      'G1 X10 Y0 Z0.2 E1 F1500',
+      'G2 X0 Y10 I-10 J0 E2',
+    ].join('\n');
+    await parser.parseAsync(gcode, 'test.gcode');
+    const moves = parser.layerMoves[0];
+    // First move is G1 at line 1
+    assert.strictEqual(moves[0].lineIndex, 1);
+    // Arc segments should all have lineIndex 2 (the G2 line)
+    const arcMoves = moves.filter(m => m.lineIndex === 2);
+    assert.ok(arcMoves.length > 1, 'Arc should produce multiple segments');
+    // All arc segments share the same lineIndex
+    for (const m of arcMoves) {
+      assert.strictEqual(m.lineIndex, 2);
+    }
+  });
 });

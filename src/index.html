@@ -11,14 +11,14 @@
   --bg: #111214; --surface: #1c1e22; --surface2: #252830;
   --border: #33363d; --text: #e0e2e8; --text-dim: #8b8f9a;
   --accent: #00c8ff; --accent-dim: rgba(0,200,255,0.12);
-  --green: #4ade80; --yellow: #facc15; --red: #f87171; --orange: #fb923c; --purple: #a78bfa;
+  --green: #4ade80; --yellow: #facc15; --red: #f87171; --orange: #fb923c; --purple: #a78bfa; --teal: #2dd4bf;
   --radius: 8px; --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
 }
 [data-theme="light"] {
   --bg: #f5f5f7; --surface: #ffffff; --surface2: #f0f0f2;
   --border: #d4d4d8; --text: #1c1e22; --text-dim: #6b7280;
   --accent: #0088cc; --accent-dim: rgba(0,136,204,0.1);
-  --green: #16a34a; --yellow: #ca8a04; --red: #dc2626; --orange: #ea580c; --purple: #7c3aed;
+  --green: #16a34a; --yellow: #ca8a04; --red: #dc2626; --orange: #ea580c; --purple: #7c3aed; --teal: #0d9488;
 }
 [data-theme="light"] ::-webkit-scrollbar-thumb { background: #c4c4c8; }
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #a0a0a8; }
@@ -77,6 +77,8 @@ main { display: flex; flex: 1; overflow: hidden; }
 .code-table tr.highlight td { background: rgba(250,204,21,.08); }
 .code-table tr.mod-line td { background: rgba(251,146,60,.12); }
 .code-table tr.mod-line td:last-child { color: var(--orange); font-weight: 600; }
+.code-table tr.mod-line-midlayer td { background: rgba(45,212,191,.12); }
+.code-table tr.mod-line-midlayer td:last-child { color: var(--teal); font-weight: 600; }
 
 /* SECTION-BASED PREVIEW */
 .gcode-section { border-bottom: 1px solid var(--border); }
@@ -128,6 +130,8 @@ main { display: flex; flex: 1; overflow: hidden; }
 .search-bar button:hover { background: var(--border); color: var(--text); }
 .code-table tr.search-active td { background: var(--accent-dim); }
 .code-table tr.search-active td:last-child mark { background: var(--accent); color: #000; border-radius: 2px; padding: 0 1px; }
+.code-table tr[onclick]:hover td { cursor: pointer; }
+.code-table tr.line-selected td { background: var(--accent-dim); cursor: pointer; }
 .code-table td mark.search-match { background: rgba(250,204,21,.35); color: inherit; border-radius: 2px; padding: 0 1px; }
 
 .syn-g { color: #60a5fa; }
@@ -159,6 +163,7 @@ main { display: flex; flex: 1; overflow: hidden; }
 .viewer-mod-banner.filament { background: rgba(167,139,250,.2); color: var(--purple); border: 1px solid rgba(167,139,250,.3); }
 .viewer-mod-banner.custom { background: rgba(0,200,255,.15); color: var(--accent); border: 1px solid rgba(0,200,255,.25); }
 .viewer-mod-banner.recovery { background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.3); color: var(--red, #ef4444); }
+.viewer-mod-banner.mid-layer-pause { background: rgba(45,212,191,.2); color: var(--teal); border: 1px solid rgba(45,212,191,.3); }
 .viewer-legend { position: absolute; bottom: 12px; left: 12px; display: flex; flex-wrap: wrap; gap: 10px; pointer-events: none; }
 .legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-dim); }
 .legend-swatch { width: 14px; height: 3px; border-radius: 2px; }
@@ -249,6 +254,15 @@ main { display: flex; flex: 1; overflow: hidden; }
 .hole-detect-btn { padding: 4px 10px; border: 1px solid var(--border); background: none; border-radius: 4px; font-size: 11px; font-weight: 600; color: var(--text-dim); transition: all .15s; }
 .hole-detect-btn:hover { border-color: var(--accent); color: var(--accent); }
 .hole-detect-btn.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+.color-picker-row { display: none; align-items: center; gap: 4px; margin-left: 4px; }
+.color-picker-row.visible { display: inline-flex; }
+.color-swatch {
+  width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent;
+  cursor: pointer; padding: 0; background: none;
+}
+.color-swatch.active { border-color: var(--text); }
+.color-swatch:hover { border-color: var(--border); }
+.color-custom-input { width: 24px; height: 20px; border: none; padding: 0; cursor: pointer; background: none; }
 .detect-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
 .detect-controls .btn { width: auto; flex: 1; }
 .filter-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; }
@@ -398,6 +412,14 @@ main { display: flex; flex: 1; overflow: hidden; }
         <input type="number" class="jump-input" id="jumpLayer" min="0" placeholder="#" onchange="jumpToLayer(+this.value)">
         <button class="hole-detect-btn" id="holeDetectToggle" onclick="toggleHoleMode()" title="Toggle hole detection mode">Hole Detect</button>
         <button class="hole-detect-btn" id="measureToggle" onclick="toggleMeasureMode()" title="Measure distance">Measure</button>
+        <button class="hole-detect-btn" id="pauseSelectToggle" onclick="togglePauseSelectMode()" title="Click in 3D view to select pause point">Pause Select</button>
+        <div class="color-picker-row" id="colorPickerRow">
+          <button class="color-swatch active" data-color="#ff3333" style="background:#ff3333" onclick="setHighlightColor('#ff3333')" title="Red"></button>
+          <button class="color-swatch" data-color="#ffdd00" style="background:#ffdd00" onclick="setHighlightColor('#ffdd00')" title="Yellow"></button>
+          <button class="color-swatch" data-color="#ff33ff" style="background:#ff33ff" onclick="setHighlightColor('#ff33ff')" title="Magenta"></button>
+          <button class="color-swatch" data-color="#33ff33" style="background:#33ff33" onclick="setHighlightColor('#33ff33')" title="Lime"></button>
+          <input type="color" class="color-custom-input" id="customColorInput" value="#ff3333" onchange="setHighlightColor(this.value)" title="Custom color">
+        </div>
         <span style="margin-left:auto" id="previewInfo"></span>
       </div>
       <div id="gcodePreview">
@@ -446,6 +468,10 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div class="form-group">
           <label>Layer Number</label>
           <input type="number" class="input" id="pauseLayer" min="0" placeholder="e.g. 42">
+        </div>
+        <div class="form-group">
+          <label>Line Number <span style="opacity:0.5">(optional — leave empty for layer start)</span></label>
+          <input type="number" class="input" id="pauseLineNumber" min="1" placeholder="Click a line in code view or enter manually">
         </div>
         <div class="form-group">
           <label>Reminder Message (optional)</label>
