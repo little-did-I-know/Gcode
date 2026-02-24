@@ -111,6 +111,7 @@ export class GcodeModifier {
           if (context.z != null) {
             lines.push(`G1 Z${context.z.toFixed(3)} F600 ; Return to Z`);
           }
+          lines.push('M83 ; Relative extrusion for prime');
           lines.push('G1 E2 F2400 ; Prime filament');
           if (context.eMode) {
             lines.push(`${context.eMode} ; Restore extrusion mode`);
