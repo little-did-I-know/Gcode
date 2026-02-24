@@ -13,7 +13,12 @@ export class GcodeViewer3D {
     this.currentLayer = 0;
     this.maxVisibleLayer = 0;
     this.layerBuffers = new Map();
+    this.moveOffsets = new Map(); // layerNum -> [{triStart, triCount, lineStart, lineCount}, ...]
     this.modMarkers = []; // Modification marker geometry for overlay rendering
+
+    // Simulation state
+    this.simulating = false;
+    this.simMoveIndex = 0;
 
     // Camera state
     this.cam = {
@@ -241,19 +246,30 @@ export class GcodeViewer3D {
     const ribbonVerts = [];
     // Travel lines: x,y,z, r,g,b,a per vertex
     const travelVerts = [];
+    // Per-move offset tracking for simulation
+    const offsets = [];
 
     for (const move of moves) {
       // Skip hidden motion types
       const moveTypeUpper = move.extrude ? move.type.toUpperCase() : 'TRAVEL';
       const normalizedMoveType = MOTION_TYPE_ALIASES[moveTypeUpper] || moveTypeUpper;
-      if (motionTypeVisibility[normalizedMoveType] === false) continue;
+      if (motionTypeVisibility[normalizedMoveType] === false) {
+        offsets.push({ triStart: ribbonVerts.length / 7, triCount: 0, lineStart: travelVerts.length / 7, lineCount: 0 });
+        continue;
+      }
+
+      const triStart = ribbonVerts.length / 7;
+      const lineStart = travelVerts.length / 7;
 
       if (move.extrude) {
         const color = this._getTypeColor(move.type);
         const dx = move.x2 - move.x1;
         const dy = move.y2 - move.y1;
         const len = Math.hypot(dx, dy);
-        if (len < 0.001) continue;
+        if (len < 0.001) {
+          offsets.push({ triStart, triCount: 0, lineStart, lineCount: 0 });
+          continue;
+        }
         // Perpendicular offset for ribbon width
         const nx = -dy / len * halfW;
         const ny = dx / len * halfW;
@@ -282,7 +298,16 @@ export class GcodeViewer3D {
           move.x2, move.y2, z, tc[0], tc[1], tc[2], 0.3,
         );
       }
+
+      offsets.push({
+        triStart,
+        triCount: ribbonVerts.length / 7 - triStart,
+        lineStart,
+        lineCount: travelVerts.length / 7 - lineStart,
+      });
     }
+
+    this.moveOffsets.set(layerNum, offsets);
 
     const result = { ribbonVao: null, ribbonVbo: null, ribbonCount: 0, travelVao: null, travelVbo: null, travelCount: 0 };
 
@@ -345,6 +370,7 @@ export class GcodeViewer3D {
       if (buf.travelVbo) gl.deleteBuffer(buf.travelVbo);
     }
     this.layerBuffers.clear();
+    this.moveOffsets.clear();
   }
 
   _initShaders() {
@@ -452,27 +478,99 @@ export class GcodeViewer3D {
       if (!buf) continue;
 
       const isCurrent = (ln === layerNum);
-
-      // Set alpha override: use per-vertex alpha for current layer, dim for others
       const dimAlpha = document.documentElement.getAttribute('data-theme') === 'light' ? 0.45 : 0.25;
-      gl.uniform1f(this.u_alphaOverride, isCurrent ? -1.0 : dimAlpha);
 
-      // Draw extrusion ribbons
-      if (buf.ribbonVao && buf.ribbonCount > 0) {
-        gl.bindVertexArray(buf.ribbonVao);
-        gl.drawArrays(gl.TRIANGLES, 0, buf.ribbonCount);
-        gl.bindVertexArray(null);
-      }
+      // Simulation: three-pass draw for current layer
+      if (isCurrent && this.simulating) {
+        const offsets = this.moveOffsets.get(ln);
+        if (offsets && offsets.length > 0 && buf.ribbonVao && buf.ribbonCount > 0) {
+          gl.bindVertexArray(buf.ribbonVao);
 
-      // Draw travel lines (only for current layer)
-      if (isCurrent && buf.travelVao && buf.travelCount > 0) {
-        gl.useProgram(this.lineProg);
-        gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
-        gl.bindVertexArray(buf.travelVao);
-        gl.drawArrays(gl.LINES, 0, buf.travelCount);
-        gl.bindVertexArray(null);
-        gl.useProgram(this.prog);
-        gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+          // Find vertex boundaries for the active move
+          const si = Math.max(0, Math.min(this.simMoveIndex, offsets.length - 1));
+          const activeOffset = offsets[si];
+          const completedEnd = activeOffset.triStart;
+          const futureStart = activeOffset.triStart + activeOffset.triCount;
+          const futureCount = buf.ribbonCount - futureStart;
+
+          // Pass 1: Completed moves — full alpha
+          if (completedEnd > 0) {
+            gl.uniform1f(this.u_alphaOverride, -1.0);
+            gl.drawArrays(gl.TRIANGLES, 0, completedEnd);
+          }
+
+          // Pass 2: Future moves — dimmed
+          if (futureCount > 0) {
+            gl.uniform1f(this.u_alphaOverride, dimAlpha);
+            gl.drawArrays(gl.TRIANGLES, futureStart, futureCount);
+          }
+
+          // Pass 3: Active move — full alpha (drawn last so it's on top)
+          if (activeOffset.triCount > 0) {
+            gl.uniform1f(this.u_alphaOverride, -1.0);
+            gl.drawArrays(gl.TRIANGLES, activeOffset.triStart, activeOffset.triCount);
+          }
+
+          gl.bindVertexArray(null);
+        }
+
+        // Travel lines: same three-pass approach
+        if (buf.travelVao && buf.travelCount > 0 && offsets) {
+          gl.useProgram(this.lineProg);
+          gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+          gl.bindVertexArray(buf.travelVao);
+
+          const si = Math.max(0, Math.min(this.simMoveIndex, offsets.length - 1));
+          const ao = offsets[si];
+          const completedLineEnd = ao.lineStart;
+          const futureLineStart = ao.lineStart + ao.lineCount;
+          const futureLineCount = buf.travelCount - futureLineStart;
+
+          // Completed travel lines
+          if (completedLineEnd > 0) {
+            gl.drawArrays(gl.LINES, 0, completedLineEnd);
+          }
+          // Future travel lines are not drawn (too noisy when dimmed)
+
+          gl.bindVertexArray(null);
+          gl.useProgram(this.prog);
+          gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+        }
+
+        // Draw leading highlight on the active move
+        const moves = parser.layerMoves[ln];
+        if (moves && this.simMoveIndex < moves.length) {
+          const activeMove = moves[this.simMoveIndex];
+          if (activeMove) {
+            const hlColor = this._hexToRgb(typeof highlightColor !== 'undefined' ? highlightColor : '#ff3333');
+            this._drawMoveHighlight(mvp, activeMove, hlColor, 1.0, 0.25, 1.0);
+            // Re-enable ribbon shader after highlight draw
+            gl.useProgram(this.prog);
+            gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+          }
+        }
+
+      } else {
+        // Normal rendering (no simulation)
+        gl.uniform1f(this.u_alphaOverride, isCurrent ? -1.0 : dimAlpha);
+
+        // Draw extrusion ribbons
+        if (buf.ribbonVao && buf.ribbonCount > 0) {
+          gl.bindVertexArray(buf.ribbonVao);
+          gl.drawArrays(gl.TRIANGLES, 0, buf.ribbonCount);
+          gl.bindVertexArray(null);
+        }
+
+        // Draw travel lines (only for current layer)
+        if (isCurrent && buf.travelVao && buf.travelCount > 0) {
+          gl.useProgram(this.lineProg);
+          gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+          gl.bindVertexArray(buf.travelVao);
+          gl.drawArrays(gl.LINES, 0, buf.travelCount);
+          gl.bindVertexArray(null);
+          gl.useProgram(this.prog);
+          gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+        }
       }
     }
 

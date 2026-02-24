@@ -151,6 +151,7 @@ function toggleMotionLegendShowAll() {
 function toggleMotionType(type, visible) {
   motionTypeVisibility[type] = visible;
   saveMotionTypeState();
+  resetSimulation();
   viewer.clearBuffers();
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
@@ -158,6 +159,7 @@ function toggleMotionType(type, visible) {
 function setMotionTypeColor(type, hex) {
   motionTypeColors[type] = hex.toLowerCase();
   saveMotionTypeState();
+  resetSimulation();
   viewer.clearBuffers();
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
@@ -332,11 +334,15 @@ function selectLayer(num) {
   updateSectionForLayer(num);
   updateSlider();
 
+  // Reset simulation on layer change
+  resetSimulation();
+
   // Update visual viewer if active
   if (currentView === 'visual') {
     viewer.maxVisibleLayer = num;
     viewer.render(num);
     updateViewerOverlay(num);
+    showSimControls();
   }
 
   // Fill layer number into active tab's layer input
@@ -1287,6 +1293,10 @@ function setView(view) {
     viewer.maxVisibleLayer = selectedLayer;
     viewer.render(selectedLayer);
     updateViewerOverlay(selectedLayer);
+    showSimControls();
+  } else {
+    stopSimulation();
+    hideSimControls();
   }
 }
 
@@ -1665,6 +1675,115 @@ function toggleShortcutsOverlay() {
     document.body.style.userSelect = '';
   });
 })();
+
+// ===== SIMULATION =====
+function toggleSimulation() {
+  if (simulationPlaying) {
+    stopSimulation();
+  } else {
+    startSimulation();
+  }
+}
+
+function startSimulation() {
+  if (selectedLayer === null) return;
+  const moves = parser.layerMoves[selectedLayer];
+  if (!moves || moves.length === 0) return;
+
+  simulationPlaying = true;
+  viewer.simulating = true;
+  const btn = document.getElementById('simPlayBtn');
+  btn.innerHTML = '&#9646;&#9646; Pause';
+  btn.classList.add('playing');
+
+  let lastTime = performance.now();
+
+  function tick(now) {
+    if (!simulationPlaying) return;
+    const dt = (now - lastTime) / 1000;
+    lastTime = now;
+
+    simulationMoveIndex += simulationSpeed * dt;
+    const totalMoves = moves.length;
+
+    if (simulationMoveIndex >= totalMoves - 1) {
+      simulationMoveIndex = totalMoves - 1;
+      viewer.simMoveIndex = Math.floor(simulationMoveIndex);
+      viewer.render(selectedLayer);
+      updateSimUI();
+      stopSimulation();
+      return;
+    }
+
+    viewer.simMoveIndex = Math.floor(simulationMoveIndex);
+    viewer.render(selectedLayer);
+    updateSimUI();
+    simulationRafId = requestAnimationFrame(tick);
+  }
+
+  simulationRafId = requestAnimationFrame(tick);
+}
+
+function stopSimulation() {
+  simulationPlaying = false;
+  if (simulationRafId) {
+    cancelAnimationFrame(simulationRafId);
+    simulationRafId = null;
+  }
+  const btn = document.getElementById('simPlayBtn');
+  btn.innerHTML = '&#9654; Play';
+  btn.classList.remove('playing');
+}
+
+function resetSimulation() {
+  stopSimulation();
+  simulationMoveIndex = 0;
+  viewer.simMoveIndex = 0;
+  viewer.simulating = false;
+  updateSimUI();
+}
+
+function onSimProgressClick(event) {
+  if (selectedLayer === null) return;
+  const moves = parser.layerMoves[selectedLayer];
+  if (!moves || moves.length === 0) return;
+
+  const bar = document.getElementById('simProgress');
+  const rect = bar.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+  simulationMoveIndex = ratio * (moves.length - 1);
+  viewer.simulating = true;
+  viewer.simMoveIndex = Math.floor(simulationMoveIndex);
+  viewer.render(selectedLayer);
+  updateSimUI();
+}
+
+function onSimSpeedChange(val) {
+  // Map 0-100 to exponential range ~10-500 moves/sec
+  simulationSpeed = Math.round(10 * Math.pow(50, val / 100));
+}
+
+function updateSimUI() {
+  const moves = selectedLayer !== null ? parser.layerMoves[selectedLayer] : null;
+  const total = moves ? moves.length : 0;
+  const current = Math.floor(simulationMoveIndex);
+  const pct = total > 0 ? (current / (total - 1)) * 100 : 0;
+  document.getElementById('simProgressFill').style.width = Math.min(100, pct) + '%';
+  document.getElementById('simMoveLabel').textContent = `Move ${current}/${total}`;
+}
+
+function showSimControls() {
+  const el = document.getElementById('simControls');
+  if (el && selectedLayer !== null && parser.layerMoves[selectedLayer]?.length > 0) {
+    el.classList.add('active');
+    updateSimUI();
+  }
+}
+
+function hideSimControls() {
+  const el = document.getElementById('simControls');
+  if (el) el.classList.remove('active');
+}
 
 // ===== THEME SUPPORT =====
 function getPreferredTheme() {

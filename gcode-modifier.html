@@ -152,6 +152,15 @@ main { display: flex; flex: 1; overflow: hidden; }
 #layerSlider { flex: 1; accent-color: var(--accent); height: 6px; }
 .slider-ticks { position: relative; height: 8px; margin: 0 16px; }
 .slider-tick { position: absolute; width: 4px; height: 4px; border-radius: 50%; top: 2px; transform: translateX(-50%); }
+.sim-controls { display: none; align-items: center; gap: 10px; padding: 4px 16px 8px; background: var(--surface); font-size: 12px; color: var(--text-dim); }
+.sim-controls.active { display: flex; }
+.sim-controls button { background: none; border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; color: var(--text); cursor: pointer; font-size: 12px; white-space: nowrap; }
+.sim-controls button:hover { background: var(--surface2); }
+.sim-controls button.playing { color: var(--accent); border-color: var(--accent); }
+.sim-progress { flex: 1; height: 4px; background: var(--surface2); border-radius: 2px; cursor: pointer; position: relative; }
+.sim-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.05s linear; }
+.sim-controls input[type="range"] { width: 80px; accent-color: var(--accent); }
+.sim-controls .sim-label { white-space: nowrap; min-width: 70px; text-align: right; }
 .view-toggle { display: flex; gap: 2px; background: var(--surface2); border-radius: 6px; padding: 2px; }
 .view-toggle button { padding: 4px 12px; border: none; background: none; color: var(--text-dim); border-radius: 4px; font-size: 12px; font-weight: 600; transition: all .15s; }
 .view-toggle button.active { background: var(--accent-dim); color: var(--accent); }
@@ -464,6 +473,15 @@ main { display: flex; flex: 1; overflow: hidden; }
           <label id="sliderLabel">Layer 0</label>
           <input type="range" id="layerSlider" min="0" max="0" value="0" oninput="onSliderChange(+this.value)">
           <div class="slider-ticks" id="sliderTicks"></div>
+        </div>
+        <div class="sim-controls" id="simControls">
+          <button id="simPlayBtn" onclick="toggleSimulation()" title="Play/Pause simulation (P)">&#9654; Play</button>
+          <div class="sim-progress" id="simProgress" onclick="onSimProgressClick(event)">
+            <div class="sim-progress-fill" id="simProgressFill" style="width:0%"></div>
+          </div>
+          <span class="sim-label" id="simMoveLabel">Move 0/0</span>
+          <label style="font-size:11px;color:var(--text-dim)">Speed</label>
+          <input type="range" id="simSpeed" min="0" max="100" value="50" oninput="onSimSpeedChange(+this.value)">
         </div>
       </div>
     </div>
@@ -2729,7 +2747,12 @@ class GcodeViewer3D {
     this.currentLayer = 0;
     this.maxVisibleLayer = 0;
     this.layerBuffers = new Map();
+    this.moveOffsets = new Map(); // layerNum -> [{triStart, triCount, lineStart, lineCount}, ...]
     this.modMarkers = []; // Modification marker geometry for overlay rendering
+
+    // Simulation state
+    this.simulating = false;
+    this.simMoveIndex = 0;
 
     // Camera state
     this.cam = {
@@ -2957,19 +2980,30 @@ class GcodeViewer3D {
     const ribbonVerts = [];
     // Travel lines: x,y,z, r,g,b,a per vertex
     const travelVerts = [];
+    // Per-move offset tracking for simulation
+    const offsets = [];
 
     for (const move of moves) {
       // Skip hidden motion types
       const moveTypeUpper = move.extrude ? move.type.toUpperCase() : 'TRAVEL';
       const normalizedMoveType = MOTION_TYPE_ALIASES[moveTypeUpper] || moveTypeUpper;
-      if (motionTypeVisibility[normalizedMoveType] === false) continue;
+      if (motionTypeVisibility[normalizedMoveType] === false) {
+        offsets.push({ triStart: ribbonVerts.length / 7, triCount: 0, lineStart: travelVerts.length / 7, lineCount: 0 });
+        continue;
+      }
+
+      const triStart = ribbonVerts.length / 7;
+      const lineStart = travelVerts.length / 7;
 
       if (move.extrude) {
         const color = this._getTypeColor(move.type);
         const dx = move.x2 - move.x1;
         const dy = move.y2 - move.y1;
         const len = Math.hypot(dx, dy);
-        if (len < 0.001) continue;
+        if (len < 0.001) {
+          offsets.push({ triStart, triCount: 0, lineStart, lineCount: 0 });
+          continue;
+        }
         // Perpendicular offset for ribbon width
         const nx = -dy / len * halfW;
         const ny = dx / len * halfW;
@@ -2998,7 +3032,16 @@ class GcodeViewer3D {
           move.x2, move.y2, z, tc[0], tc[1], tc[2], 0.3,
         );
       }
+
+      offsets.push({
+        triStart,
+        triCount: ribbonVerts.length / 7 - triStart,
+        lineStart,
+        lineCount: travelVerts.length / 7 - lineStart,
+      });
     }
+
+    this.moveOffsets.set(layerNum, offsets);
 
     const result = { ribbonVao: null, ribbonVbo: null, ribbonCount: 0, travelVao: null, travelVbo: null, travelCount: 0 };
 
@@ -3061,6 +3104,7 @@ class GcodeViewer3D {
       if (buf.travelVbo) gl.deleteBuffer(buf.travelVbo);
     }
     this.layerBuffers.clear();
+    this.moveOffsets.clear();
   }
 
   _initShaders() {
@@ -3168,27 +3212,99 @@ class GcodeViewer3D {
       if (!buf) continue;
 
       const isCurrent = (ln === layerNum);
-
-      // Set alpha override: use per-vertex alpha for current layer, dim for others
       const dimAlpha = document.documentElement.getAttribute('data-theme') === 'light' ? 0.45 : 0.25;
-      gl.uniform1f(this.u_alphaOverride, isCurrent ? -1.0 : dimAlpha);
 
-      // Draw extrusion ribbons
-      if (buf.ribbonVao && buf.ribbonCount > 0) {
-        gl.bindVertexArray(buf.ribbonVao);
-        gl.drawArrays(gl.TRIANGLES, 0, buf.ribbonCount);
-        gl.bindVertexArray(null);
-      }
+      // Simulation: three-pass draw for current layer
+      if (isCurrent && this.simulating) {
+        const offsets = this.moveOffsets.get(ln);
+        if (offsets && offsets.length > 0 && buf.ribbonVao && buf.ribbonCount > 0) {
+          gl.bindVertexArray(buf.ribbonVao);
 
-      // Draw travel lines (only for current layer)
-      if (isCurrent && buf.travelVao && buf.travelCount > 0) {
-        gl.useProgram(this.lineProg);
-        gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
-        gl.bindVertexArray(buf.travelVao);
-        gl.drawArrays(gl.LINES, 0, buf.travelCount);
-        gl.bindVertexArray(null);
-        gl.useProgram(this.prog);
-        gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+          // Find vertex boundaries for the active move
+          const si = Math.max(0, Math.min(this.simMoveIndex, offsets.length - 1));
+          const activeOffset = offsets[si];
+          const completedEnd = activeOffset.triStart;
+          const futureStart = activeOffset.triStart + activeOffset.triCount;
+          const futureCount = buf.ribbonCount - futureStart;
+
+          // Pass 1: Completed moves — full alpha
+          if (completedEnd > 0) {
+            gl.uniform1f(this.u_alphaOverride, -1.0);
+            gl.drawArrays(gl.TRIANGLES, 0, completedEnd);
+          }
+
+          // Pass 2: Future moves — dimmed
+          if (futureCount > 0) {
+            gl.uniform1f(this.u_alphaOverride, dimAlpha);
+            gl.drawArrays(gl.TRIANGLES, futureStart, futureCount);
+          }
+
+          // Pass 3: Active move — full alpha (drawn last so it's on top)
+          if (activeOffset.triCount > 0) {
+            gl.uniform1f(this.u_alphaOverride, -1.0);
+            gl.drawArrays(gl.TRIANGLES, activeOffset.triStart, activeOffset.triCount);
+          }
+
+          gl.bindVertexArray(null);
+        }
+
+        // Travel lines: same three-pass approach
+        if (buf.travelVao && buf.travelCount > 0 && offsets) {
+          gl.useProgram(this.lineProg);
+          gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+          gl.bindVertexArray(buf.travelVao);
+
+          const si = Math.max(0, Math.min(this.simMoveIndex, offsets.length - 1));
+          const ao = offsets[si];
+          const completedLineEnd = ao.lineStart;
+          const futureLineStart = ao.lineStart + ao.lineCount;
+          const futureLineCount = buf.travelCount - futureLineStart;
+
+          // Completed travel lines
+          if (completedLineEnd > 0) {
+            gl.drawArrays(gl.LINES, 0, completedLineEnd);
+          }
+          // Future travel lines are not drawn (too noisy when dimmed)
+
+          gl.bindVertexArray(null);
+          gl.useProgram(this.prog);
+          gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+        }
+
+        // Draw leading highlight on the active move
+        const moves = parser.layerMoves[ln];
+        if (moves && this.simMoveIndex < moves.length) {
+          const activeMove = moves[this.simMoveIndex];
+          if (activeMove) {
+            const hlColor = this._hexToRgb(typeof highlightColor !== 'undefined' ? highlightColor : '#ff3333');
+            this._drawMoveHighlight(mvp, activeMove, hlColor, 1.0, 0.25, 1.0);
+            // Re-enable ribbon shader after highlight draw
+            gl.useProgram(this.prog);
+            gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+          }
+        }
+
+      } else {
+        // Normal rendering (no simulation)
+        gl.uniform1f(this.u_alphaOverride, isCurrent ? -1.0 : dimAlpha);
+
+        // Draw extrusion ribbons
+        if (buf.ribbonVao && buf.ribbonCount > 0) {
+          gl.bindVertexArray(buf.ribbonVao);
+          gl.drawArrays(gl.TRIANGLES, 0, buf.ribbonCount);
+          gl.bindVertexArray(null);
+        }
+
+        // Draw travel lines (only for current layer)
+        if (isCurrent && buf.travelVao && buf.travelCount > 0) {
+          gl.useProgram(this.lineProg);
+          gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+          gl.bindVertexArray(buf.travelVao);
+          gl.drawArrays(gl.LINES, 0, buf.travelCount);
+          gl.bindVertexArray(null);
+          gl.useProgram(this.prog);
+          gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+        }
       }
     }
 
@@ -3845,6 +3961,7 @@ function toggleMotionLegendShowAll() {
 function toggleMotionType(type, visible) {
   motionTypeVisibility[type] = visible;
   saveMotionTypeState();
+  resetSimulation();
   viewer.clearBuffers();
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
@@ -3852,6 +3969,7 @@ function toggleMotionType(type, visible) {
 function setMotionTypeColor(type, hex) {
   motionTypeColors[type] = hex.toLowerCase();
   saveMotionTypeState();
+  resetSimulation();
   viewer.clearBuffers();
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
@@ -4026,11 +4144,15 @@ function selectLayer(num) {
   updateSectionForLayer(num);
   updateSlider();
 
+  // Reset simulation on layer change
+  resetSimulation();
+
   // Update visual viewer if active
   if (currentView === 'visual') {
     viewer.maxVisibleLayer = num;
     viewer.render(num);
     updateViewerOverlay(num);
+    showSimControls();
   }
 
   // Fill layer number into active tab's layer input
@@ -4981,6 +5103,10 @@ function setView(view) {
     viewer.maxVisibleLayer = selectedLayer;
     viewer.render(selectedLayer);
     updateViewerOverlay(selectedLayer);
+    showSimControls();
+  } else {
+    stopSimulation();
+    hideSimControls();
   }
 }
 
@@ -5360,6 +5486,115 @@ function toggleShortcutsOverlay() {
   });
 })();
 
+// ===== SIMULATION =====
+function toggleSimulation() {
+  if (simulationPlaying) {
+    stopSimulation();
+  } else {
+    startSimulation();
+  }
+}
+
+function startSimulation() {
+  if (selectedLayer === null) return;
+  const moves = parser.layerMoves[selectedLayer];
+  if (!moves || moves.length === 0) return;
+
+  simulationPlaying = true;
+  viewer.simulating = true;
+  const btn = document.getElementById('simPlayBtn');
+  btn.innerHTML = '&#9646;&#9646; Pause';
+  btn.classList.add('playing');
+
+  let lastTime = performance.now();
+
+  function tick(now) {
+    if (!simulationPlaying) return;
+    const dt = (now - lastTime) / 1000;
+    lastTime = now;
+
+    simulationMoveIndex += simulationSpeed * dt;
+    const totalMoves = moves.length;
+
+    if (simulationMoveIndex >= totalMoves - 1) {
+      simulationMoveIndex = totalMoves - 1;
+      viewer.simMoveIndex = Math.floor(simulationMoveIndex);
+      viewer.render(selectedLayer);
+      updateSimUI();
+      stopSimulation();
+      return;
+    }
+
+    viewer.simMoveIndex = Math.floor(simulationMoveIndex);
+    viewer.render(selectedLayer);
+    updateSimUI();
+    simulationRafId = requestAnimationFrame(tick);
+  }
+
+  simulationRafId = requestAnimationFrame(tick);
+}
+
+function stopSimulation() {
+  simulationPlaying = false;
+  if (simulationRafId) {
+    cancelAnimationFrame(simulationRafId);
+    simulationRafId = null;
+  }
+  const btn = document.getElementById('simPlayBtn');
+  btn.innerHTML = '&#9654; Play';
+  btn.classList.remove('playing');
+}
+
+function resetSimulation() {
+  stopSimulation();
+  simulationMoveIndex = 0;
+  viewer.simMoveIndex = 0;
+  viewer.simulating = false;
+  updateSimUI();
+}
+
+function onSimProgressClick(event) {
+  if (selectedLayer === null) return;
+  const moves = parser.layerMoves[selectedLayer];
+  if (!moves || moves.length === 0) return;
+
+  const bar = document.getElementById('simProgress');
+  const rect = bar.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+  simulationMoveIndex = ratio * (moves.length - 1);
+  viewer.simulating = true;
+  viewer.simMoveIndex = Math.floor(simulationMoveIndex);
+  viewer.render(selectedLayer);
+  updateSimUI();
+}
+
+function onSimSpeedChange(val) {
+  // Map 0-100 to exponential range ~10-500 moves/sec
+  simulationSpeed = Math.round(10 * Math.pow(50, val / 100));
+}
+
+function updateSimUI() {
+  const moves = selectedLayer !== null ? parser.layerMoves[selectedLayer] : null;
+  const total = moves ? moves.length : 0;
+  const current = Math.floor(simulationMoveIndex);
+  const pct = total > 0 ? (current / (total - 1)) * 100 : 0;
+  document.getElementById('simProgressFill').style.width = Math.min(100, pct) + '%';
+  document.getElementById('simMoveLabel').textContent = `Move ${current}/${total}`;
+}
+
+function showSimControls() {
+  const el = document.getElementById('simControls');
+  if (el && selectedLayer !== null && parser.layerMoves[selectedLayer]?.length > 0) {
+    el.classList.add('active');
+    updateSimUI();
+  }
+}
+
+function hideSimControls() {
+  const el = document.getElementById('simControls');
+  if (el) el.classList.remove('active');
+}
+
 // ===== THEME SUPPORT =====
 function getPreferredTheme() {
   const stored = localStorage.getItem('gcode_theme');
@@ -5452,6 +5687,12 @@ let motionTypeColors = {};
 let detectedTypes = new Set();
 let motionLegendExpanded = true;
 let motionLegendShowAll = false;
+
+// Simulation state
+let simulationPlaying = false;
+let simulationMoveIndex = 0;
+let simulationSpeed = 100; // moves per second
+let simulationRafId = null;
 
 const MOTION_TYPE_ALIASES = {
   'OUTER WALL': 'WALL-OUTER', 'INNER WALL': 'WALL-INNER',
@@ -5608,6 +5849,9 @@ window.addEventListener('keydown', e => {
 
   // Reset camera
   if (e.key === 'f' && currentView === 'visual') { viewer.fitBounds(); viewer.render(viewer.currentLayer); return; }
+
+  // Simulation play/pause
+  if (e.key === 'p' && currentView === 'visual') { toggleSimulation(); return; }
 
   // Help overlay
   if (e.key === '?') { toggleShortcutsOverlay(); return; }

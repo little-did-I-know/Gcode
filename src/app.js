@@ -72,6 +72,12 @@ let detectedTypes = new Set();
 let motionLegendExpanded = true;
 let motionLegendShowAll = false;
 
+// Simulation state
+let simulationPlaying = false;
+let simulationMoveIndex = 0;
+let simulationSpeed = 100; // moves per second
+let simulationRafId = null;
+
 const MOTION_TYPE_ALIASES = {
   'OUTER WALL': 'WALL-OUTER', 'INNER WALL': 'WALL-INNER',
   'SOLID INFILL': 'SOLID', 'SPARSE INFILL': 'FILL', 'SPARSE': 'FILL',
@@ -227,6 +233,9 @@ window.addEventListener('keydown', e => {
 
   // Reset camera
   if (e.key === 'f' && currentView === 'visual') { viewer.fitBounds(); viewer.render(viewer.currentLayer); return; }
+
+  // Simulation play/pause
+  if (e.key === 'p' && currentView === 'visual') { toggleSimulation(); return; }
 
   // Help overlay
   if (e.key === '?') { toggleShortcutsOverlay(); return; }
