@@ -166,11 +166,11 @@ main { display: flex; flex: 1; overflow: hidden; }
 .viewer-mod-banner.mid-layer-pause { background: rgba(45,212,191,.2); color: var(--teal); border: 1px solid rgba(45,212,191,.3); }
 .viewer-legend {
   position: absolute; bottom: 12px; left: 12px; z-index: 5;
-  background: rgba(17,18,20,0.88); border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   min-width: 180px; max-width: 240px; pointer-events: auto; font-size: 12px;
   max-height: calc(100% - 80px); display: flex; flex-direction: column;
+  color: var(--text);
 }
-[data-theme="light"] .viewer-legend { background: rgba(255,255,255,0.92); }
 .legend-header {
   display: flex; align-items: center; gap: 6px; padding: 6px 10px;
   border-bottom: 1px solid var(--border); cursor: pointer; user-select: none;
@@ -3145,7 +3145,7 @@ class GcodeViewer3D {
 
   render(layerNum) {
     const gl = this.gl;
-    if (this._broken || !this._w || !this._h) return;
+    if (this._broken || !this._w || !this._h || !parser.bounds) return;
 
     this.currentLayer = layerNum;
 

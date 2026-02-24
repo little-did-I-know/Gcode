@@ -429,7 +429,7 @@ export class GcodeViewer3D {
 
   render(layerNum) {
     const gl = this.gl;
-    if (this._broken || !this._w || !this._h) return;
+    if (this._broken || !this._w || !this._h || !parser.bounds) return;
 
     this.currentLayer = layerNum;
 
