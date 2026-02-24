@@ -734,54 +734,6 @@ export class GcodeViewer3D {
     gl.deleteBuffer(vbo);
   }
 
-  _drawMoveChevrons(mvp, move, color, alpha, z) {
-    const gl = this.gl;
-    const c = [...color.slice(0, 3), alpha];
-    const dx = move.x2 - move.x1, dy = move.y2 - move.y1;
-    const len = Math.hypot(dx, dy);
-    if (len < 2.0) return; // Skip very short segments
-
-    // Normalized direction and perpendicular
-    const ndx = dx / len, ndy = dy / len;
-    const armLen = 0.6; // chevron arm length in mm
-    const spacing = 3.0; // mm between chevrons
-
-    const verts = [];
-    const count = Math.floor(len / spacing);
-    for (let i = 1; i <= count; i++) {
-      const t = i / (count + 1);
-      const px = move.x1 + dx * t;
-      const py = move.y1 + dy * t;
-
-      // Two lines forming a > shape pointing in travel direction
-      // Back-left to tip
-      verts.push(
-        px - ndx * armLen + ndy * armLen, py - ndy * armLen - ndx * armLen, z, ...c,
-        px, py, z, ...c,
-      );
-      // Back-right to tip
-      verts.push(
-        px - ndx * armLen - ndy * armLen, py - ndy * armLen + ndx * armLen, z, ...c,
-        px, py, z, ...c,
-      );
-    }
-
-    if (verts.length === 0) return;
-    const data = new Float32Array(verts);
-    const stride = 7 * 4;
-    gl.useProgram(this.lineProg);
-    gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
-    const vbo = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
-    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STREAM_DRAW);
-    gl.enableVertexAttribArray(this.line_a_pos);
-    gl.vertexAttribPointer(this.line_a_pos, 3, gl.FLOAT, false, stride, 0);
-    gl.enableVertexAttribArray(this.line_a_color);
-    gl.vertexAttribPointer(this.line_a_color, 4, gl.FLOAT, false, stride, 12);
-    gl.drawArrays(gl.LINES, 0, verts.length / 7);
-    gl.deleteBuffer(vbo);
-  }
-
   _hexToRgb(hex) {
     const r = parseInt(hex.slice(1, 3), 16) / 255;
     const g = parseInt(hex.slice(3, 5), 16) / 255;

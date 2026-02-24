@@ -254,6 +254,15 @@ main { display: flex; flex: 1; overflow: hidden; }
 .hole-detect-btn { padding: 4px 10px; border: 1px solid var(--border); background: none; border-radius: 4px; font-size: 11px; font-weight: 600; color: var(--text-dim); transition: all .15s; }
 .hole-detect-btn:hover { border-color: var(--accent); color: var(--accent); }
 .hole-detect-btn.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+.color-picker-row { display: none; align-items: center; gap: 4px; margin-left: 4px; }
+.color-picker-row.visible { display: inline-flex; }
+.color-swatch {
+  width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent;
+  cursor: pointer; padding: 0; background: none;
+}
+.color-swatch.active { border-color: var(--text); }
+.color-swatch:hover { border-color: var(--border); }
+.color-custom-input { width: 24px; height: 20px; border: none; padding: 0; cursor: pointer; background: none; }
 .detect-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
 .detect-controls .btn { width: auto; flex: 1; }
 .filter-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; }
@@ -404,6 +413,13 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="hole-detect-btn" id="holeDetectToggle" onclick="toggleHoleMode()" title="Toggle hole detection mode">Hole Detect</button>
         <button class="hole-detect-btn" id="measureToggle" onclick="toggleMeasureMode()" title="Measure distance">Measure</button>
         <button class="hole-detect-btn" id="pauseSelectToggle" onclick="togglePauseSelectMode()" title="Click in 3D view to select pause point">Pause Select</button>
+        <div class="color-picker-row" id="colorPickerRow">
+          <button class="color-swatch active" data-color="#ff3333" style="background:#ff3333" onclick="setHighlightColor('#ff3333')" title="Red"></button>
+          <button class="color-swatch" data-color="#ffdd00" style="background:#ffdd00" onclick="setHighlightColor('#ffdd00')" title="Yellow"></button>
+          <button class="color-swatch" data-color="#ff33ff" style="background:#ff33ff" onclick="setHighlightColor('#ff33ff')" title="Magenta"></button>
+          <button class="color-swatch" data-color="#33ff33" style="background:#33ff33" onclick="setHighlightColor('#33ff33')" title="Lime"></button>
+          <input type="color" class="color-custom-input" id="customColorInput" value="#ff3333" onchange="setHighlightColor(this.value)" title="Custom color">
+        </div>
         <span style="margin-left:auto" id="previewInfo"></span>
       </div>
       <div id="gcodePreview">
@@ -3089,7 +3105,7 @@ class GcodeViewer3D {
     this._drawModMarkers(mvp);
     this._drawHoleHighlights(mvp);
     this._drawMeasurement(mvp);
-    this._drawSelectedMove(mvp);
+    this._drawPauseSelectOverlays(mvp);
   }
 
   _drawModMarkers(mvp) {
@@ -3317,40 +3333,37 @@ class GcodeViewer3D {
     gl.deleteBuffer(vbo);
   }
 
-  _drawSelectedMove(mvp) {
-    if (!selectedMove || !pauseSelectMode) return;
+  _drawMoveHighlight(mvp, move, color, alpha, lineOffset, crosshairSize) {
     const gl = this.gl;
     const layer = parser.getLayerByNumber(this.currentLayer);
     const z = (layer?.zHeight || 0) + 0.1;
 
-    // Theme-aware accent color
-    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-    const color = isLight
-      ? [0.0, 0.533, 0.8, 1.0]   // --accent in light mode
-      : [0.0, 0.784, 1.0, 1.0];  // --accent in dark mode
-
-    const m = selectedMove;
+    const c = [...color.slice(0, 3), alpha];
+    const m = move;
     const verts = [];
-    // Draw the segment as a thick line with slight offsets for visibility
     const dx = m.x2 - m.x1, dy = m.y2 - m.y1;
     const len = Math.hypot(dx, dy);
     if (len < 0.001) return;
-    const nx = -dy / len * 0.15, ny = dx / len * 0.15;
 
     // Main line
-    verts.push(m.x1, m.y1, z, ...color);
-    verts.push(m.x2, m.y2, z, ...color);
+    verts.push(m.x1, m.y1, z, ...c);
+    verts.push(m.x2, m.y2, z, ...c);
+
     // Offset lines for thickness
-    verts.push(m.x1 + nx, m.y1 + ny, z, ...color);
-    verts.push(m.x2 + nx, m.y2 + ny, z, ...color);
-    verts.push(m.x1 - nx, m.y1 - ny, z, ...color);
-    verts.push(m.x2 - nx, m.y2 - ny, z, ...color);
+    const steps = Math.round(lineOffset / 0.15);
+    for (let i = 1; i <= steps; i++) {
+      const nx = -dy / len * 0.15 * i, ny = dx / len * 0.15 * i;
+      verts.push(m.x1 + nx, m.y1 + ny, z, ...c);
+      verts.push(m.x2 + nx, m.y2 + ny, z, ...c);
+      verts.push(m.x1 - nx, m.y1 - ny, z, ...c);
+      verts.push(m.x2 - nx, m.y2 - ny, z, ...c);
+    }
 
     // Crosshair at midpoint
     const mx = (m.x1 + m.x2) / 2, my = (m.y1 + m.y2) / 2;
-    const s = 0.8;
-    verts.push(mx - s, my, z, ...color, mx + s, my, z, ...color);
-    verts.push(mx, my - s, z, ...color, mx, my + s, z, ...color);
+    const s = crosshairSize;
+    verts.push(mx - s, my, z, ...c, mx + s, my, z, ...c);
+    verts.push(mx, my - s, z, ...c, mx, my + s, z, ...c);
 
     const data = new Float32Array(verts);
     const stride = 7 * 4;
@@ -3365,6 +3378,28 @@ class GcodeViewer3D {
     gl.vertexAttribPointer(this.line_a_color, 4, gl.FLOAT, false, stride, 12);
     gl.drawArrays(gl.LINES, 0, verts.length / 7);
     gl.deleteBuffer(vbo);
+  }
+
+  _hexToRgb(hex) {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    return [r, g, b, 1.0];
+  }
+
+  _drawPauseSelectOverlays(mvp) {
+    if (!pauseSelectMode) return;
+    const color = this._hexToRgb(highlightColor);
+
+    // Draw hovered move (preview — dimmer, thinner)
+    if (hoveredMove && hoveredMove !== selectedMove) {
+      this._drawMoveHighlight(mvp, hoveredMove, color, 0.5, 0.2, 1.0);
+    }
+
+    // Draw selected move (bold — full opacity, thicker)
+    if (selectedMove) {
+      this._drawMoveHighlight(mvp, selectedMove, color, 1.0, 0.3, 1.5);
+    }
   }
 
   fitBounds() {
@@ -3407,6 +3442,37 @@ class GcodeViewer3D {
 
       this._lastMouse = { x: e.clientX, y: e.clientY };
       this.render(this.currentLayer);
+    });
+
+    // Hover preview for pause select mode
+    let hoverRafPending = false;
+    c.addEventListener('mousemove', e => {
+      if (!pauseSelectMode || this._dragging) return;
+      if (hoverRafPending) return;
+      hoverRafPending = true;
+      requestAnimationFrame(() => {
+        hoverRafPending = false;
+        if (!pauseSelectMode || this._dragging) return;
+        const rect = c.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const layer = parser.getLayerByNumber(this.currentLayer);
+        const z = layer?.zHeight || 0;
+        const pt = this.screenToLayerPoint(sx, sy, z);
+        if (!pt) { if (hoveredMove) { hoveredMove = null; this.render(this.currentLayer); } return; }
+        const move = this.findNearestMove(pt.x, pt.y, selectedLayer);
+        if (move !== hoveredMove) {
+          hoveredMove = move;
+          this.render(this.currentLayer);
+        }
+      });
+    });
+
+    c.addEventListener('mouseleave', () => {
+      if (hoveredMove) {
+        hoveredMove = null;
+        if (pauseSelectMode) this.render(this.currentLayer);
+      }
     });
 
     window.addEventListener('mouseup', () => { this._dragging = false; });
@@ -3592,7 +3658,9 @@ function toggleMeasureMode() {
 function togglePauseSelectMode() {
   pauseSelectMode = !pauseSelectMode;
   selectedMove = null;
+  hoveredMove = null;
   document.getElementById('pauseSelectToggle').classList.toggle('active', pauseSelectMode);
+  document.getElementById('colorPickerRow').classList.toggle('visible', pauseSelectMode);
   document.getElementById('viewerCanvas').style.cursor = pauseSelectMode ? 'crosshair' : '';
 
   // Mutual exclusion with measure mode
@@ -3611,6 +3679,27 @@ function togglePauseSelectMode() {
 
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
+
+function setHighlightColor(hex) {
+  hex = hex.toLowerCase();
+  highlightColor = hex;
+  localStorage.setItem('gcode_highlight_color', hex);
+  // Update swatch active states
+  document.querySelectorAll('.color-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.color === hex);
+  });
+  document.getElementById('customColorInput').value = hex;
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+// Sync color picker UI with stored preference on load
+document.addEventListener('DOMContentLoaded', () => {
+  const stored = localStorage.getItem('gcode_highlight_color') || '#ff3333';
+  document.querySelectorAll('.color-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.color === stored);
+  });
+  document.getElementById('customColorInput').value = stored;
+});
 
 // ===== ONBOARDING HINTS =====
 function showOnboardHint(key, targetId, text) {
@@ -3689,6 +3778,7 @@ function loadFile(file) {
     document.getElementById('viewerCanvas').classList.remove('hole-mode');
     pauseSelectMode = false;
     selectedMove = null;
+    hoveredMove = null;
     document.getElementById('pauseSelectToggle').classList.remove('active');
     document.getElementById('viewerCanvas').style.cursor = '';
 
@@ -3764,6 +3854,7 @@ function filterLayers(query) {
 function selectLayer(num) {
   selectedLineNumber = null;
   selectedMove = null;
+  hoveredMove = null;
   selectedLayer = num;
   renderLayerList();
   updateSectionForLayer(num);
@@ -5148,6 +5239,9 @@ let measureMode = false;
 let measurePoints = [];
 let pauseSelectMode = false;
 let selectedMove = null;
+let hoveredMove = null;
+const _storedColor = localStorage.getItem('gcode_highlight_color');
+let highlightColor = /^#[0-9a-fA-F]{6}$/.test(_storedColor) ? _storedColor : '#ff3333';
 
 // Initialize firmware UI
 onFirmwareChange('bambu');

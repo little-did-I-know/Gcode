@@ -55,7 +55,9 @@ function toggleMeasureMode() {
 function togglePauseSelectMode() {
   pauseSelectMode = !pauseSelectMode;
   selectedMove = null;
+  hoveredMove = null;
   document.getElementById('pauseSelectToggle').classList.toggle('active', pauseSelectMode);
+  document.getElementById('colorPickerRow').classList.toggle('visible', pauseSelectMode);
   document.getElementById('viewerCanvas').style.cursor = pauseSelectMode ? 'crosshair' : '';
 
   // Mutual exclusion with measure mode
@@ -74,6 +76,27 @@ function togglePauseSelectMode() {
 
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
+
+function setHighlightColor(hex) {
+  hex = hex.toLowerCase();
+  highlightColor = hex;
+  localStorage.setItem('gcode_highlight_color', hex);
+  // Update swatch active states
+  document.querySelectorAll('.color-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.color === hex);
+  });
+  document.getElementById('customColorInput').value = hex;
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+// Sync color picker UI with stored preference on load
+document.addEventListener('DOMContentLoaded', () => {
+  const stored = localStorage.getItem('gcode_highlight_color') || '#ff3333';
+  document.querySelectorAll('.color-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.color === stored);
+  });
+  document.getElementById('customColorInput').value = stored;
+});
 
 // ===== ONBOARDING HINTS =====
 function showOnboardHint(key, targetId, text) {
@@ -152,6 +175,7 @@ function loadFile(file) {
     document.getElementById('viewerCanvas').classList.remove('hole-mode');
     pauseSelectMode = false;
     selectedMove = null;
+    hoveredMove = null;
     document.getElementById('pauseSelectToggle').classList.remove('active');
     document.getElementById('viewerCanvas').style.cursor = '';
 
@@ -227,6 +251,7 @@ function filterLayers(query) {
 function selectLayer(num) {
   selectedLineNumber = null;
   selectedMove = null;
+  hoveredMove = null;
   selectedLayer = num;
   renderLayerList();
   updateSectionForLayer(num);

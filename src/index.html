@@ -254,6 +254,15 @@ main { display: flex; flex: 1; overflow: hidden; }
 .hole-detect-btn { padding: 4px 10px; border: 1px solid var(--border); background: none; border-radius: 4px; font-size: 11px; font-weight: 600; color: var(--text-dim); transition: all .15s; }
 .hole-detect-btn:hover { border-color: var(--accent); color: var(--accent); }
 .hole-detect-btn.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+.color-picker-row { display: none; align-items: center; gap: 4px; margin-left: 4px; }
+.color-picker-row.visible { display: inline-flex; }
+.color-swatch {
+  width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent;
+  cursor: pointer; padding: 0; background: none;
+}
+.color-swatch.active { border-color: var(--text); }
+.color-swatch:hover { border-color: var(--border); }
+.color-custom-input { width: 24px; height: 20px; border: none; padding: 0; cursor: pointer; background: none; }
 .detect-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
 .detect-controls .btn { width: auto; flex: 1; }
 .filter-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; }
@@ -404,6 +413,13 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="hole-detect-btn" id="holeDetectToggle" onclick="toggleHoleMode()" title="Toggle hole detection mode">Hole Detect</button>
         <button class="hole-detect-btn" id="measureToggle" onclick="toggleMeasureMode()" title="Measure distance">Measure</button>
         <button class="hole-detect-btn" id="pauseSelectToggle" onclick="togglePauseSelectMode()" title="Click in 3D view to select pause point">Pause Select</button>
+        <div class="color-picker-row" id="colorPickerRow">
+          <button class="color-swatch active" data-color="#ff3333" style="background:#ff3333" onclick="setHighlightColor('#ff3333')" title="Red"></button>
+          <button class="color-swatch" data-color="#ffdd00" style="background:#ffdd00" onclick="setHighlightColor('#ffdd00')" title="Yellow"></button>
+          <button class="color-swatch" data-color="#ff33ff" style="background:#ff33ff" onclick="setHighlightColor('#ff33ff')" title="Magenta"></button>
+          <button class="color-swatch" data-color="#33ff33" style="background:#33ff33" onclick="setHighlightColor('#33ff33')" title="Lime"></button>
+          <input type="color" class="color-custom-input" id="customColorInput" value="#ff3333" onchange="setHighlightColor(this.value)" title="Custom color">
+        </div>
         <span style="margin-left:auto" id="previewInfo"></span>
       </div>
       <div id="gcodePreview">

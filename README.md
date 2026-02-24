@@ -14,6 +14,8 @@ By using this tool, you agree that:
 
 The modified gcode from this tool has been tested on an Ender V3 SE and a Bambu Labs A1 Mini.
 
+The gcode files provided are for demonstration purposes and should not be uploaded to your printer as a print.
+
 # G-Code Modifier
 
 A browser-based G-code editor for 3D printing. Load a `.gcode` file, visually inspect layers in 3D, add modifications (pauses, filament changes, Z-offsets, custom commands), measure distances, detect holes for insert placement, and export the modified file — all without installing anything.
