@@ -89,6 +89,79 @@ function setHighlightColor(hex) {
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
 
+function renderMotionLegend() {
+  const container = document.getElementById('viewerLegend');
+  if (!container) return;
+
+  // Only show when file is loaded
+  if (!parser.layers || parser.layers.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = '';
+
+  // Determine which types to show
+  const allTypes = [...new Set([...Object.keys(DEFAULT_MOTION_COLORS), ...detectedTypes])];
+  const typesToShow = motionLegendShowAll
+    ? allTypes
+    : allTypes.filter(t => detectedTypes.has(t));
+
+  const collapseIcon = motionLegendExpanded ? '\u25BC' : '\u25B6';
+
+  let html = `<div class="legend-header" onclick="toggleMotionLegend()">
+    <span class="legend-title">Motion Types</span>
+    <button onclick="event.stopPropagation(); resetMotionTypeState()" title="Reset to defaults">Reset</button>
+    <span style="font-size:9px">${collapseIcon}</span>
+  </div>`;
+
+  html += `<div class="legend-body${motionLegendExpanded ? '' : ' collapsed'}">`;
+
+  for (const type of typesToShow) {
+    const checked = motionTypeVisibility[type] !== false ? 'checked' : '';
+    const color = motionTypeColors[type] || '#e0e2e8';
+    const label = MOTION_TYPE_LABELS[type] || type;
+    html += `<div class="legend-row">
+      <input type="checkbox" ${checked} onchange="toggleMotionType('${type}', this.checked)">
+      <input type="color" value="${color}" onchange="setMotionTypeColor('${type}', this.value)">
+      <label onclick="this.parentElement.querySelector('input[type=checkbox]').click()">${label}</label>
+    </div>`;
+  }
+
+  html += '</div>';
+
+  // Show all / detected only toggle
+  if (detectedTypes.size > 0) {
+    const toggleText = motionLegendShowAll ? 'Show detected only' : 'Show all types\u2026';
+    html += `<div class="legend-show-all" onclick="toggleMotionLegendShowAll()">${toggleText}</div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+function toggleMotionLegend() {
+  motionLegendExpanded = !motionLegendExpanded;
+  renderMotionLegend();
+}
+
+function toggleMotionLegendShowAll() {
+  motionLegendShowAll = !motionLegendShowAll;
+  renderMotionLegend();
+}
+
+function toggleMotionType(type, visible) {
+  motionTypeVisibility[type] = visible;
+  saveMotionTypeState();
+  viewer.clearBuffers();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function setMotionTypeColor(type, hex) {
+  motionTypeColors[type] = hex.toLowerCase();
+  saveMotionTypeState();
+  viewer.clearBuffers();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
 // Sync color picker UI with stored preference on load
 document.addEventListener('DOMContentLoaded', () => {
   const stored = localStorage.getItem('gcode_highlight_color') || '#ff3333';
@@ -194,6 +267,8 @@ function loadFile(file) {
     viewer.fitBounds();
     updateSlider();
     buildSections();
+    initMotionTypeState();
+    renderMotionLegend();
     if (parser.layers.length > 0) selectLayer(parser.layers[0].number);
     else renderFullPreview();
 

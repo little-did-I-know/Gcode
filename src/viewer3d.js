@@ -205,6 +205,17 @@ export class GcodeViewer3D {
 
   _getTypeColor(type) {
     const upper = type.toUpperCase();
+    // Check custom colors first (normalized type)
+    const normalized = MOTION_TYPE_ALIASES[upper] || upper;
+    if (motionTypeColors[normalized]) {
+      const hex = motionTypeColors[normalized];
+      return [
+        parseInt(hex.slice(1, 3), 16) / 255,
+        parseInt(hex.slice(3, 5), 16) / 255,
+        parseInt(hex.slice(5, 7), 16) / 255,
+      ];
+    }
+    // Fallback to static TYPE_COLORS with substring matching
     for (const [key, color] of Object.entries(GcodeViewer3D.TYPE_COLORS)) {
       if (upper.includes(key)) return color;
     }
@@ -232,6 +243,11 @@ export class GcodeViewer3D {
     const travelVerts = [];
 
     for (const move of moves) {
+      // Skip hidden motion types
+      const moveTypeUpper = move.extrude ? move.type.toUpperCase() : 'TRAVEL';
+      const normalizedMoveType = MOTION_TYPE_ALIASES[moveTypeUpper] || moveTypeUpper;
+      if (motionTypeVisibility[normalizedMoveType] === false) continue;
+
       if (move.extrude) {
         const color = this._getTypeColor(move.type);
         const dx = move.x2 - move.x1;
@@ -259,15 +275,16 @@ export class GcodeViewer3D {
           );
         }
       } else {
-        // Travel move as a line
+        // Travel move as a line (use custom color if set)
+        const tc = this._getTypeColor('TRAVEL');
         travelVerts.push(
-          move.x1, move.y1, z, 0.3, 0.3, 0.3, 0.3,
-          move.x2, move.y2, z, 0.3, 0.3, 0.3, 0.3,
+          move.x1, move.y1, z, tc[0], tc[1], tc[2], 0.3,
+          move.x2, move.y2, z, tc[0], tc[1], tc[2], 0.3,
         );
       }
     }
 
-    const result = { ribbonVao: null, ribbonCount: 0, travelVao: null, travelCount: 0 };
+    const result = { ribbonVao: null, ribbonVbo: null, ribbonCount: 0, travelVao: null, travelVbo: null, travelCount: 0 };
 
     if (ribbonVerts.length > 0) {
       const data = new Float32Array(ribbonVerts);
@@ -288,6 +305,7 @@ export class GcodeViewer3D {
       gl.bindVertexArray(null);
 
       result.ribbonVao = vao;
+      result.ribbonVbo = vbo;
       result.ribbonCount = ribbonVerts.length / 7;
     }
 
@@ -308,6 +326,7 @@ export class GcodeViewer3D {
       gl.bindVertexArray(null);
 
       result.travelVao = vao;
+      result.travelVbo = vbo;
       result.travelCount = travelVerts.length / 7;
     }
 
@@ -321,7 +340,9 @@ export class GcodeViewer3D {
     for (const [, buf] of this.layerBuffers) {
       if (!buf) continue;
       if (buf.ribbonVao) gl.deleteVertexArray(buf.ribbonVao);
+      if (buf.ribbonVbo) gl.deleteBuffer(buf.ribbonVbo);
       if (buf.travelVao) gl.deleteVertexArray(buf.travelVao);
+      if (buf.travelVbo) gl.deleteBuffer(buf.travelVbo);
     }
     this.layerBuffers.clear();
   }

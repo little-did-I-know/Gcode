@@ -164,9 +164,35 @@ main { display: flex; flex: 1; overflow: hidden; }
 .viewer-mod-banner.custom { background: rgba(0,200,255,.15); color: var(--accent); border: 1px solid rgba(0,200,255,.25); }
 .viewer-mod-banner.recovery { background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.3); color: var(--red, #ef4444); }
 .viewer-mod-banner.mid-layer-pause { background: rgba(45,212,191,.2); color: var(--teal); border: 1px solid rgba(45,212,191,.3); }
-.viewer-legend { position: absolute; bottom: 12px; left: 12px; display: flex; flex-wrap: wrap; gap: 10px; pointer-events: none; }
-.legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-dim); }
-.legend-swatch { width: 14px; height: 3px; border-radius: 2px; }
+.viewer-legend {
+  position: absolute; bottom: 12px; left: 12px; z-index: 5;
+  background: rgba(17,18,20,0.88); border: 1px solid var(--border); border-radius: var(--radius);
+  min-width: 180px; max-width: 240px; pointer-events: auto; font-size: 12px;
+  max-height: calc(100% - 80px); display: flex; flex-direction: column;
+}
+[data-theme="light"] .viewer-legend { background: rgba(255,255,255,0.92); }
+.legend-header {
+  display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+  border-bottom: 1px solid var(--border); cursor: pointer; user-select: none;
+}
+.legend-header .legend-title { flex: 1; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); }
+.legend-header button { background: none; border: none; color: var(--text-dim); font-size: 11px; padding: 2px 4px; cursor: pointer; border-radius: 3px; }
+.legend-header button:hover { color: var(--text); background: var(--surface2); }
+.legend-body { overflow-y: auto; padding: 4px 0; }
+.legend-body.collapsed { display: none; }
+.legend-row {
+  display: flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 12px; color: var(--text);
+}
+.legend-row label { flex: 1; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.legend-row input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.legend-row input[type="color"] { width: 20px; height: 20px; border: 1px solid var(--border); border-radius: 3px; padding: 0; cursor: pointer; background: none; flex-shrink: 0; }
+.legend-row input[type="color"]::-webkit-color-swatch-wrapper { padding: 1px; }
+.legend-row input[type="color"]::-webkit-color-swatch { border: none; border-radius: 2px; }
+.legend-show-all {
+  padding: 4px 10px; font-size: 11px; color: var(--accent); cursor: pointer; text-align: center;
+  border-top: 1px solid var(--border); user-select: none;
+}
+.legend-show-all:hover { text-decoration: underline; }
 
 /* EMPTY STATES */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); text-align: center; padding: 40px; gap: 12px; }
@@ -432,14 +458,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div class="viewer-canvas-area">
         <canvas id="viewerCanvas"></canvas>
         <div class="viewer-overlay" id="viewerOverlay"></div>
-        <div class="viewer-legend" id="viewerLegend">
-          <div class="legend-item"><div class="legend-swatch" style="background:#60a5fa"></div>Outer Wall</div>
-          <div class="legend-item"><div class="legend-swatch" style="background:#93c5fd"></div>Inner Wall</div>
-          <div class="legend-item"><div class="legend-swatch" style="background:#4ade80"></div>Infill</div>
-          <div class="legend-item"><div class="legend-swatch" style="background:#facc15"></div>Support</div>
-          <div class="legend-item"><div class="legend-swatch" style="background:#fb923c"></div>Overhang</div>
-          <div class="legend-item"><div class="legend-swatch" style="background:#555;border-top:1px dashed #555"></div>Travel</div>
-        </div>
+        <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
         </div>
         <div class="layer-slider-wrap">
           <label id="sliderLabel">Layer 0</label>
@@ -2902,6 +2921,17 @@ class GcodeViewer3D {
 
   _getTypeColor(type) {
     const upper = type.toUpperCase();
+    // Check custom colors first (normalized type)
+    const normalized = MOTION_TYPE_ALIASES[upper] || upper;
+    if (motionTypeColors[normalized]) {
+      const hex = motionTypeColors[normalized];
+      return [
+        parseInt(hex.slice(1, 3), 16) / 255,
+        parseInt(hex.slice(3, 5), 16) / 255,
+        parseInt(hex.slice(5, 7), 16) / 255,
+      ];
+    }
+    // Fallback to static TYPE_COLORS with substring matching
     for (const [key, color] of Object.entries(GcodeViewer3D.TYPE_COLORS)) {
       if (upper.includes(key)) return color;
     }
@@ -2929,6 +2959,11 @@ class GcodeViewer3D {
     const travelVerts = [];
 
     for (const move of moves) {
+      // Skip hidden motion types
+      const moveTypeUpper = move.extrude ? move.type.toUpperCase() : 'TRAVEL';
+      const normalizedMoveType = MOTION_TYPE_ALIASES[moveTypeUpper] || moveTypeUpper;
+      if (motionTypeVisibility[normalizedMoveType] === false) continue;
+
       if (move.extrude) {
         const color = this._getTypeColor(move.type);
         const dx = move.x2 - move.x1;
@@ -2956,15 +2991,16 @@ class GcodeViewer3D {
           );
         }
       } else {
-        // Travel move as a line
+        // Travel move as a line (use custom color if set)
+        const tc = this._getTypeColor('TRAVEL');
         travelVerts.push(
-          move.x1, move.y1, z, 0.3, 0.3, 0.3, 0.3,
-          move.x2, move.y2, z, 0.3, 0.3, 0.3, 0.3,
+          move.x1, move.y1, z, tc[0], tc[1], tc[2], 0.3,
+          move.x2, move.y2, z, tc[0], tc[1], tc[2], 0.3,
         );
       }
     }
 
-    const result = { ribbonVao: null, ribbonCount: 0, travelVao: null, travelCount: 0 };
+    const result = { ribbonVao: null, ribbonVbo: null, ribbonCount: 0, travelVao: null, travelVbo: null, travelCount: 0 };
 
     if (ribbonVerts.length > 0) {
       const data = new Float32Array(ribbonVerts);
@@ -2985,6 +3021,7 @@ class GcodeViewer3D {
       gl.bindVertexArray(null);
 
       result.ribbonVao = vao;
+      result.ribbonVbo = vbo;
       result.ribbonCount = ribbonVerts.length / 7;
     }
 
@@ -3005,6 +3042,7 @@ class GcodeViewer3D {
       gl.bindVertexArray(null);
 
       result.travelVao = vao;
+      result.travelVbo = vbo;
       result.travelCount = travelVerts.length / 7;
     }
 
@@ -3018,7 +3056,9 @@ class GcodeViewer3D {
     for (const [, buf] of this.layerBuffers) {
       if (!buf) continue;
       if (buf.ribbonVao) gl.deleteVertexArray(buf.ribbonVao);
+      if (buf.ribbonVbo) gl.deleteBuffer(buf.ribbonVbo);
       if (buf.travelVao) gl.deleteVertexArray(buf.travelVao);
+      if (buf.travelVbo) gl.deleteBuffer(buf.travelVbo);
     }
     this.layerBuffers.clear();
   }
@@ -3743,6 +3783,79 @@ function setHighlightColor(hex) {
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
 
+function renderMotionLegend() {
+  const container = document.getElementById('viewerLegend');
+  if (!container) return;
+
+  // Only show when file is loaded
+  if (!parser.layers || parser.layers.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = '';
+
+  // Determine which types to show
+  const allTypes = [...new Set([...Object.keys(DEFAULT_MOTION_COLORS), ...detectedTypes])];
+  const typesToShow = motionLegendShowAll
+    ? allTypes
+    : allTypes.filter(t => detectedTypes.has(t));
+
+  const collapseIcon = motionLegendExpanded ? '\u25BC' : '\u25B6';
+
+  let html = `<div class="legend-header" onclick="toggleMotionLegend()">
+    <span class="legend-title">Motion Types</span>
+    <button onclick="event.stopPropagation(); resetMotionTypeState()" title="Reset to defaults">Reset</button>
+    <span style="font-size:9px">${collapseIcon}</span>
+  </div>`;
+
+  html += `<div class="legend-body${motionLegendExpanded ? '' : ' collapsed'}">`;
+
+  for (const type of typesToShow) {
+    const checked = motionTypeVisibility[type] !== false ? 'checked' : '';
+    const color = motionTypeColors[type] || '#e0e2e8';
+    const label = MOTION_TYPE_LABELS[type] || type;
+    html += `<div class="legend-row">
+      <input type="checkbox" ${checked} onchange="toggleMotionType('${type}', this.checked)">
+      <input type="color" value="${color}" onchange="setMotionTypeColor('${type}', this.value)">
+      <label onclick="this.parentElement.querySelector('input[type=checkbox]').click()">${label}</label>
+    </div>`;
+  }
+
+  html += '</div>';
+
+  // Show all / detected only toggle
+  if (detectedTypes.size > 0) {
+    const toggleText = motionLegendShowAll ? 'Show detected only' : 'Show all types\u2026';
+    html += `<div class="legend-show-all" onclick="toggleMotionLegendShowAll()">${toggleText}</div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+function toggleMotionLegend() {
+  motionLegendExpanded = !motionLegendExpanded;
+  renderMotionLegend();
+}
+
+function toggleMotionLegendShowAll() {
+  motionLegendShowAll = !motionLegendShowAll;
+  renderMotionLegend();
+}
+
+function toggleMotionType(type, visible) {
+  motionTypeVisibility[type] = visible;
+  saveMotionTypeState();
+  viewer.clearBuffers();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function setMotionTypeColor(type, hex) {
+  motionTypeColors[type] = hex.toLowerCase();
+  saveMotionTypeState();
+  viewer.clearBuffers();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
 // Sync color picker UI with stored preference on load
 document.addEventListener('DOMContentLoaded', () => {
   const stored = localStorage.getItem('gcode_highlight_color') || '#ff3333';
@@ -3848,6 +3961,8 @@ function loadFile(file) {
     viewer.fitBounds();
     updateSlider();
     buildSections();
+    initMotionTypeState();
+    renderMotionLegend();
     if (parser.layers.length > 0) selectLayer(parser.layers[0].number);
     else renderFullPreview();
 
@@ -5293,6 +5408,128 @@ let selectedMove = null;
 let hoveredMove = null;
 const _storedColor = localStorage.getItem('gcode_highlight_color');
 let highlightColor = /^#[0-9a-fA-F]{6}$/.test(_storedColor) ? _storedColor : '#ff3333';
+
+// Motion type display names for legend UI
+const MOTION_TYPE_LABELS = {
+  'WALL-OUTER': 'Outer Wall',
+  'WALL-INNER': 'Inner Wall',
+  'FILL': 'Infill',
+  'SOLID': 'Solid Fill',
+  'TOP': 'Top Surface',
+  'BOTTOM': 'Bottom Surface',
+  'SUPPORT': 'Support',
+  'SUPPORT-INTERFACE': 'Support Interface',
+  'OVERHANG': 'Overhang',
+  'GAP INFILL': 'Gap Fill',
+  'BRIDGE': 'Bridge',
+  'SKIRT': 'Skirt',
+  'BRIM': 'Brim',
+  'CUSTOM': 'Custom',
+  'TRAVEL': 'Travel',
+};
+
+// Default colors (hex) matching viewer3d.js TYPE_COLORS
+const DEFAULT_MOTION_COLORS = {
+  'WALL-OUTER': '#60a5fa',
+  'WALL-INNER': '#93c5fd',
+  'FILL': '#4ade80',
+  'SOLID': '#4ade80',
+  'TOP': '#22d3ee',
+  'BOTTOM': '#22d3ee',
+  'SUPPORT': '#facc15',
+  'SUPPORT-INTERFACE': '#fde68a',
+  'OVERHANG': '#fb923c',
+  'GAP INFILL': '#fb923c',
+  'BRIDGE': '#f97316',
+  'SKIRT': '#a78bfa',
+  'BRIM': '#a78bfa',
+  'CUSTOM': '#a78bfa',
+  'TRAVEL': '#555555',
+};
+
+let motionTypeVisibility = {};
+let motionTypeColors = {};
+let detectedTypes = new Set();
+let motionLegendExpanded = true;
+let motionLegendShowAll = false;
+
+const MOTION_TYPE_ALIASES = {
+  'OUTER WALL': 'WALL-OUTER', 'INNER WALL': 'WALL-INNER',
+  'SOLID INFILL': 'SOLID', 'SPARSE INFILL': 'FILL', 'SPARSE': 'FILL',
+  'INTERNAL SOLID INFILL': 'SOLID', 'TOP SURFACE': 'TOP', 'BOTTOM SURFACE': 'BOTTOM',
+};
+
+function initMotionTypeState() {
+  // Collect detected types from parsed moves
+  detectedTypes = new Set();
+  for (const layerNum in parser.layerMoves) {
+    for (const move of parser.layerMoves[layerNum]) {
+      if (move.extrude) {
+        const upper = move.type.toUpperCase();
+        detectedTypes.add(MOTION_TYPE_ALIASES[upper] || upper);
+      } else {
+        detectedTypes.add('TRAVEL');
+      }
+    }
+  }
+
+  // Load saved state or use defaults
+  const savedVis = localStorage.getItem('gcode_motion_visibility');
+  const savedColors = localStorage.getItem('gcode_motion_colors');
+
+  motionTypeVisibility = {};
+  motionTypeColors = {};
+
+  // Initialize all known types to defaults
+  for (const type of Object.keys(DEFAULT_MOTION_COLORS)) {
+    motionTypeVisibility[type] = true;
+    motionTypeColors[type] = DEFAULT_MOTION_COLORS[type];
+  }
+  // Also include any detected types not in defaults
+  for (const type of detectedTypes) {
+    if (!(type in motionTypeVisibility)) {
+      motionTypeVisibility[type] = true;
+      motionTypeColors[type] = '#e0e2e8';
+    }
+  }
+
+  // Merge saved preferences
+  if (savedVis) {
+    try {
+      const parsed = JSON.parse(savedVis);
+      for (const [type, vis] of Object.entries(parsed)) {
+        if (type in motionTypeVisibility) motionTypeVisibility[type] = vis;
+      }
+    } catch (e) { /* ignore corrupt data */ }
+  }
+  if (savedColors) {
+    try {
+      const parsed = JSON.parse(savedColors);
+      for (const [type, color] of Object.entries(parsed)) {
+        if (type in motionTypeColors && /^#[0-9a-fA-F]{6}$/.test(color)) {
+          motionTypeColors[type] = color;
+        }
+      }
+    } catch (e) { /* ignore corrupt data */ }
+  }
+}
+
+function saveMotionTypeState() {
+  localStorage.setItem('gcode_motion_visibility', JSON.stringify(motionTypeVisibility));
+  localStorage.setItem('gcode_motion_colors', JSON.stringify(motionTypeColors));
+}
+
+function resetMotionTypeState() {
+  localStorage.removeItem('gcode_motion_visibility');
+  localStorage.removeItem('gcode_motion_colors');
+  for (const type of Object.keys(motionTypeVisibility)) {
+    motionTypeVisibility[type] = true;
+    motionTypeColors[type] = DEFAULT_MOTION_COLORS[type] || '#e0e2e8';
+  }
+  renderMotionLegend();
+  viewer.clearBuffers();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
 
 // Initialize firmware UI
 onFirmwareChange('bambu');
