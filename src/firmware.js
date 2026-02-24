@@ -11,7 +11,7 @@ export const FIRMWARE = {
       'M400U1': 'M400 U1 ; Bambu pause',
       'M600': 'M600 ; Filament change pause',
     },
-    restoresPosition: ['M400U1', 'M600'],
+    restoresPosition: ['M600'],
     filament: [
       { value: 'M1020', label: 'M1020 (AMS)', default: true },
       { value: 'M600', label: 'M600 (Standard)' },

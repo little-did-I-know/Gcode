@@ -719,7 +719,7 @@ const FIRMWARE = {
       'M400U1': 'M400 U1 ; Bambu pause',
       'M600': 'M600 ; Filament change pause',
     },
-    restoresPosition: ['M400U1', 'M600'],
+    restoresPosition: ['M600'],
     filament: [
       { value: 'M1020', label: 'M1020 (AMS)', default: true },
       { value: 'M600', label: 'M600 (Standard)' },
@@ -2376,24 +2376,33 @@ class GcodeModifier {
         const isMidLayer = mod.lineNumber != null;
         const tag = isMidLayer ? 'MID-LAYER PAUSE' : 'PAUSE';
         lines.push(`; === ${tag}${mod.message ? ': ' + mod.message : ''} ===`);
+        const profile = typeof FIRMWARE !== 'undefined' ? FIRMWARE[currentFirmware] : undefined;
+        const restores = profile?.restoresPosition?.includes(mod.pauseType);
+        const needsRestore = mod.moveHead && context && !restores;
         if (mod.moveHead) {
+          if (needsRestore) {
+            lines.push('M83 ; Relative extrusion for retract');
+            lines.push('G1 E-2 F2400 ; Retract filament');
+          }
           lines.push('G91 ; Relative positioning');
           lines.push('G1 Z5 F600 ; Lift Z');
           lines.push('G90 ; Absolute positioning');
           lines.push('G1 X5 Y5 F6000 ; Move head to front-left');
         }
-        const profile = typeof FIRMWARE !== 'undefined' ? FIRMWARE[currentFirmware] : undefined;
         const pauseGcode = profile?.pauseGcode?.[mod.pauseType];
         if (pauseGcode) lines.push(pauseGcode);
         else lines.push(`${mod.pauseType} ; Pause`);
-        const restores = profile?.restoresPosition?.includes(mod.pauseType);
-        if (mod.moveHead && context && !restores) {
+        if (needsRestore) {
           lines.push('; --- Restore position after pause ---');
           if (context.x != null && context.y != null) {
             lines.push(`G1 X${context.x.toFixed(3)} Y${context.y.toFixed(3)} F6000 ; Return to XY`);
           }
           if (context.z != null) {
             lines.push(`G1 Z${context.z.toFixed(3)} F600 ; Return to Z`);
+          }
+          lines.push('G1 E2 F2400 ; Prime filament');
+          if (context.eMode) {
+            lines.push(`${context.eMode} ; Restore extrusion mode`);
           }
           if (context.f != null) {
             lines.push(`G1 F${context.f.toFixed(0)} ; Restore feedrate`);
@@ -2449,17 +2458,22 @@ class GcodeModifier {
   }
 
   _scanLastPosition(lines, beforeLine) {
-    let x = null, y = null, z = null, f = null;
+    let x = null, y = null, z = null, f = null, eMode = null;
     for (let i = beforeLine - 1; i >= 0; i--) {
       const line = lines[i].trim();
-      if (!/^G[01]\s/i.test(line)) continue;
-      if (x === null) { const m = line.match(/X([-\d.]+)/i); if (m) x = parseFloat(m[1]); }
-      if (y === null) { const m = line.match(/Y([-\d.]+)/i); if (m) y = parseFloat(m[1]); }
-      if (z === null) { const m = line.match(/Z([-\d.]+)/i); if (m) z = parseFloat(m[1]); }
-      if (f === null) { const m = line.match(/F([-\d.]+)/i); if (m) f = parseFloat(m[1]); }
-      if (x !== null && y !== null && z !== null && f !== null) break;
+      if (eMode === null) {
+        if (/^M82\b/i.test(line)) eMode = 'M82';
+        else if (/^M83\b/i.test(line)) eMode = 'M83';
+      }
+      if (/^G[01]\s/i.test(line)) {
+        if (x === null) { const m = line.match(/X([-\d.]+)/i); if (m) x = parseFloat(m[1]); }
+        if (y === null) { const m = line.match(/Y([-\d.]+)/i); if (m) y = parseFloat(m[1]); }
+        if (z === null) { const m = line.match(/Z([-\d.]+)/i); if (m) z = parseFloat(m[1]); }
+        if (f === null) { const m = line.match(/F([-\d.]+)/i); if (m) f = parseFloat(m[1]); }
+      }
+      if (x !== null && y !== null && z !== null && f !== null && eMode !== null) break;
     }
-    return { x, y, z, f };
+    return { x, y, z, f, eMode };
   }
 
   applyAll(originalLines, parser) {
