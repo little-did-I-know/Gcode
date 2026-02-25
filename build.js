@@ -12,6 +12,7 @@ const FILES = [
   'undo-stack.js',
   'insert-manager.js',
   'hole-detector.js',
+  'e-repair.js',
   'parser.js',
   'modifier.js',
   'gcode-dictionary.js',
