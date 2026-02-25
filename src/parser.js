@@ -41,6 +41,8 @@ export class GcodeParser {
     let curX = 0, curY = 0, curZ = 0, curE = 0;
     let relativeE = false; // M83 = relative, M82 = absolute
     let currentType = 'DEFAULT';
+    let currentFeedRate = 0; // mm/min as raw G-code value
+    let currentPrintAccel = 0, currentTravelAccel = 0; // mm/s² from M204
     // Bambu Studio uses "; CHANGE_LAYER" as a marker, with layer number on a nearby line
     let pendingChangeLayer = false;
     let pendingZHeight = null;
@@ -221,6 +223,15 @@ export class GcodeParser {
       if (/^M82(\s|;|$)/.test(line)) relativeE = false;
       if (line.startsWith('G92') && line.includes('E')) { curE = 0; } // Reset E position
 
+      // Track acceleration from M204
+      if (/^M204\s/.test(line)) {
+        const accelParams = {};
+        for (const m of line.matchAll(/([PTSRE])([\d.]+)/gi)) accelParams[m[1].toUpperCase()] = parseFloat(m[2]);
+        if (accelParams.S !== undefined) { currentPrintAccel = accelParams.S; currentTravelAccel = accelParams.S; } // legacy
+        if (accelParams.P !== undefined) currentPrintAccel = accelParams.P;
+        if (accelParams.T !== undefined) currentTravelAccel = accelParams.T;
+      }
+
       // Parse G0/G1 linear moves for the viewer
       if (currentLayer && this.layerMoves[currentLayer.number] && /^G[01]\s/.test(line)) {
         try {
@@ -232,17 +243,23 @@ export class GcodeParser {
         const newY = params.Y !== undefined ? params.Y : curY;
         const newZ = params.Z !== undefined ? params.Z : curZ;
         const isG0 = line.startsWith('G0');
+        if (params.F !== undefined) currentFeedRate = params.F;
+        const prevE = curE;
         let isExtrude = false;
         if (params.E !== undefined) {
           isExtrude = relativeE ? params.E > 0 : params.E > curE;
           curE = relativeE ? curE + params.E : params.E;
         }
+        const eLength = Math.abs(curE - prevE);
 
         // Only record XY moves (skip pure Z moves)
         if (newX !== curX || newY !== curY) {
           this.layerMoves[currentLayer.number].push({
             x1: curX, y1: curY, x2: newX, y2: newY,
-            type: currentType, extrude: isExtrude && !isG0, lineIndex: i
+            type: currentType, extrude: isExtrude && !isG0, lineIndex: i,
+            feedRate: currentFeedRate,
+            accel: (isExtrude && !isG0) ? currentPrintAccel : currentTravelAccel,
+            eLength: eLength
           });
           this.bounds.minX = Math.min(this.bounds.minX, curX, newX);
           this.bounds.maxX = Math.max(this.bounds.maxX, curX, newX);
@@ -265,11 +282,14 @@ export class GcodeParser {
 
         const newX = params.X !== undefined ? params.X : curX;
         const newY = params.Y !== undefined ? params.Y : curY;
+        if (params.F !== undefined) currentFeedRate = params.F;
+        const prevE = curE;
         let isExtrude = false;
         if (params.E !== undefined) {
           isExtrude = relativeE ? params.E > 0 : params.E > curE;
           curE = relativeE ? curE + params.E : params.E;
         }
+        const totalELength = Math.abs(curE - prevE);
         const isG2 = line.startsWith('G2'); // clockwise
 
         // Approximate arc with line segments
@@ -294,7 +314,10 @@ export class GcodeParser {
             const ay = s === segments ? newY : cy + r * Math.sin(angle);
             this.layerMoves[currentLayer.number].push({
               x1: prevAX, y1: prevAY, x2: ax, y2: ay,
-              type: currentType, extrude: isExtrude, lineIndex: i
+              type: currentType, extrude: isExtrude, lineIndex: i,
+              feedRate: currentFeedRate,
+              accel: isExtrude ? currentPrintAccel : currentTravelAccel,
+              eLength: totalELength / segments
             });
             this.bounds.minX = Math.min(this.bounds.minX, ax);
             this.bounds.maxX = Math.max(this.bounds.maxX, ax);
