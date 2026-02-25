@@ -194,6 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const unitSelect = document.getElementById('insertHeightUnit');
   if (heightInput) heightInput.addEventListener('input', updateComputedPauseInfo);
   if (unitSelect) unitSelect.addEventListener('change', updateComputedPauseInfo);
+  initDecodeTooltip();
 });
 
 window.addEventListener('keydown', e => {
