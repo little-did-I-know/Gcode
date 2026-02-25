@@ -1703,6 +1703,7 @@ function startSimulation() {
     const dt = (now - lastTime) / 1000;
     lastTime = now;
 
+    const prevIndex = Math.floor(simulationMoveIndex);
     simulationMoveIndex += simulationSpeed * dt;
     const totalMoves = moves.length;
 
@@ -1715,7 +1716,24 @@ function startSimulation() {
       return;
     }
 
-    viewer.simMoveIndex = Math.floor(simulationMoveIndex);
+    const newIndex = Math.floor(simulationMoveIndex);
+
+    // Check if we crossed a pause point
+    for (const pauseIdx of simulationPauseMoveIndices) {
+      if (pauseIdx > prevIndex && pauseIdx <= newIndex && pauseIdx !== simulationPausedAtIndex) {
+        // Snap to the pause point and stop
+        simulationMoveIndex = pauseIdx;
+        simulationPausedAtIndex = pauseIdx;
+        viewer.simMoveIndex = pauseIdx;
+        viewer.render(selectedLayer);
+        updateSimUI();
+        showSimPauseFlash();
+        stopSimulation();
+        return;
+      }
+    }
+
+    viewer.simMoveIndex = newIndex;
     viewer.render(selectedLayer);
     updateSimUI();
     simulationRafId = requestAnimationFrame(tick);
@@ -1738,6 +1756,7 @@ function stopSimulation() {
 function resetSimulation() {
   stopSimulation();
   simulationMoveIndex = 0;
+  simulationPausedAtIndex = -1;
   viewer.simMoveIndex = 0;
   viewer.simulating = false;
   updateSimUI();
@@ -1776,13 +1795,79 @@ function showSimControls() {
   const el = document.getElementById('simControls');
   if (el && selectedLayer !== null && parser.layerMoves[selectedLayer]?.length > 0) {
     el.classList.add('active');
+    computeSimPauseTicks();
     updateSimUI();
+  }
+}
+
+function computeSimPauseTicks() {
+  simulationPauseMoveIndices = [];
+  simulationPausedAtIndex = -1;
+  if (selectedLayer === null) return;
+
+  const moves = parser.layerMoves[selectedLayer];
+  if (!moves || moves.length === 0) return;
+
+  // Find all pause modifications for this layer with a lineNumber (mid-layer pauses)
+  const pauses = modifier.modifications.filter(m =>
+    m.type === 'pause' && m.layer === selectedLayer && m.lineNumber != null
+  );
+  if (pauses.length === 0) {
+    renderSimPauseTicks();
+    return;
+  }
+
+  // For each pause, find the single closest move by lineNumber
+  for (const pause of pauses) {
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < moves.length; i++) {
+      const dist = Math.abs(moves[i].lineIndex - pause.lineNumber);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx >= 0 && !simulationPauseMoveIndices.includes(bestIdx)) {
+      simulationPauseMoveIndices.push(bestIdx);
+    }
+  }
+  simulationPauseMoveIndices.sort((a, b) => a - b);
+
+  renderSimPauseTicks();
+}
+
+function renderSimPauseTicks() {
+  const bar = document.getElementById('simProgress');
+  // Remove old ticks
+  bar.querySelectorAll('.sim-pause-tick').forEach(t => t.remove());
+
+  const moves = selectedLayer !== null ? parser.layerMoves[selectedLayer] : null;
+  if (!moves || moves.length <= 1) return;
+
+  for (const idx of simulationPauseMoveIndices) {
+    const pct = (idx / (moves.length - 1)) * 100;
+    const tick = document.createElement('div');
+    tick.className = 'sim-pause-tick';
+    tick.style.left = pct + '%';
+    tick.title = `Pause at move ${idx}`;
+    bar.appendChild(tick);
   }
 }
 
 function hideSimControls() {
   const el = document.getElementById('simControls');
   if (el) el.classList.remove('active');
+}
+
+function showSimPauseFlash() {
+  const el = document.getElementById('simPauseFlash');
+  if (!el) return;
+  el.classList.remove('visible');
+  // Force reflow to restart animation
+  void el.offsetWidth;
+  el.classList.add('visible');
+  setTimeout(() => el.classList.remove('visible'), 600);
 }
 
 // ===== THEME SUPPORT =====

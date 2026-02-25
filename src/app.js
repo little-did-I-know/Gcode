@@ -77,6 +77,8 @@ let simulationPlaying = false;
 let simulationMoveIndex = 0;
 let simulationSpeed = 100; // moves per second
 let simulationRafId = null;
+let simulationPauseMoveIndices = []; // move indices where pauses are inserted
+let simulationPausedAtIndex = -1; // last pause index we stopped at (avoid re-triggering)
 
 const MOTION_TYPE_ALIASES = {
   'OUTER WALL': 'WALL-OUTER', 'INNER WALL': 'WALL-INNER',

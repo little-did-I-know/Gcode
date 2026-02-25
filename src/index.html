@@ -161,6 +161,10 @@ main { display: flex; flex: 1; overflow: hidden; }
 .sim-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.05s linear; }
 .sim-controls input[type="range"] { width: 80px; accent-color: var(--accent); }
 .sim-controls .sim-label { white-space: nowrap; min-width: 70px; text-align: right; }
+.sim-pause-tick { position: absolute; top: -2px; width: 2px; height: 8px; background: var(--yellow, #facc15); border-radius: 1px; transform: translateX(-50%); pointer-events: none; }
+.sim-pause-flash { display: none; align-items: center; gap: 6px; padding: 3px 10px; background: rgba(250,204,21,0.15); border: 1px solid rgba(250,204,21,0.4); border-radius: 4px; color: var(--yellow, #facc15); font-size: 11px; font-weight: 600; white-space: nowrap; animation: sim-flash-pulse 0.6s ease-in-out; }
+.sim-pause-flash.visible { display: flex; }
+@keyframes sim-flash-pulse { 0% { opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
 .view-toggle { display: flex; gap: 2px; background: var(--surface2); border-radius: 6px; padding: 2px; }
 .view-toggle button { padding: 4px 12px; border: none; background: none; color: var(--text-dim); border-radius: 4px; font-size: 12px; font-weight: 600; transition: all .15s; }
 .view-toggle button.active { background: var(--accent-dim); color: var(--accent); }
@@ -480,6 +484,7 @@ main { display: flex; flex: 1; overflow: hidden; }
             <div class="sim-progress-fill" id="simProgressFill" style="width:0%"></div>
           </div>
           <span class="sim-label" id="simMoveLabel">Move 0/0</span>
+          <span class="sim-pause-flash" id="simPauseFlash">&#9208; PAUSE</span>
           <label style="font-size:11px;color:var(--text-dim)">Speed</label>
           <input type="range" id="simSpeed" min="0" max="100" value="50" oninput="onSimSpeedChange(+this.value)">
         </div>
