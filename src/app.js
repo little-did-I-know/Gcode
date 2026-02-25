@@ -72,6 +72,11 @@ let detectedTypes = new Set();
 let motionLegendExpanded = true;
 let motionLegendShowAll = false;
 
+// Heatmap color mode: 'motion-type' | 'speed' | 'acceleration' | 'flow'
+let colorMode = 'motion-type';
+// Cached per-layer heatmap stats: { min, max, avg }
+let heatmapLayerStats = {};
+
 // Simulation state
 let simulationPlaying = false;
 let simulationMoveIndex = 0;
@@ -156,6 +161,50 @@ function resetMotionTypeState() {
   renderMotionLegend();
   viewer.clearBuffers();
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function setColorMode(mode) {
+  colorMode = mode;
+  heatmapLayerStats = {};
+  resetSimulation();
+  viewer.clearBuffers();
+  renderMotionLegend();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function getHeatmapValue(move) {
+  if (colorMode === 'speed') return (move.feedRate || 0) / 60; // mm/min → mm/s
+  if (colorMode === 'acceleration') return move.accel || 0;
+  if (colorMode === 'flow') {
+    // Approximate volumetric flow: (eLength / moveLength) * speed
+    const dx = move.x2 - move.x1, dy = move.y2 - move.y1;
+    const moveLen = Math.hypot(dx, dy);
+    if (moveLen < 0.001 || !move.eLength) return 0;
+    const speed = (move.feedRate || 0) / 60;
+    return (move.eLength / moveLen) * speed;
+  }
+  return 0;
+}
+
+function getHeatmapLayerStats(layerNum) {
+  if (heatmapLayerStats[layerNum]) return heatmapLayerStats[layerNum];
+  const moves = parser.layerMoves[layerNum];
+  if (!moves || moves.length === 0) return { min: 0, max: 1, avg: 0 };
+  let min = Infinity, max = -Infinity, sum = 0, count = 0;
+  for (const move of moves) {
+    if (!move.extrude) continue;
+    const v = getHeatmapValue(move);
+    if (v <= 0) continue;
+    if (v < min) min = v;
+    if (v > max) max = v;
+    sum += v;
+    count++;
+  }
+  if (count === 0) return { min: 0, max: 1, avg: 0 };
+  if (min === max) { min = 0; } // Avoid zero-range
+  const stats = { min, max, avg: sum / count };
+  heatmapLayerStats[layerNum] = stats;
+  return stats;
 }
 
 // Initialize firmware UI

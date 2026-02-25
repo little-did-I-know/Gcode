@@ -218,6 +218,12 @@ main { display: flex; flex: 1; overflow: hidden; }
   border-top: 1px solid var(--border); user-select: none;
 }
 .legend-show-all:hover { text-decoration: underline; }
+.legend-mode-select { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 3px; font-size: 11px; padding: 1px 4px; cursor: pointer; max-width: 140px; }
+.heatmap-gradient { padding: 8px 10px 2px; }
+.heatmap-bar { height: 12px; border-radius: 3px; background: linear-gradient(to right, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000); border: 1px solid var(--border); }
+.heatmap-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+.heatmap-stats { padding: 6px 10px; font-size: 11px; color: var(--text); display: flex; flex-direction: column; gap: 2px; }
+.heatmap-stats strong { color: var(--accent); }
 
 /* EMPTY STATES */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); text-align: center; padding: 40px; gap: 12px; }

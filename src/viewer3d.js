@@ -227,6 +227,28 @@ export class GcodeViewer3D {
     return GcodeViewer3D.TYPE_COLORS.DEFAULT;
   }
 
+  // Blue → Cyan → Green → Yellow → Red gradient
+  _getHeatmapColor(value, min, max) {
+    let t = max > min ? (value - min) / (max - min) : 0;
+    t = Math.max(0, Math.min(1, t));
+    // 5-stop gradient: blue(0) → cyan(0.25) → green(0.5) → yellow(0.75) → red(1)
+    let r, g, b;
+    if (t < 0.25) {
+      const s = t / 0.25;
+      r = 0; g = s; b = 1;
+    } else if (t < 0.5) {
+      const s = (t - 0.25) / 0.25;
+      r = 0; g = 1; b = 1 - s;
+    } else if (t < 0.75) {
+      const s = (t - 0.5) / 0.25;
+      r = s; g = 1; b = 0;
+    } else {
+      const s = (t - 0.75) / 0.25;
+      r = 1; g = 1 - s; b = 0;
+    }
+    return [r, g, b];
+  }
+
   _buildLayerGeometry(layerNum) {
     if (this._broken) return null;
     if (this.layerBuffers.has(layerNum)) return this.layerBuffers.get(layerNum);
@@ -248,12 +270,14 @@ export class GcodeViewer3D {
     const travelVerts = [];
     // Per-move offset tracking for simulation
     const offsets = [];
+    const isHeatmap = colorMode !== 'motion-type';
+    const heatStats = isHeatmap ? getHeatmapLayerStats(layerNum) : null;
 
     for (const move of moves) {
-      // Skip hidden motion types
+      // Skip hidden motion types (in motion-type mode) or non-extrusions (in heatmap mode)
       const moveTypeUpper = move.extrude ? move.type.toUpperCase() : 'TRAVEL';
       const normalizedMoveType = MOTION_TYPE_ALIASES[moveTypeUpper] || moveTypeUpper;
-      if (motionTypeVisibility[normalizedMoveType] === false) {
+      if (!isHeatmap && motionTypeVisibility[normalizedMoveType] === false) {
         offsets.push({ triStart: ribbonVerts.length / 7, triCount: 0, lineStart: travelVerts.length / 7, lineCount: 0 });
         continue;
       }
@@ -262,7 +286,9 @@ export class GcodeViewer3D {
       const lineStart = travelVerts.length / 7;
 
       if (move.extrude) {
-        const color = this._getTypeColor(move.type);
+        const color = isHeatmap
+          ? this._getHeatmapColor(getHeatmapValue(move), heatStats.min, heatStats.max)
+          : this._getTypeColor(move.type);
         const dx = move.x2 - move.x1;
         const dy = move.y2 - move.y1;
         const len = Math.hypot(dx, dy);

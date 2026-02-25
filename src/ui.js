@@ -100,37 +100,70 @@ function renderMotionLegend() {
   }
   container.style.display = '';
 
-  // Determine which types to show
-  const allTypes = [...new Set([...Object.keys(DEFAULT_MOTION_COLORS), ...detectedTypes])];
-  const typesToShow = motionLegendShowAll
-    ? allTypes
-    : allTypes.filter(t => detectedTypes.has(t));
-
+  const isHeatmap = colorMode !== 'motion-type';
   const collapseIcon = motionLegendExpanded ? '\u25BC' : '\u25B6';
 
+  // Color mode dropdown
+  const modeOptions = [
+    ['motion-type', 'Motion Type'],
+    ['speed', 'Speed (mm/s)'],
+    ['acceleration', 'Acceleration (mm/s\u00B2)'],
+    ['flow', 'Flow Rate (mm\u00B3/s)'],
+  ];
+  const modeSelect = modeOptions.map(([val, label]) =>
+    `<option value="${val}"${colorMode === val ? ' selected' : ''}>${label}</option>`
+  ).join('');
+
   let html = `<div class="legend-header" onclick="toggleMotionLegend()">
-    <span class="legend-title">Motion Types</span>
-    <button onclick="event.stopPropagation(); resetMotionTypeState()" title="Reset to defaults">Reset</button>
+    <span class="legend-title">Color</span>
+    <select onclick="event.stopPropagation()" onchange="event.stopPropagation(); setColorMode(this.value)" class="legend-mode-select">${modeSelect}</select>
     <span style="font-size:9px">${collapseIcon}</span>
   </div>`;
 
   html += `<div class="legend-body${motionLegendExpanded ? '' : ' collapsed'}">`;
 
-  for (const type of typesToShow) {
-    const checked = motionTypeVisibility[type] !== false ? 'checked' : '';
-    const color = motionTypeColors[type] || '#e0e2e8';
-    const label = MOTION_TYPE_LABELS[type] || type;
-    html += `<div class="legend-row">
-      <input type="checkbox" ${checked} onchange="toggleMotionType('${type}', this.checked)">
-      <input type="color" value="${color}" onchange="setMotionTypeColor('${type}', this.value)">
-      <label onclick="this.parentElement.querySelector('input[type=checkbox]').click()">${label}</label>
+  if (isHeatmap) {
+    // Gradient bar + per-layer stats
+    const layerNum = selectedLayer !== null ? selectedLayer : (viewer.currentLayer || 0);
+    const stats = getHeatmapLayerStats(layerNum);
+    const unitLabel = colorMode === 'speed' ? 'mm/s' : colorMode === 'acceleration' ? 'mm/s\u00B2' : 'mm\u00B3/s';
+
+    html += `<div class="heatmap-gradient">
+      <div class="heatmap-bar"></div>
+      <div class="heatmap-labels">
+        <span>${stats.min.toFixed(1)}</span>
+        <span>${unitLabel}</span>
+        <span>${stats.max.toFixed(1)}</span>
+      </div>
     </div>`;
+    html += `<div class="heatmap-stats">
+      <div>Min: <strong>${stats.min.toFixed(1)}</strong> ${unitLabel}</div>
+      <div>Avg: <strong>${stats.avg.toFixed(1)}</strong> ${unitLabel}</div>
+      <div>Max: <strong>${stats.max.toFixed(1)}</strong> ${unitLabel}</div>
+    </div>`;
+  } else {
+    // Motion type rows
+    const allTypes = [...new Set([...Object.keys(DEFAULT_MOTION_COLORS), ...detectedTypes])];
+    const typesToShow = motionLegendShowAll
+      ? allTypes
+      : allTypes.filter(t => detectedTypes.has(t));
+
+    for (const type of typesToShow) {
+      const checked = motionTypeVisibility[type] !== false ? 'checked' : '';
+      const color = motionTypeColors[type] || '#e0e2e8';
+      const label = MOTION_TYPE_LABELS[type] || type;
+      html += `<div class="legend-row">
+        <input type="checkbox" ${checked} onchange="toggleMotionType('${type}', this.checked)">
+        <input type="color" value="${color}" onchange="setMotionTypeColor('${type}', this.value)">
+        <label onclick="this.parentElement.querySelector('input[type=checkbox]').click()">${label}</label>
+      </div>`;
+    }
   }
 
   html += '</div>';
 
-  // Show all / detected only toggle
-  if (detectedTypes.size > 0) {
+  // Show all / detected only toggle (only in motion-type mode)
+  if (!isHeatmap && detectedTypes.size > 0) {
     const toggleText = motionLegendShowAll ? 'Show detected only' : 'Show all types\u2026';
     html += `<div class="legend-show-all" onclick="toggleMotionLegendShowAll()">${toggleText}</div>`;
   }
@@ -336,6 +369,9 @@ function selectLayer(num) {
 
   // Reset simulation on layer change
   resetSimulation();
+
+  // Update heatmap stats for new layer
+  if (colorMode !== 'motion-type') renderMotionLegend();
 
   // Update visual viewer if active
   if (currentView === 'visual') {
