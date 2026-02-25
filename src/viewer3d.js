@@ -941,7 +941,38 @@ export class GcodeViewer3D {
       });
     });
 
+    // Hover preview for edit mode
+    let editHoverRaf = false;
+    c.addEventListener('mousemove', e => {
+      if (!editMode || this._dragging) return;
+      if (editHoverRaf) return;
+      editHoverRaf = true;
+      requestAnimationFrame(() => {
+        editHoverRaf = false;
+        if (!editMode || this._dragging) return;
+        const rect = c.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const layer = parser.getLayerByNumber(this.currentLayer);
+        const z = layer?.zHeight || 0;
+        const pt = this.screenToLayerPoint(sx, sy, z);
+        if (!pt) {
+          if (editHoveredMove) { editHoveredMove = null; this.render(this.currentLayer); }
+          return;
+        }
+        const move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
+        if (move !== editHoveredMove) {
+          editHoveredMove = move;
+          this.render(this.currentLayer);
+        }
+      });
+    });
+
     c.addEventListener('mouseleave', () => {
+      if (editHoveredMove) {
+        editHoveredMove = null;
+        if (editMode) this.render(this.currentLayer);
+      }
       if (hoveredMove) {
         hoveredMove = null;
         if (pauseSelectMode) this.render(this.currentLayer);
@@ -1063,6 +1094,23 @@ export class GcodeViewer3D {
           showToast(`Selected line ${move.lineIndex + 1} — click Add Pause to confirm`, 'success');
         } else {
           showToast('No extrusion move found near click point', 'warning');
+        }
+      }
+
+      // Edit mode click
+      if (editMode && selectedLayer !== null) {
+        const pt = this.screenToLayerPoint(sx, sy, z);
+        if (!pt) return;
+        const move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
+        if (move) {
+          editSelectedMove = move;
+          editHoveredMove = null;
+          this.render(this.currentLayer);
+          showEditInfoPanel(move);
+        } else {
+          editSelectedMove = null;
+          hideEditInfoPanel();
+          this.render(this.currentLayer);
         }
       }
     });

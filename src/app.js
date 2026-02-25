@@ -25,6 +25,9 @@ let measurePoints = [];
 let pauseSelectMode = false;
 let selectedMove = null;
 let hoveredMove = null;
+let editMode = false;
+let editSelectedMove = null;
+let editHoveredMove = null;
 const _storedColor = localStorage.getItem('gcode_highlight_color');
 let highlightColor = /^#[0-9a-fA-F]{6}$/.test(_storedColor) ? _storedColor : '#ff3333';
 

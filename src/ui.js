@@ -46,6 +46,13 @@ function toggleMeasureMode() {
     selectedMove = null;
     document.getElementById('pauseSelectToggle').classList.remove('active');
   }
+  if (measureMode && editMode) {
+    editMode = false;
+    editSelectedMove = null;
+    editHoveredMove = null;
+    document.getElementById('editModeToggle').classList.remove('active');
+    hideEditInfoPanel();
+  }
   measurePoints = [];
   document.getElementById('measureToggle').classList.toggle('active', measureMode);
   document.getElementById('viewerCanvas').style.cursor = measureMode ? 'crosshair' : '';
@@ -66,6 +73,13 @@ function togglePauseSelectMode() {
     measurePoints = [];
     document.getElementById('measureToggle').classList.remove('active');
   }
+  if (pauseSelectMode && editMode) {
+    editMode = false;
+    editSelectedMove = null;
+    editHoveredMove = null;
+    document.getElementById('editModeToggle').classList.remove('active');
+    hideEditInfoPanel();
+  }
 
   // Auto-switch to visual view and pause tab
   if (pauseSelectMode) {
@@ -75,6 +89,40 @@ function togglePauseSelectMode() {
   }
 
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function toggleEditMode() {
+  editMode = !editMode;
+  editSelectedMove = null;
+  editHoveredMove = null;
+  document.getElementById('editModeToggle').classList.toggle('active', editMode);
+  document.getElementById('viewerCanvas').style.cursor = editMode ? 'crosshair' : '';
+
+  // Mutual exclusion
+  if (editMode) {
+    if (measureMode) {
+      measureMode = false;
+      measurePoints = [];
+      document.getElementById('measureToggle').classList.remove('active');
+    }
+    if (pauseSelectMode) {
+      pauseSelectMode = false;
+      selectedMove = null;
+      document.getElementById('pauseSelectToggle').classList.remove('active');
+      document.getElementById('colorPickerRow').classList.remove('visible');
+    }
+    if (currentView !== 'visual') setView('visual');
+  }
+
+  // Hide info panel when deactivating
+  hideEditInfoPanel();
+
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function hideEditInfoPanel() {
+  const panel = document.getElementById('editInfoPanel');
+  if (panel) panel.classList.remove('visible');
 }
 
 function setHighlightColor(hex) {
