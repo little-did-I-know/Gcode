@@ -151,6 +151,7 @@ function toggleMotionLegendShowAll() {
 function toggleMotionType(type, visible) {
   motionTypeVisibility[type] = visible;
   saveMotionTypeState();
+  resetSimulation();
   viewer.clearBuffers();
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
@@ -158,6 +159,7 @@ function toggleMotionType(type, visible) {
 function setMotionTypeColor(type, hex) {
   motionTypeColors[type] = hex.toLowerCase();
   saveMotionTypeState();
+  resetSimulation();
   viewer.clearBuffers();
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
@@ -332,11 +334,15 @@ function selectLayer(num) {
   updateSectionForLayer(num);
   updateSlider();
 
+  // Reset simulation on layer change
+  resetSimulation();
+
   // Update visual viewer if active
   if (currentView === 'visual') {
     viewer.maxVisibleLayer = num;
     viewer.render(num);
     updateViewerOverlay(num);
+    showSimControls();
   }
 
   // Fill layer number into active tab's layer input
@@ -1287,6 +1293,10 @@ function setView(view) {
     viewer.maxVisibleLayer = selectedLayer;
     viewer.render(selectedLayer);
     updateViewerOverlay(selectedLayer);
+    showSimControls();
+  } else {
+    stopSimulation();
+    hideSimControls();
   }
 }
 
@@ -1665,6 +1675,263 @@ function toggleShortcutsOverlay() {
     document.body.style.userSelect = '';
   });
 })();
+
+// ===== SIMULATION =====
+function toggleSimulation() {
+  if (simulationPlaying) {
+    stopSimulation();
+  } else {
+    startSimulation();
+  }
+}
+
+function startSimulation() {
+  if (selectedLayer === null) return;
+  const moves = parser.layerMoves[selectedLayer];
+  if (!moves || moves.length === 0) return;
+
+  simulationPlaying = true;
+  viewer.simulating = true;
+  const btn = document.getElementById('simPlayBtn');
+  btn.innerHTML = '&#9646;&#9646; Pause';
+  btn.classList.add('playing');
+
+  let lastTime = performance.now();
+  let currentMoves = moves;
+
+  function tick(now) {
+    if (!simulationPlaying) return;
+    const dt = (now - lastTime) / 1000;
+    lastTime = now;
+
+    const prevIndex = Math.floor(simulationMoveIndex);
+    simulationMoveIndex += simulationSpeed * dt;
+    const totalMoves = currentMoves.length;
+
+    if (simulationMoveIndex >= totalMoves - 1) {
+      // End of layer — try to advance to next layer
+      simulationMoveIndex = totalMoves - 1;
+      viewer.simMoveIndex = Math.floor(simulationMoveIndex);
+      viewer.render(selectedLayer);
+      updateSimUI();
+
+      if (simAdvanceToNextLayer()) {
+        currentMoves = parser.layerMoves[selectedLayer];
+        lastTime = performance.now();
+        simulationRafId = requestAnimationFrame(tick);
+      } else {
+        stopSimulation();
+      }
+      return;
+    }
+
+    const newIndex = Math.floor(simulationMoveIndex);
+
+    // Check if we crossed a pause point
+    for (const pauseIdx of simulationPauseMoveIndices) {
+      if (pauseIdx > prevIndex && pauseIdx <= newIndex && pauseIdx !== simulationPausedAtIndex) {
+        // Snap to the pause point and stop
+        simulationMoveIndex = pauseIdx;
+        simulationPausedAtIndex = pauseIdx;
+        viewer.simMoveIndex = pauseIdx;
+        viewer.render(selectedLayer);
+        updateSimUI();
+        showSimPauseFlash();
+        stopSimulation();
+        return;
+      }
+    }
+
+    viewer.simMoveIndex = newIndex;
+    viewer.render(selectedLayer);
+    updateSimUI();
+    simulationRafId = requestAnimationFrame(tick);
+  }
+
+  simulationRafId = requestAnimationFrame(tick);
+}
+
+function simAdvanceToNextLayer() {
+  const idx = parser.layers.findIndex(l => l.number === selectedLayer);
+  if (idx < 0 || idx >= parser.layers.length - 1) return false;
+
+  const nextLayer = parser.layers[idx + 1].number;
+  const nextMoves = parser.layerMoves[nextLayer];
+  if (!nextMoves || nextMoves.length === 0) return false;
+
+  // Advance layer without full reset — keep playing state
+  selectedLayer = nextLayer;
+  simulationMoveIndex = 0;
+  simulationPausedAtIndex = -1;
+  viewer.simMoveIndex = 0;
+  viewer.maxVisibleLayer = nextLayer;
+
+  // Update layer UI
+  renderLayerList();
+  updateSlider();
+  updateViewerOverlay(nextLayer);
+  computeSimPauseTicks();
+  updateSimUI();
+
+  return true;
+}
+
+function simSkipNext() {
+  const wasPlaying = simulationPlaying;
+  if (wasPlaying) stopSimulation();
+
+  const idx = parser.layers.findIndex(l => l.number === selectedLayer);
+  if (idx < 0 || idx >= parser.layers.length - 1) return;
+
+  const nextLayer = parser.layers[idx + 1].number;
+  selectLayer(nextLayer);
+  // selectLayer resets simulation, so re-enable simulating state
+  viewer.simulating = true;
+  showSimControls();
+  if (wasPlaying) startSimulation();
+}
+
+function simSkipPrev() {
+  const wasPlaying = simulationPlaying;
+  if (wasPlaying) stopSimulation();
+
+  const idx = parser.layers.findIndex(l => l.number === selectedLayer);
+  if (idx <= 0) return;
+
+  const prevLayer = parser.layers[idx - 1].number;
+  selectLayer(prevLayer);
+  viewer.simulating = true;
+  showSimControls();
+  if (wasPlaying) startSimulation();
+}
+
+function stopSimulation() {
+  simulationPlaying = false;
+  if (simulationRafId) {
+    cancelAnimationFrame(simulationRafId);
+    simulationRafId = null;
+  }
+  const btn = document.getElementById('simPlayBtn');
+  btn.innerHTML = '&#9654; Play';
+  btn.classList.remove('playing');
+}
+
+function resetSimulation() {
+  stopSimulation();
+  simulationMoveIndex = 0;
+  simulationPausedAtIndex = -1;
+  viewer.simMoveIndex = 0;
+  viewer.simulating = false;
+  updateSimUI();
+}
+
+function onSimProgressClick(event) {
+  if (selectedLayer === null) return;
+  const moves = parser.layerMoves[selectedLayer];
+  if (!moves || moves.length === 0) return;
+
+  const bar = document.getElementById('simProgress');
+  const rect = bar.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+  simulationMoveIndex = ratio * (moves.length - 1);
+  viewer.simulating = true;
+  viewer.simMoveIndex = Math.floor(simulationMoveIndex);
+  viewer.render(selectedLayer);
+  updateSimUI();
+}
+
+function onSimSpeedChange(val) {
+  // Map 0-100 to exponential range ~10-500 moves/sec
+  simulationSpeed = Math.round(10 * Math.pow(50, val / 100));
+}
+
+function updateSimUI() {
+  const moves = selectedLayer !== null ? parser.layerMoves[selectedLayer] : null;
+  const total = moves ? moves.length : 0;
+  const current = Math.floor(simulationMoveIndex);
+  const pct = total > 0 ? (current / (total - 1)) * 100 : 0;
+  document.getElementById('simProgressFill').style.width = Math.min(100, pct) + '%';
+  document.getElementById('simMoveLabel').textContent = `Move ${current}/${total}`;
+}
+
+function showSimControls() {
+  const el = document.getElementById('simControls');
+  if (el && selectedLayer !== null && parser.layerMoves[selectedLayer]?.length > 0) {
+    el.classList.add('active');
+    computeSimPauseTicks();
+    updateSimUI();
+  }
+}
+
+function computeSimPauseTicks() {
+  simulationPauseMoveIndices = [];
+  simulationPausedAtIndex = -1;
+  if (selectedLayer === null) return;
+
+  const moves = parser.layerMoves[selectedLayer];
+  if (!moves || moves.length === 0) return;
+
+  // Find all pause modifications for this layer with a lineNumber (mid-layer pauses)
+  const pauses = modifier.modifications.filter(m =>
+    m.type === 'pause' && m.layer === selectedLayer && m.lineNumber != null
+  );
+  if (pauses.length === 0) {
+    renderSimPauseTicks();
+    return;
+  }
+
+  // For each pause, find the single closest move by lineNumber
+  for (const pause of pauses) {
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < moves.length; i++) {
+      const dist = Math.abs(moves[i].lineIndex - pause.lineNumber);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx >= 0 && !simulationPauseMoveIndices.includes(bestIdx)) {
+      simulationPauseMoveIndices.push(bestIdx);
+    }
+  }
+  simulationPauseMoveIndices.sort((a, b) => a - b);
+
+  renderSimPauseTicks();
+}
+
+function renderSimPauseTicks() {
+  const bar = document.getElementById('simProgress');
+  // Remove old ticks
+  bar.querySelectorAll('.sim-pause-tick').forEach(t => t.remove());
+
+  const moves = selectedLayer !== null ? parser.layerMoves[selectedLayer] : null;
+  if (!moves || moves.length <= 1) return;
+
+  for (const idx of simulationPauseMoveIndices) {
+    const pct = (idx / (moves.length - 1)) * 100;
+    const tick = document.createElement('div');
+    tick.className = 'sim-pause-tick';
+    tick.style.left = pct + '%';
+    tick.title = `Pause at move ${idx}`;
+    bar.appendChild(tick);
+  }
+}
+
+function hideSimControls() {
+  const el = document.getElementById('simControls');
+  if (el) el.classList.remove('active');
+}
+
+function showSimPauseFlash() {
+  const el = document.getElementById('simPauseFlash');
+  if (!el) return;
+  el.classList.remove('visible');
+  // Force reflow to restart animation
+  void el.offsetWidth;
+  el.classList.add('visible');
+  setTimeout(() => el.classList.remove('visible'), 600);
+}
 
 // ===== THEME SUPPORT =====
 function getPreferredTheme() {
