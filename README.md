@@ -29,7 +29,7 @@ A browser-based G-code editor for 3D printing. Visually inspect layers in 3D, ad
 | | |
 |---|---|
 | ![3D Visualization](screenshots/03-visual-view.png) **3D Layer Visualization** — WebGL rendering with motion-type coloring, travel moves, and interactive camera controls | ![Hole Detection](screenshots/10-hole-detection.png) **Automatic Hole Detection** — Scan all layers to find holes, calculate insert depths, and add pauses automatically |
-| ![Playback](screenshots/16-playback.png) **Print Simulation** — Play through the print move-by-move with speed control and pause markers | ![Code View](screenshots/02-code-view.png) **Syntax-Highlighted Code** — Browse G-code with search, highlighting, and modification preview |
+| ![Playback](screenshots/16-playback.gif) **Print Simulation** — Play through the print move-by-move with speed control and pause markers | ![Code View](screenshots/02-code-view.png) **Syntax-Highlighted Code** — Browse G-code with search, highlighting, and modification preview |
 | ![Modifications](screenshots/05-visual-with-mod.png) **Layer Modifications** — Pauses, filament changes, Z-offsets, eject sequences, recovery, and custom G-code | ![Reference](screenshots/12-reference-tab.png) **Built-in G-code Reference** — 40+ commands with firmware-specific notes and click-to-insert |
 
 ## Getting Started
@@ -122,6 +122,8 @@ Toggle between two views using the **Code** / **Visual** buttons:
 ![Motion Type Legend](screenshots/17-motion-legend.png)
 
 ![3D Visual View](screenshots/03-visual-view.png)
+
+![Layer Navigation](screenshots/20-layer-navigation.gif)
 
 ## Slicer Compatibility
 
@@ -302,7 +304,7 @@ Measure point-to-point distance on the current layer.
 
 Play back the print move-by-move to visualize how each layer is built up.
 
-![Print Simulation](screenshots/16-playback.png)
+![Print Simulation](screenshots/16-playback.gif)
 
 - **Play / Pause**: Click the play button or press `P` to start/stop the simulation.
 - **Speed control**: Adjust the speed slider to control moves per second.
