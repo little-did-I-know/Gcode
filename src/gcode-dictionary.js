@@ -51,7 +51,7 @@ function decodeLine(text) {
   const def = GCODE_COMMANDS[command];
 
   // Parse parameters
-  const paramRegex = /([A-Z])(-?\d+\.?\d*)/gi;
+  const paramRegex = /([A-Z])(-?(?:\d+\.?\d*|\.\d+))/gi;
   const params = [];
   let m;
   // Skip the command itself, parse remaining
@@ -59,7 +59,14 @@ function decodeLine(text) {
   while ((m = paramRegex.exec(paramStr)) !== null) {
     const letter = m[1].toUpperCase();
     const value = m[2];
-    let description = def?.params[letter] || 'Parameter';
+    const PARAM_FALLBACKS = {
+      X: 'X position', Y: 'Y position', Z: 'Z position',
+      E: 'Extruder', F: 'Feed rate', S: 'Value',
+      I: 'X offset', J: 'Y offset', K: 'Z offset', R: 'Radius',
+      P: 'Parameter', T: 'Tool index', D: 'Diameter', H: 'Height offset',
+      L: 'Loop count', N: 'Line number', O: 'Program number', Q: 'Value',
+    };
+    let description = def?.params[letter] || PARAM_FALLBACKS[letter] || 'Parameter';
 
     // Add units/conversions for common parameters
     if (letter === 'X' || letter === 'Y' || letter === 'Z') {
