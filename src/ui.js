@@ -1951,3 +1951,95 @@ function toggleTheme() {
   applyTheme(current === 'dark' ? 'light' : 'dark');
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
+
+// ===== G-CODE DECODE TOOLTIP =====
+let _tooltipTimer = null;
+let _tooltipEl = null;
+
+function getTooltipEl() {
+  if (!_tooltipEl) {
+    _tooltipEl = document.createElement('div');
+    _tooltipEl.id = 'gcodeTooltip';
+    document.body.appendChild(_tooltipEl);
+  }
+  return _tooltipEl;
+}
+
+function showDecodeTooltip(tr, mx, my) {
+  const td = tr.querySelector('td:last-child');
+  if (!td) return;
+
+  const decoded = decodeLine(td.innerHTML);
+  if (!decoded) return;
+
+  const tip = getTooltipEl();
+  const cmdClass = decoded.command.startsWith('G') ? 'tt-cmd-g' : 'tt-cmd-m';
+
+  let html = `<div class="tt-header"><span class="${cmdClass}">${decoded.command}</span> \u2014 ${decoded.name}</div>`;
+
+  if (decoded.params.length > 0) {
+    html += '<div class="tt-params">';
+    for (const p of decoded.params) {
+      html += `<span><span class="tt-letter">${p.letter}</span><span class="tt-value">${p.value}</span></span>`;
+      html += `<span class="tt-desc">${p.description}</span>`;
+    }
+    html += '</div>';
+  } else if (!decoded.known) {
+    html += '<div class="tt-unknown">Unknown command</div>';
+  }
+
+  tip.innerHTML = html;
+
+  // Position near the mouse cursor
+  let left = mx + 12;
+  let top = my + 12;
+
+  // Measure tooltip size off-screen, then reposition
+  tip.style.left = '-9999px';
+  tip.style.top = '-9999px';
+  tip.style.visibility = 'hidden';
+  tip.classList.add('visible');
+
+  const tipRect = tip.getBoundingClientRect();
+  if (left + tipRect.width > window.innerWidth - 8) {
+    left = mx - tipRect.width - 8;
+  }
+  if (top + tipRect.height > window.innerHeight - 8) {
+    top = my - tipRect.height - 8;
+  }
+  if (top < 8) top = 8;
+
+  tip.style.left = left + 'px';
+  tip.style.top = top + 'px';
+  tip.style.visibility = '';
+}
+
+function hideDecodeTooltip() {
+  clearTimeout(_tooltipTimer);
+  _tooltipTimer = null;
+  if (_tooltipEl) _tooltipEl.classList.remove('visible');
+}
+
+function initDecodeTooltip() {
+  const container = document.getElementById('gcodePreview');
+  if (!container) return;
+
+  container.addEventListener('mouseenter', (e) => {
+    const tr = e.target.closest('.code-table tr');
+    if (!tr || tr.classList.contains('mod-line') || tr.classList.contains('mod-line-midlayer')) return;
+    if (tr.closest('.gcode-section-preview')) return;
+
+    clearTimeout(_tooltipTimer);
+    const mx = e.clientX, my = e.clientY;
+    _tooltipTimer = setTimeout(() => {
+      if (!tr.isConnected) return;
+      showDecodeTooltip(tr, mx, my);
+    }, 200);
+  }, true);
+
+  container.addEventListener('mouseleave', () => {
+    hideDecodeTooltip();
+  }, true);
+
+  container.addEventListener('scroll', hideDecodeTooltip, true);
+}

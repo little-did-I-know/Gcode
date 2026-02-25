@@ -14,6 +14,7 @@ const FILES = [
   'hole-detector.js',
   'parser.js',
   'modifier.js',
+  'gcode-dictionary.js',
   'viewer3d.js',
   'ui.js',
   'app.js',

@@ -6,5 +6,9 @@
   },
   "dependencies": {
     "playwright": "^1.58.2"
+  },
+  "devDependencies": {
+    "gifenc": "^1.0.3",
+    "pngjs": "^7.0.0"
   }
 }

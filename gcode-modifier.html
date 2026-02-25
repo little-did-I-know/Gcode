@@ -134,6 +134,18 @@ main { display: flex; flex: 1; overflow: hidden; }
 .code-table tr.line-selected td { background: var(--accent-dim); cursor: pointer; }
 .code-table td mark.search-match { background: rgba(250,204,21,.35); color: inherit; border-radius: 2px; padding: 0 1px; }
 
+/* G-code decode tooltip */
+#gcodeTooltip { position: fixed; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity 0.15s; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; max-width: 380px; font-family: var(--mono); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+#gcodeTooltip.visible { opacity: 1; }
+#gcodeTooltip .tt-header { font-weight: 600; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+#gcodeTooltip .tt-cmd-g { color: #60a5fa; }
+#gcodeTooltip .tt-cmd-m { color: #4ade80; }
+#gcodeTooltip .tt-params { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+#gcodeTooltip .tt-letter { color: #c4b5fd; font-weight: 600; }
+#gcodeTooltip .tt-value { color: #fbbf24; }
+#gcodeTooltip .tt-desc { color: var(--text-dim); }
+#gcodeTooltip .tt-unknown { color: var(--text-dim); font-style: italic; }
+
 .syn-g { color: #60a5fa; }
 .syn-m { color: #4ade80; }
 .syn-comment { color: #6b7280; }
@@ -2737,6 +2749,109 @@ class GcodeModifier {
 
     return result;
   }
+}
+
+// G-code command dictionary and line decoder.
+
+const GCODE_COMMANDS = {
+  'G0':   { name: 'Rapid Move', params: { X: 'Move to X', Y: 'Move to Y', Z: 'Move to Z', F: 'Feed rate', E: 'Retract/prime' } },
+  'G1':   { name: 'Linear Move', params: { X: 'Move to X', Y: 'Move to Y', Z: 'Move to Z', E: 'Extrude', F: 'Feed rate' } },
+  'G2':   { name: 'Clockwise Arc', params: { X: 'End X', Y: 'End Y', I: 'Arc center X offset', J: 'Arc center Y offset', E: 'Extrude', F: 'Feed rate' } },
+  'G3':   { name: 'Counter-Clockwise Arc', params: { X: 'End X', Y: 'End Y', I: 'Arc center X offset', J: 'Arc center Y offset', E: 'Extrude', F: 'Feed rate' } },
+  'G4':   { name: 'Dwell (Pause)', params: { P: 'Wait time (ms)', S: 'Wait time (s)' } },
+  'G10':  { name: 'Retract', params: {} },
+  'G11':  { name: 'Unretract', params: {} },
+  'G21':  { name: 'Set Units to Millimeters', params: {} },
+  'G28':  { name: 'Home Axes', params: { X: 'Home X axis', Y: 'Home Y axis', Z: 'Home Z axis' } },
+  'G29':  { name: 'Bed Leveling', params: {} },
+  'G90':  { name: 'Absolute Positioning', params: {} },
+  'G91':  { name: 'Relative Positioning', params: {} },
+  'G92':  { name: 'Set Position', params: { X: 'Set X position', Y: 'Set Y position', Z: 'Set Z position', E: 'Set extruder position' } },
+  'M82':  { name: 'Absolute Extrusion', params: {} },
+  'M83':  { name: 'Relative Extrusion', params: {} },
+  'M84':  { name: 'Disable Steppers', params: { S: 'Idle timeout (s)' } },
+  'M104': { name: 'Set Hotend Temp', params: { S: 'Target temp (°C)', T: 'Extruder index' } },
+  'M106': { name: 'Set Fan Speed', params: { S: 'Speed (0–255)' } },
+  'M107': { name: 'Fan Off', params: {} },
+  'M109': { name: 'Wait for Hotend Temp', params: { S: 'Target temp (°C)', R: 'Wait for temp (°C)', T: 'Extruder index' } },
+  'M140': { name: 'Set Bed Temp', params: { S: 'Target temp (°C)' } },
+  'M190': { name: 'Wait for Bed Temp', params: { S: 'Target temp (°C)', R: 'Wait for temp (°C)' } },
+  'M204': { name: 'Set Acceleration', params: { P: 'Print accel (mm/s²)', T: 'Travel accel (mm/s²)', S: 'Legacy accel (mm/s²)' } },
+  'M205': { name: 'Set Jerk/Junction', params: { X: 'X jerk (mm/s)', Y: 'Y jerk (mm/s)', Z: 'Z jerk (mm/s)', E: 'E jerk (mm/s)', J: 'Junction deviation (mm)' } },
+  'M220': { name: 'Set Speed Factor', params: { S: 'Speed %' } },
+  'M221': { name: 'Set Flow Factor', params: { S: 'Flow %', T: 'Extruder index' } },
+  'M400': { name: 'Wait for Moves to Finish', params: {} },
+  'M600': { name: 'Filament Change', params: { X: 'Park X', Y: 'Park Y', Z: 'Park Z lift', E: 'Retract length' } },
+  'M862': { name: 'Printer Model Check', params: { P: 'Model ID', Q: 'Nozzle diameter' } },
+  'M900': { name: 'Linear Advance', params: { K: 'K-factor' } },
+};
+
+function decodeLine(text) {
+  // Strip HTML tags (from syntax-highlighted content)
+  const raw = text.replace(/<[^>]+>/g, '').trim();
+  if (!raw || raw.startsWith(';')) return null;
+
+  // Remove inline comments
+  const commentIdx = raw.indexOf(';');
+  const code = commentIdx > -1 ? raw.substring(0, commentIdx).trim() : raw;
+  if (!code) return null;
+
+  // Extract command (G or M followed by digits)
+  const cmdMatch = code.match(/^([GM]\d+(\.\d+)?)/i);
+  if (!cmdMatch) return null;
+
+  const command = cmdMatch[1].toUpperCase();
+  const def = GCODE_COMMANDS[command];
+
+  // Parse parameters
+  const paramRegex = /([A-Z])(-?\d+\.?\d*)/gi;
+  const params = [];
+  let m;
+  // Skip the command itself, parse remaining
+  const paramStr = code.substring(cmdMatch[0].length);
+  while ((m = paramRegex.exec(paramStr)) !== null) {
+    const letter = m[1].toUpperCase();
+    const value = m[2];
+    let description = def?.params[letter] || 'Parameter';
+
+    // Add units/conversions for common parameters
+    if (letter === 'X' || letter === 'Y' || letter === 'Z') {
+      description += ` = ${value} mm`;
+    } else if (letter === 'E') {
+      description += ` ${value} mm`;
+    } else if (letter === 'F') {
+      const mmPerMin = parseFloat(value);
+      if (!isNaN(mmPerMin)) {
+        const mmPerSec = (mmPerMin / 60).toFixed(1);
+        description += `: ${value} mm/min (${mmPerSec} mm/s)`;
+      } else {
+        description += `: ${value}`;
+      }
+    } else if (letter === 'S' && (command === 'M104' || command === 'M109' || command === 'M140' || command === 'M190')) {
+      description += `: ${value}°C`;
+    } else if (letter === 'S' && command === 'M106') {
+      const raw = parseFloat(value);
+      if (!isNaN(raw)) {
+        const pct = (raw / 255 * 100).toFixed(0);
+        description += `: ${value} (${pct}%)`;
+      } else {
+        description += `: ${value}`;
+      }
+    } else if (letter === 'S' && (command === 'M220' || command === 'M221')) {
+      description += `: ${value}%`;
+    } else {
+      description += `: ${value}`;
+    }
+
+    params.push({ letter, value, description });
+  }
+
+  return {
+    command,
+    name: def ? def.name : 'Unknown Command',
+    known: !!def,
+    params
+  };
 }
 
 // ===== GCODE VIEWER (old Canvas 2D removed — now using GcodeViewer3D) =====
@@ -5769,6 +5884,98 @@ function toggleTheme() {
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
 
+// ===== G-CODE DECODE TOOLTIP =====
+let _tooltipTimer = null;
+let _tooltipEl = null;
+
+function getTooltipEl() {
+  if (!_tooltipEl) {
+    _tooltipEl = document.createElement('div');
+    _tooltipEl.id = 'gcodeTooltip';
+    document.body.appendChild(_tooltipEl);
+  }
+  return _tooltipEl;
+}
+
+function showDecodeTooltip(tr, mx, my) {
+  const td = tr.querySelector('td:last-child');
+  if (!td) return;
+
+  const decoded = decodeLine(td.innerHTML);
+  if (!decoded) return;
+
+  const tip = getTooltipEl();
+  const cmdClass = decoded.command.startsWith('G') ? 'tt-cmd-g' : 'tt-cmd-m';
+
+  let html = `<div class="tt-header"><span class="${cmdClass}">${decoded.command}</span> \u2014 ${decoded.name}</div>`;
+
+  if (decoded.params.length > 0) {
+    html += '<div class="tt-params">';
+    for (const p of decoded.params) {
+      html += `<span><span class="tt-letter">${p.letter}</span><span class="tt-value">${p.value}</span></span>`;
+      html += `<span class="tt-desc">${p.description}</span>`;
+    }
+    html += '</div>';
+  } else if (!decoded.known) {
+    html += '<div class="tt-unknown">Unknown command</div>';
+  }
+
+  tip.innerHTML = html;
+
+  // Position near the mouse cursor
+  let left = mx + 12;
+  let top = my + 12;
+
+  // Measure tooltip size off-screen, then reposition
+  tip.style.left = '-9999px';
+  tip.style.top = '-9999px';
+  tip.style.visibility = 'hidden';
+  tip.classList.add('visible');
+
+  const tipRect = tip.getBoundingClientRect();
+  if (left + tipRect.width > window.innerWidth - 8) {
+    left = mx - tipRect.width - 8;
+  }
+  if (top + tipRect.height > window.innerHeight - 8) {
+    top = my - tipRect.height - 8;
+  }
+  if (top < 8) top = 8;
+
+  tip.style.left = left + 'px';
+  tip.style.top = top + 'px';
+  tip.style.visibility = '';
+}
+
+function hideDecodeTooltip() {
+  clearTimeout(_tooltipTimer);
+  _tooltipTimer = null;
+  if (_tooltipEl) _tooltipEl.classList.remove('visible');
+}
+
+function initDecodeTooltip() {
+  const container = document.getElementById('gcodePreview');
+  if (!container) return;
+
+  container.addEventListener('mouseenter', (e) => {
+    const tr = e.target.closest('.code-table tr');
+    if (!tr || tr.classList.contains('mod-line') || tr.classList.contains('mod-line-midlayer')) return;
+    if (tr.closest('.gcode-section-preview')) return;
+
+    clearTimeout(_tooltipTimer);
+    const mx = e.clientX, my = e.clientY;
+    _tooltipTimer = setTimeout(() => {
+      if (!tr.isConnected) return;
+      showDecodeTooltip(tr, mx, my);
+    }, 200);
+  }, true);
+
+  container.addEventListener('mouseleave', () => {
+    hideDecodeTooltip();
+  }, true);
+
+  container.addEventListener('scroll', hideDecodeTooltip, true);
+}
+
 // App initialization, state, and event wiring.
 // UI functions are defined in ui.js and available via global scope in the built output.
 
@@ -5965,6 +6172,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const unitSelect = document.getElementById('insertHeightUnit');
   if (heightInput) heightInput.addEventListener('input', updateComputedPauseInfo);
   if (unitSelect) unitSelect.addEventListener('change', updateComputedPauseInfo);
+  initDecodeTooltip();
 });
 
 window.addEventListener('keydown', e => {

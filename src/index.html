@@ -134,6 +134,18 @@ main { display: flex; flex: 1; overflow: hidden; }
 .code-table tr.line-selected td { background: var(--accent-dim); cursor: pointer; }
 .code-table td mark.search-match { background: rgba(250,204,21,.35); color: inherit; border-radius: 2px; padding: 0 1px; }
 
+/* G-code decode tooltip */
+#gcodeTooltip { position: fixed; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity 0.15s; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; max-width: 380px; font-family: var(--mono); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+#gcodeTooltip.visible { opacity: 1; }
+#gcodeTooltip .tt-header { font-weight: 600; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+#gcodeTooltip .tt-cmd-g { color: #60a5fa; }
+#gcodeTooltip .tt-cmd-m { color: #4ade80; }
+#gcodeTooltip .tt-params { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+#gcodeTooltip .tt-letter { color: #c4b5fd; font-weight: 600; }
+#gcodeTooltip .tt-value { color: #fbbf24; }
+#gcodeTooltip .tt-desc { color: var(--text-dim); }
+#gcodeTooltip .tt-unknown { color: var(--text-dim); font-style: italic; }
+
 .syn-g { color: #60a5fa; }
 .syn-m { color: #4ade80; }
 .syn-comment { color: #6b7280; }
