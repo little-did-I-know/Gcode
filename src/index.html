@@ -479,7 +479,9 @@ main { display: flex; flex: 1; overflow: hidden; }
           <div class="slider-ticks" id="sliderTicks"></div>
         </div>
         <div class="sim-controls" id="simControls">
+          <button onclick="simSkipPrev()" title="Previous layer">&#9198;</button>
           <button id="simPlayBtn" onclick="toggleSimulation()" title="Play/Pause simulation (P)">&#9654; Play</button>
+          <button onclick="simSkipNext()" title="Next layer">&#9197;</button>
           <div class="sim-progress" id="simProgress" onclick="onSimProgressClick(event)">
             <div class="sim-progress-fill" id="simProgressFill" style="width:0%"></div>
           </div>

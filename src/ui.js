@@ -1697,6 +1697,7 @@ function startSimulation() {
   btn.classList.add('playing');
 
   let lastTime = performance.now();
+  let currentMoves = moves;
 
   function tick(now) {
     if (!simulationPlaying) return;
@@ -1705,14 +1706,22 @@ function startSimulation() {
 
     const prevIndex = Math.floor(simulationMoveIndex);
     simulationMoveIndex += simulationSpeed * dt;
-    const totalMoves = moves.length;
+    const totalMoves = currentMoves.length;
 
     if (simulationMoveIndex >= totalMoves - 1) {
+      // End of layer — try to advance to next layer
       simulationMoveIndex = totalMoves - 1;
       viewer.simMoveIndex = Math.floor(simulationMoveIndex);
       viewer.render(selectedLayer);
       updateSimUI();
-      stopSimulation();
+
+      if (simAdvanceToNextLayer()) {
+        currentMoves = parser.layerMoves[selectedLayer];
+        lastTime = performance.now();
+        simulationRafId = requestAnimationFrame(tick);
+      } else {
+        stopSimulation();
+      }
       return;
     }
 
@@ -1740,6 +1749,60 @@ function startSimulation() {
   }
 
   simulationRafId = requestAnimationFrame(tick);
+}
+
+function simAdvanceToNextLayer() {
+  const idx = parser.layers.findIndex(l => l.number === selectedLayer);
+  if (idx < 0 || idx >= parser.layers.length - 1) return false;
+
+  const nextLayer = parser.layers[idx + 1].number;
+  const nextMoves = parser.layerMoves[nextLayer];
+  if (!nextMoves || nextMoves.length === 0) return false;
+
+  // Advance layer without full reset — keep playing state
+  selectedLayer = nextLayer;
+  simulationMoveIndex = 0;
+  simulationPausedAtIndex = -1;
+  viewer.simMoveIndex = 0;
+  viewer.maxVisibleLayer = nextLayer;
+
+  // Update layer UI
+  renderLayerList();
+  updateSlider();
+  updateViewerOverlay(nextLayer);
+  computeSimPauseTicks();
+  updateSimUI();
+
+  return true;
+}
+
+function simSkipNext() {
+  const wasPlaying = simulationPlaying;
+  if (wasPlaying) stopSimulation();
+
+  const idx = parser.layers.findIndex(l => l.number === selectedLayer);
+  if (idx < 0 || idx >= parser.layers.length - 1) return;
+
+  const nextLayer = parser.layers[idx + 1].number;
+  selectLayer(nextLayer);
+  // selectLayer resets simulation, so re-enable simulating state
+  viewer.simulating = true;
+  showSimControls();
+  if (wasPlaying) startSimulation();
+}
+
+function simSkipPrev() {
+  const wasPlaying = simulationPlaying;
+  if (wasPlaying) stopSimulation();
+
+  const idx = parser.layers.findIndex(l => l.number === selectedLayer);
+  if (idx <= 0) return;
+
+  const prevLayer = parser.layers[idx - 1].number;
+  selectLayer(prevLayer);
+  viewer.simulating = true;
+  showSimControls();
+  if (wasPlaying) startSimulation();
 }
 
 function stopSimulation() {
