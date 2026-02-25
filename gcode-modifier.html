@@ -224,6 +224,8 @@ main { display: flex; flex: 1; overflow: hidden; }
 .heatmap-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim); margin-top: 2px; }
 .heatmap-stats { padding: 6px 10px; font-size: 11px; color: var(--text); display: flex; flex-direction: column; gap: 2px; }
 .heatmap-stats strong { color: var(--accent); }
+#heatmapTooltip { position: fixed; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity 0.1s; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 8px; font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,.3); white-space: nowrap; }
+#heatmapTooltip.visible { opacity: 1; }
 
 /* EMPTY STATES */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); text-align: center; padding: 40px; gap: 12px; }
@@ -3859,7 +3861,44 @@ class GcodeViewer3D {
       });
     });
 
+    // Hover value tooltip for heatmap mode
+    let heatmapTip = null;
+    let heatmapHoverRaf = false;
+    c.addEventListener('mousemove', e => {
+      if (colorMode === 'motion-type' || pauseSelectMode || this._dragging) {
+        if (heatmapTip) heatmapTip.classList.remove('visible');
+        return;
+      }
+      if (heatmapHoverRaf) return;
+      heatmapHoverRaf = true;
+      const mx = e.clientX, my = e.clientY;
+      requestAnimationFrame(() => {
+        heatmapHoverRaf = false;
+        if (colorMode === 'motion-type' || pauseSelectMode || this._dragging) return;
+        if (!heatmapTip) {
+          heatmapTip = document.createElement('div');
+          heatmapTip.id = 'heatmapTooltip';
+          document.body.appendChild(heatmapTip);
+        }
+        const rect = c.getBoundingClientRect();
+        const sx = mx - rect.left, sy = my - rect.top;
+        const layer = parser.getLayerByNumber(this.currentLayer);
+        const z = layer?.zHeight || 0;
+        const pt = this.screenToLayerPoint(sx, sy, z);
+        if (!pt) { heatmapTip.classList.remove('visible'); return; }
+        const move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
+        if (!move) { heatmapTip.classList.remove('visible'); return; }
+        const val = getHeatmapValue(move);
+        const unit = colorMode === 'speed' ? 'mm/s' : colorMode === 'acceleration' ? 'mm/s\u00B2' : 'mm\u00B3/s';
+        heatmapTip.textContent = `${val.toFixed(1)} ${unit}`;
+        heatmapTip.style.left = (mx + 14) + 'px';
+        heatmapTip.style.top = (my - 10) + 'px';
+        heatmapTip.classList.add('visible');
+      });
+    });
+
     c.addEventListener('mouseleave', () => {
+      if (heatmapTip) heatmapTip.classList.remove('visible');
       if (hoveredMove) {
         hoveredMove = null;
         if (pauseSelectMode) this.render(this.currentLayer);

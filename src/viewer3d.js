@@ -967,7 +967,44 @@ export class GcodeViewer3D {
       });
     });
 
+    // Hover value tooltip for heatmap mode
+    let heatmapTip = null;
+    let heatmapHoverRaf = false;
+    c.addEventListener('mousemove', e => {
+      if (colorMode === 'motion-type' || pauseSelectMode || this._dragging) {
+        if (heatmapTip) heatmapTip.classList.remove('visible');
+        return;
+      }
+      if (heatmapHoverRaf) return;
+      heatmapHoverRaf = true;
+      const mx = e.clientX, my = e.clientY;
+      requestAnimationFrame(() => {
+        heatmapHoverRaf = false;
+        if (colorMode === 'motion-type' || pauseSelectMode || this._dragging) return;
+        if (!heatmapTip) {
+          heatmapTip = document.createElement('div');
+          heatmapTip.id = 'heatmapTooltip';
+          document.body.appendChild(heatmapTip);
+        }
+        const rect = c.getBoundingClientRect();
+        const sx = mx - rect.left, sy = my - rect.top;
+        const layer = parser.getLayerByNumber(this.currentLayer);
+        const z = layer?.zHeight || 0;
+        const pt = this.screenToLayerPoint(sx, sy, z);
+        if (!pt) { heatmapTip.classList.remove('visible'); return; }
+        const move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
+        if (!move) { heatmapTip.classList.remove('visible'); return; }
+        const val = getHeatmapValue(move);
+        const unit = colorMode === 'speed' ? 'mm/s' : colorMode === 'acceleration' ? 'mm/s\u00B2' : 'mm\u00B3/s';
+        heatmapTip.textContent = `${val.toFixed(1)} ${unit}`;
+        heatmapTip.style.left = (mx + 14) + 'px';
+        heatmapTip.style.top = (my - 10) + 'px';
+        heatmapTip.classList.add('visible');
+      });
+    });
+
     c.addEventListener('mouseleave', () => {
+      if (heatmapTip) heatmapTip.classList.remove('visible');
       if (hoveredMove) {
         hoveredMove = null;
         if (pauseSelectMode) this.render(this.currentLayer);
