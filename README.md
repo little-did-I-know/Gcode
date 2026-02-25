@@ -18,14 +18,25 @@ The gcode files provided are for demonstration purposes and should not be upload
 
 # G-Code Modifier
 
-A browser-based G-code editor for 3D printing. Load a `.gcode` file, visually inspect layers in 3D, add modifications (pauses, filament changes, Z-offsets, custom commands), measure distances, detect holes for insert placement, and export the modified file — all without installing anything.
+A browser-based G-code editor for 3D printing. Visually inspect layers in 3D, add modifications (pauses, filament changes, Z-offsets, custom commands), simulate prints move-by-move, detect holes for insert placement, and export the modified file — all without installing anything.
 
+**[Try it live](https://little-did-i-know.github.io/Gcode/gcode-modifier.html)** — no download required.
 
-![Empty State](screenshots/01-empty-state.png)
+![G-Code Modifier 3D View](screenshots/03-visual-view.png)
+
+## Feature Highlights
+
+| | |
+|---|---|
+| ![3D Visualization](screenshots/03-visual-view.png) **3D Layer Visualization** — WebGL rendering with motion-type coloring, travel moves, and interactive camera controls | ![Hole Detection](screenshots/10-hole-detection.png) **Automatic Hole Detection** — Scan all layers to find holes, calculate insert depths, and add pauses automatically |
+| ![Playback](screenshots/16-playback.png) **Print Simulation** — Play through the print move-by-move with speed control and pause markers | ![Code View](screenshots/02-code-view.png) **Syntax-Highlighted Code** — Browse G-code with search, highlighting, and modification preview |
+| ![Modifications](screenshots/05-visual-with-mod.png) **Layer Modifications** — Pauses, filament changes, Z-offsets, eject sequences, recovery, and custom G-code | ![Reference](screenshots/12-reference-tab.png) **Built-in G-code Reference** — 40+ commands with firmware-specific notes and click-to-insert |
 
 ## Getting Started
 
-Open `gcode-modifier.html` in any modern browser (WebGL2 required). No server, build step, or dependencies required.
+**Quickest way:** Open the **[live version](https://little-did-i-know.github.io/Gcode/gcode-modifier.html)** in your browser — nothing to download.
+
+**Or run locally:** Open `gcode-modifier.html` in any modern browser (WebGL2 required). No server, build step, or dependencies needed.
 
 1. **Select your firmware** from the dropdown (Bambu Lab, Klipper, Marlin, or RepRapFirmware). This determines which pause and filament-change commands are available.
 2. **Load a file** by dragging a `.gcode` / `.gco` / `.g` file onto the drop zone, or click to browse.
@@ -106,6 +117,9 @@ Toggle between two views using the **Code** / **Visual** buttons:
   - **F key**: reset camera to default view.
 - Layer slider at the bottom for quick layer scrubbing (cumulative — layers build up).
 - Modification banners appear at the top when the current layer has queued modifications.
+- **Motion type legend**: A collapsible panel showing color-coded motion types detected in the file (outer wall, inner wall, infill, etc.). Click checkboxes to show/hide individual types. Click color swatches to customize colors. Use "Show all types" to see every available type, or "Reset" to restore defaults.
+
+![Motion Type Legend](screenshots/17-motion-legend.png)
 
 ![3D Visual View](screenshots/03-visual-view.png)
 
@@ -124,7 +138,7 @@ The parser auto-detects the slicer from file header comments and adapts its pars
 | **ideaMaker** | `;LAYER:N` | Standard markers | Supported         |
 | **Unknown** | Falls back to `;LAYER:N` heuristic | Generic | Best-effort       |
 
-\* Prusa slicer by default exports binary gcode files, to export plain gcode uncheck the following box in your preferences:
+> \* Prusa slicer by default exports binary gcode files, to export plain gcode uncheck the following box in your preferences
 
 ![Prusa Export Settings](screenshots/14-Uncheck%20this%20box%20to%20export%20pure%20gcode.png)
 
@@ -203,6 +217,8 @@ Append an auto-eject sequence to the end of the G-code. Only one eject modificat
 - **Home Z axis**: homes the Z axis after ejecting.
 - **Loop mode**: adds a comment noting that the print should restart (actual looping requires external automation or firmware support).
 
+![Eject Tab](screenshots/19-eject-tab.png)
+
 ### Z-Offset
 
 Apply a vertical offset to all Z moves within a layer range. Useful for compensating for embedded inserts that change the effective layer height.
@@ -220,6 +236,15 @@ Insert arbitrary G-code at a specific layer or at the end of the file.
 
 - **Layer Number**: enter a layer number, or `end` to append at the file's end.
 - **Custom G-Code**: multi-line textarea — each line is inserted as-is, wrapped in `; === CUSTOM G-CODE ===` / `; === END CUSTOM ===` comment markers.
+
+### Print Recovery
+
+Resume a failed print from a specific layer. Recovery mode strips all G-code before the target layer and adjusts Z-heights so the print starts at the bed surface — print the recovery, then glue the two halves together.
+
+![Print Recovery](screenshots/18-recovery-tab.png)
+
+- **Resume from Layer**: Enter the layer number where the print failed, or specify the Z-height and the layer is calculated automatically.
+- The exported file is named `<original>_recovery_L<N>.gcode` for easy identification.
 
 ### G-Code Reference
 
@@ -273,6 +298,19 @@ Measure point-to-point distance on the current layer.
 3. The distance in mm is shown as a toast notification.
 4. Click again to start a new measurement.
 
+## Print Simulation
+
+Play back the print move-by-move to visualize how each layer is built up.
+
+![Print Simulation](screenshots/16-playback.png)
+
+- **Play / Pause**: Click the play button or press `P` to start/stop the simulation.
+- **Speed control**: Adjust the speed slider to control moves per second.
+- **Step through**: Use the skip buttons to jump to the previous or next layer.
+- **Progress bar**: Shows simulation progress with click-to-seek. Yellow tick marks indicate pause points.
+- **Pause detection**: The simulation automatically stops at pause modifications and flashes a notification, then resumes when you press play again.
+- **Auto-layer advance**: When the current layer finishes, the simulation automatically advances to the next layer and continues playing through the entire print.
+
 ## Undo / Redo
 
 All modification changes (add, remove, reorder) are tracked in an undo stack (up to 50 entries).
@@ -312,8 +350,9 @@ Toggle between dark and light themes using the sun/moon button in the header. Th
 | `Space` | Toggle Code/Visual view |
 | `[` / `]` | Previous/Next layer |
 | Arrow keys | Previous/Next layer |
-| `1`–`7` | Switch tool tab |
+| `1`–`8` | Switch tool tab |
 | `F` | Reset camera |
+| `P` | Play/Pause simulation |
 | `?` | Show keyboard shortcuts help |
 
 Press `?` at any time to see the shortcuts overlay.
