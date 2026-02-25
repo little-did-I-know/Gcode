@@ -121,7 +121,11 @@ Toggle between two views using the **Code** / **Visual** buttons:
 
 ![Motion Type Legend](screenshots/17-motion-legend.png)
 
+---
+
 ![3D Visual View](screenshots/03-visual-view.png)
+
+---
 
 ![Layer Navigation](screenshots/20-layer-navigation.gif)
 
@@ -166,18 +170,29 @@ Insert a pause at a specific layer. Useful for embedding magnets, nuts, or swapp
 - **Layer Number**: which layer to pause before.
 - **Reminder Message** (optional): appears as a G-code comment (e.g., "Insert magnet here").
 - **Pause Command**: firmware-specific (auto-populated from the selected firmware profile).
-- **Move head away**: when enabled, the nozzle lifts 5mm in Z and moves to the front-left corner before pausing, preventing heat damage to the print.
+- **Move head away**: when enabled, the full sequence is: retract filament, lift Z by 5mm, move to the front-left corner, pause, then after resuming — return to the original XY and Z position, prime the filament, restore extrusion mode and feedrate. This prevents heat damage and ensures the print resumes cleanly.
 
-Generated G-code snippet example:
+Generated G-code snippet example (Bambu Lab, with "Move head away" enabled):
 ```gcode
 ; === PAUSE: Insert magnet here ===
+M83 ; Relative extrusion for retract
+G1 E-2 F2400 ; Retract filament
 G91 ; Relative positioning
 G1 Z5 F600 ; Lift Z
 G90 ; Absolute positioning
 G1 X5 Y5 F6000 ; Move head to front-left
 M400 U1 ; Bambu pause
+; --- Restore position after pause ---
+G1 X104.252 Y108.371 F6000 ; Return to XY
+G1 Z25.200 F600 ; Return to Z
+M83 ; Relative extrusion for prime
+G1 E2 F2400 ; Prime filament
+M82 ; Restore extrusion mode
+G1 F9000 ; Restore feedrate
 ; === END PAUSE ===
 ```
+
+> **Note:** Some pause commands (e.g., Klipper's `PAUSE` macro, Marlin's `M600`) handle position save/restore internally. When using those commands, the tool skips the manual retract/restore sequence to avoid conflicts.
 
 ![Pause Modification in Visual View](screenshots/05-visual-with-mod.png)
 
