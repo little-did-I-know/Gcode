@@ -18,14 +18,25 @@ The gcode files provided are for demonstration purposes and should not be upload
 
 # G-Code Modifier
 
-A browser-based G-code editor for 3D printing. Load a `.gcode` file, visually inspect layers in 3D, add modifications (pauses, filament changes, Z-offsets, custom commands), measure distances, detect holes for insert placement, and export the modified file — all without installing anything.
+A browser-based G-code editor for 3D printing. Visually inspect layers in 3D, add modifications (pauses, filament changes, Z-offsets, custom commands), simulate prints move-by-move, detect holes for insert placement, and export the modified file — all without installing anything.
 
+**[Try it live](https://little-did-i-know.github.io/Gcode/gcode-modifier.html)** — no download required.
 
-![Empty State](screenshots/01-empty-state.png)
+![G-Code Modifier 3D View](screenshots/03-visual-view.png)
+
+## Feature Highlights
+
+| | |
+|---|---|
+| ![3D Visualization](screenshots/03-visual-view.png) **3D Layer Visualization** — WebGL rendering with motion-type coloring, travel moves, and interactive camera controls | ![Hole Detection](screenshots/10-hole-detection.png) **Automatic Hole Detection** — Scan all layers to find holes, calculate insert depths, and add pauses automatically |
+| ![Playback](screenshots/16-playback.gif) **Print Simulation** — Play through the print move-by-move with speed control and pause markers | ![Code View](screenshots/02-code-view.png) **Syntax-Highlighted Code** — Browse G-code with search, highlighting, and modification preview |
+| ![Modifications](screenshots/05-visual-with-mod.png) **Layer Modifications** — Pauses, filament changes, Z-offsets, eject sequences, recovery, and custom G-code | ![Reference](screenshots/12-reference-tab.png) **Built-in G-code Reference** — 40+ commands with firmware-specific notes and click-to-insert |
 
 ## Getting Started
 
-Open `gcode-modifier.html` in any modern browser (WebGL2 required). No server, build step, or dependencies required.
+**Quickest way:** Open the **[live version](https://little-did-i-know.github.io/Gcode/gcode-modifier.html)** in your browser — nothing to download.
+
+**Or run locally:** Open `gcode-modifier.html` in any modern browser (WebGL2 required). No server, build step, or dependencies needed.
 
 1. **Select your firmware** from the dropdown (Bambu Lab, Klipper, Marlin, or RepRapFirmware). This determines which pause and filament-change commands are available.
 2. **Load a file** by dragging a `.gcode` / `.gco` / `.g` file onto the drop zone, or click to browse.
@@ -106,8 +117,17 @@ Toggle between two views using the **Code** / **Visual** buttons:
   - **F key**: reset camera to default view.
 - Layer slider at the bottom for quick layer scrubbing (cumulative — layers build up).
 - Modification banners appear at the top when the current layer has queued modifications.
+- **Motion type legend**: A collapsible panel showing color-coded motion types detected in the file (outer wall, inner wall, infill, etc.). Click checkboxes to show/hide individual types. Click color swatches to customize colors. Use "Show all types" to see every available type, or "Reset" to restore defaults.
+
+![Motion Type Legend](screenshots/17-motion-legend.png)
+
+---
 
 ![3D Visual View](screenshots/03-visual-view.png)
+
+---
+
+![Layer Navigation](screenshots/20-layer-navigation.gif)
 
 ## Slicer Compatibility
 
@@ -124,7 +144,7 @@ The parser auto-detects the slicer from file header comments and adapts its pars
 | **ideaMaker** | `;LAYER:N` | Standard markers | Supported         |
 | **Unknown** | Falls back to `;LAYER:N` heuristic | Generic | Best-effort       |
 
-\* Prusa slicer by default exports binary gcode files, to export plain gcode uncheck the following box in your preferences:
+> \* Prusa slicer by default exports binary gcode files, to export plain gcode uncheck the following box in your preferences
 
 ![Prusa Export Settings](screenshots/14-Uncheck%20this%20box%20to%20export%20pure%20gcode.png)
 
@@ -150,18 +170,29 @@ Insert a pause at a specific layer. Useful for embedding magnets, nuts, or swapp
 - **Layer Number**: which layer to pause before.
 - **Reminder Message** (optional): appears as a G-code comment (e.g., "Insert magnet here").
 - **Pause Command**: firmware-specific (auto-populated from the selected firmware profile).
-- **Move head away**: when enabled, the nozzle lifts 5mm in Z and moves to the front-left corner before pausing, preventing heat damage to the print.
+- **Move head away**: when enabled, the full sequence is: retract filament, lift Z by 5mm, move to the front-left corner, pause, then after resuming — return to the original XY and Z position, prime the filament, restore extrusion mode and feedrate. This prevents heat damage and ensures the print resumes cleanly.
 
-Generated G-code snippet example:
+Generated G-code snippet example (Bambu Lab, with "Move head away" enabled):
 ```gcode
 ; === PAUSE: Insert magnet here ===
+M83 ; Relative extrusion for retract
+G1 E-2 F2400 ; Retract filament
 G91 ; Relative positioning
 G1 Z5 F600 ; Lift Z
 G90 ; Absolute positioning
 G1 X5 Y5 F6000 ; Move head to front-left
 M400 U1 ; Bambu pause
+; --- Restore position after pause ---
+G1 X104.252 Y108.371 F6000 ; Return to XY
+G1 Z25.200 F600 ; Return to Z
+M83 ; Relative extrusion for prime
+G1 E2 F2400 ; Prime filament
+M82 ; Restore extrusion mode
+G1 F9000 ; Restore feedrate
 ; === END PAUSE ===
 ```
+
+> **Note:** Some pause commands (e.g., Klipper's `PAUSE` macro, Marlin's `M600`) handle position save/restore internally. When using those commands, the tool skips the manual retract/restore sequence to avoid conflicts.
 
 ![Pause Modification in Visual View](screenshots/05-visual-with-mod.png)
 
@@ -203,6 +234,8 @@ Append an auto-eject sequence to the end of the G-code. Only one eject modificat
 - **Home Z axis**: homes the Z axis after ejecting.
 - **Loop mode**: adds a comment noting that the print should restart (actual looping requires external automation or firmware support).
 
+![Eject Tab](screenshots/19-eject-tab.png)
+
 ### Z-Offset
 
 Apply a vertical offset to all Z moves within a layer range. Useful for compensating for embedded inserts that change the effective layer height.
@@ -220,6 +253,15 @@ Insert arbitrary G-code at a specific layer or at the end of the file.
 
 - **Layer Number**: enter a layer number, or `end` to append at the file's end.
 - **Custom G-Code**: multi-line textarea — each line is inserted as-is, wrapped in `; === CUSTOM G-CODE ===` / `; === END CUSTOM ===` comment markers.
+
+### Print Recovery
+
+Resume a failed print from a specific layer. Recovery mode strips all G-code before the target layer and adjusts Z-heights so the print starts at the bed surface — print the recovery, then glue the two halves together.
+
+![Print Recovery](screenshots/18-recovery-tab.png)
+
+- **Resume from Layer**: Enter the layer number where the print failed, or specify the Z-height and the layer is calculated automatically.
+- The exported file is named `<original>_recovery_L<N>.gcode` for easy identification.
 
 ### G-Code Reference
 
@@ -273,6 +315,19 @@ Measure point-to-point distance on the current layer.
 3. The distance in mm is shown as a toast notification.
 4. Click again to start a new measurement.
 
+## Print Simulation
+
+Play back the print move-by-move to visualize how each layer is built up.
+
+![Print Simulation](screenshots/16-playback.gif)
+
+- **Play / Pause**: Click the play button or press `P` to start/stop the simulation.
+- **Speed control**: Adjust the speed slider to control moves per second.
+- **Step through**: Use the skip buttons to jump to the previous or next layer.
+- **Progress bar**: Shows simulation progress with click-to-seek. Yellow tick marks indicate pause points.
+- **Pause detection**: The simulation automatically stops at pause modifications and flashes a notification, then resumes when you press play again.
+- **Auto-layer advance**: When the current layer finishes, the simulation automatically advances to the next layer and continues playing through the entire print.
+
 ## Undo / Redo
 
 All modification changes (add, remove, reorder) are tracked in an undo stack (up to 50 entries).
@@ -312,8 +367,9 @@ Toggle between dark and light themes using the sun/moon button in the header. Th
 | `Space` | Toggle Code/Visual view |
 | `[` / `]` | Previous/Next layer |
 | Arrow keys | Previous/Next layer |
-| `1`–`7` | Switch tool tab |
+| `1`–`8` | Switch tool tab |
 | `F` | Reset camera |
+| `P` | Play/Pause simulation |
 | `?` | Show keyboard shortcuts help |
 
 Press `?` at any time to see the shortcuts overlay.
