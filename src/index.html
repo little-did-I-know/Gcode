@@ -220,6 +220,14 @@ main { display: flex; flex: 1; overflow: hidden; }
   border-top: 1px solid var(--border); user-select: none;
 }
 .legend-show-all:hover { text-decoration: underline; }
+.legend-mode-select { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 3px; font-size: 11px; padding: 1px 4px; cursor: pointer; max-width: 140px; }
+.heatmap-gradient { padding: 8px 10px 2px; }
+.heatmap-bar { height: 12px; border-radius: 3px; background: linear-gradient(to right, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000); border: 1px solid var(--border); }
+.heatmap-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+.heatmap-stats { padding: 6px 10px; font-size: 11px; color: var(--text); display: flex; flex-direction: column; gap: 2px; }
+.heatmap-stats strong { color: var(--accent); }
+#heatmapTooltip { position: fixed; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity 0.1s; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 8px; font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,.3); white-space: nowrap; }
+#heatmapTooltip.visible { opacity: 1; }
 
 /* EDIT INFO PANEL */
 #editInfoPanel { position: absolute; top: 44px; right: 10px; z-index: 100; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-family: var(--mono); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.3); display: none; max-width: 340px; pointer-events: auto; }

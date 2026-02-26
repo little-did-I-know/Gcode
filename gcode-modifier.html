@@ -220,6 +220,14 @@ main { display: flex; flex: 1; overflow: hidden; }
   border-top: 1px solid var(--border); user-select: none;
 }
 .legend-show-all:hover { text-decoration: underline; }
+.legend-mode-select { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 3px; font-size: 11px; padding: 1px 4px; cursor: pointer; max-width: 140px; }
+.heatmap-gradient { padding: 8px 10px 2px; }
+.heatmap-bar { height: 12px; border-radius: 3px; background: linear-gradient(to right, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000); border: 1px solid var(--border); }
+.heatmap-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+.heatmap-stats { padding: 6px 10px; font-size: 11px; color: var(--text); display: flex; flex-direction: column; gap: 2px; }
+.heatmap-stats strong { color: var(--accent); }
+#heatmapTooltip { position: fixed; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity 0.1s; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 8px; font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,.3); white-space: nowrap; }
+#heatmapTooltip.visible { opacity: 1; }
 
 /* EDIT INFO PANEL */
 #editInfoPanel { position: absolute; top: 44px; right: 10px; z-index: 100; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-family: var(--mono); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.3); display: none; max-width: 340px; pointer-events: auto; }
@@ -2152,6 +2160,8 @@ class GcodeParser {
     let curX = 0, curY = 0, curZ = 0, curE = 0;
     let relativeE = false; // M83 = relative, M82 = absolute
     let currentType = 'DEFAULT';
+    let currentFeedRate = 0; // mm/min as raw G-code value
+    let currentPrintAccel = 0, currentTravelAccel = 0; // mm/s² from M204
     // Bambu Studio uses "; CHANGE_LAYER" as a marker, with layer number on a nearby line
     let pendingChangeLayer = false;
     let pendingZHeight = null;
@@ -2332,6 +2342,15 @@ class GcodeParser {
       if (/^M82(\s|;|$)/.test(line)) relativeE = false;
       if (line.startsWith('G92') && line.includes('E')) { curE = 0; } // Reset E position
 
+      // Track acceleration from M204
+      if (/^M204\s/.test(line)) {
+        const accelParams = {};
+        for (const m of line.matchAll(/([PTSRE])([\d.]+)/gi)) accelParams[m[1].toUpperCase()] = parseFloat(m[2]);
+        if (accelParams.S !== undefined) { currentPrintAccel = accelParams.S; currentTravelAccel = accelParams.S; } // legacy
+        if (accelParams.P !== undefined) currentPrintAccel = accelParams.P;
+        if (accelParams.T !== undefined) currentTravelAccel = accelParams.T;
+      }
+
       // Parse G0/G1 linear moves for the viewer
       if (currentLayer && this.layerMoves[currentLayer.number] && /^G[01]\s/.test(line)) {
         try {
@@ -2343,17 +2362,23 @@ class GcodeParser {
         const newY = params.Y !== undefined ? params.Y : curY;
         const newZ = params.Z !== undefined ? params.Z : curZ;
         const isG0 = line.startsWith('G0');
+        if (params.F !== undefined) currentFeedRate = params.F;
+        const prevE = curE;
         let isExtrude = false;
         if (params.E !== undefined) {
           isExtrude = relativeE ? params.E > 0 : params.E > curE;
           curE = relativeE ? curE + params.E : params.E;
         }
+        const eLength = Math.abs(curE - prevE);
 
         // Only record XY moves (skip pure Z moves)
         if (newX !== curX || newY !== curY) {
           this.layerMoves[currentLayer.number].push({
             x1: curX, y1: curY, x2: newX, y2: newY,
-            type: currentType, extrude: isExtrude && !isG0, lineIndex: i
+            type: currentType, extrude: isExtrude && !isG0, lineIndex: i,
+            feedRate: currentFeedRate,
+            accel: (isExtrude && !isG0) ? currentPrintAccel : currentTravelAccel,
+            eLength: eLength
           });
           this.bounds.minX = Math.min(this.bounds.minX, curX, newX);
           this.bounds.maxX = Math.max(this.bounds.maxX, curX, newX);
@@ -2376,11 +2401,14 @@ class GcodeParser {
 
         const newX = params.X !== undefined ? params.X : curX;
         const newY = params.Y !== undefined ? params.Y : curY;
+        if (params.F !== undefined) currentFeedRate = params.F;
+        const prevE = curE;
         let isExtrude = false;
         if (params.E !== undefined) {
           isExtrude = relativeE ? params.E > 0 : params.E > curE;
           curE = relativeE ? curE + params.E : params.E;
         }
+        const totalELength = Math.abs(curE - prevE);
         const isG2 = line.startsWith('G2'); // clockwise
 
         // Approximate arc with line segments
@@ -2405,7 +2433,10 @@ class GcodeParser {
             const ay = s === segments ? newY : cy + r * Math.sin(angle);
             this.layerMoves[currentLayer.number].push({
               x1: prevAX, y1: prevAY, x2: ax, y2: ay,
-              type: currentType, extrude: isExtrude, lineIndex: i
+              type: currentType, extrude: isExtrude, lineIndex: i,
+              feedRate: currentFeedRate,
+              accel: isExtrude ? currentPrintAccel : currentTravelAccel,
+              eLength: totalELength / segments
             });
             this.bounds.minX = Math.min(this.bounds.minX, ax);
             this.bounds.maxX = Math.max(this.bounds.maxX, ax);
@@ -3197,6 +3228,28 @@ class GcodeViewer3D {
     return GcodeViewer3D.TYPE_COLORS.DEFAULT;
   }
 
+  // Blue → Cyan → Green → Yellow → Red gradient
+  _getHeatmapColor(value, min, max) {
+    let t = max > min ? (value - min) / (max - min) : 0;
+    t = Math.max(0, Math.min(1, t));
+    // 5-stop gradient: blue(0) → cyan(0.25) → green(0.5) → yellow(0.75) → red(1)
+    let r, g, b;
+    if (t < 0.25) {
+      const s = t / 0.25;
+      r = 0; g = s; b = 1;
+    } else if (t < 0.5) {
+      const s = (t - 0.25) / 0.25;
+      r = 0; g = 1; b = 1 - s;
+    } else if (t < 0.75) {
+      const s = (t - 0.5) / 0.25;
+      r = s; g = 1; b = 0;
+    } else {
+      const s = (t - 0.75) / 0.25;
+      r = 1; g = 1 - s; b = 0;
+    }
+    return [r, g, b];
+  }
+
   _buildLayerGeometry(layerNum) {
     if (this._broken) return null;
     if (this.layerBuffers.has(layerNum)) return this.layerBuffers.get(layerNum);
@@ -3218,12 +3271,14 @@ class GcodeViewer3D {
     const travelVerts = [];
     // Per-move offset tracking for simulation
     const offsets = [];
+    const isHeatmap = colorMode !== 'motion-type';
+    const heatStats = isHeatmap ? getHeatmapLayerStats(layerNum) : null;
 
     for (const move of moves) {
-      // Skip hidden motion types
+      // Skip hidden motion types (in motion-type mode) or non-extrusions (in heatmap mode)
       const moveTypeUpper = move.extrude ? move.type.toUpperCase() : 'TRAVEL';
       const normalizedMoveType = MOTION_TYPE_ALIASES[moveTypeUpper] || moveTypeUpper;
-      if (motionTypeVisibility[normalizedMoveType] === false) {
+      if (!isHeatmap && motionTypeVisibility[normalizedMoveType] === false) {
         offsets.push({ triStart: ribbonVerts.length / 7, triCount: 0, lineStart: travelVerts.length / 7, lineCount: 0 });
         continue;
       }
@@ -3232,7 +3287,9 @@ class GcodeViewer3D {
       const lineStart = travelVerts.length / 7;
 
       if (move.extrude) {
-        const color = this._getTypeColor(move.type);
+        const color = isHeatmap
+          ? this._getHeatmapColor(getHeatmapValue(move), heatStats.min, heatStats.max)
+          : this._getTypeColor(move.type);
         const dx = move.x2 - move.x1;
         const dy = move.y2 - move.y1;
         const len = Math.hypot(dx, dy);
@@ -3968,11 +4025,48 @@ class GcodeViewer3D {
       });
     });
 
+    // Hover value tooltip for heatmap mode
+    let heatmapTip = null;
+    let heatmapHoverRaf = false;
+    c.addEventListener('mousemove', e => {
+      if (colorMode === 'motion-type' || pauseSelectMode || this._dragging) {
+        if (heatmapTip) heatmapTip.classList.remove('visible');
+        return;
+      }
+      if (heatmapHoverRaf) return;
+      heatmapHoverRaf = true;
+      const mx = e.clientX, my = e.clientY;
+      requestAnimationFrame(() => {
+        heatmapHoverRaf = false;
+        if (colorMode === 'motion-type' || pauseSelectMode || this._dragging) return;
+        if (!heatmapTip) {
+          heatmapTip = document.createElement('div');
+          heatmapTip.id = 'heatmapTooltip';
+          document.body.appendChild(heatmapTip);
+        }
+        const rect = c.getBoundingClientRect();
+        const sx = mx - rect.left, sy = my - rect.top;
+        const layer = parser.getLayerByNumber(this.currentLayer);
+        const z = layer?.zHeight || 0;
+        const pt = this.screenToLayerPoint(sx, sy, z);
+        if (!pt) { heatmapTip.classList.remove('visible'); return; }
+        const move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
+        if (!move) { heatmapTip.classList.remove('visible'); return; }
+        const val = getHeatmapValue(move);
+        const unit = colorMode === 'speed' ? 'mm/s' : colorMode === 'acceleration' ? 'mm/s\u00B2' : 'mm\u00B3/s';
+        heatmapTip.textContent = `${val.toFixed(1)} ${unit}`;
+        heatmapTip.style.left = (mx + 14) + 'px';
+        heatmapTip.style.top = (my - 10) + 'px';
+        heatmapTip.classList.add('visible');
+      });
+    });
+
     c.addEventListener('mouseleave', () => {
       if (editHoveredMove) {
         editHoveredMove = null;
         if (editMode) this.render(this.currentLayer);
       }
+      if (heatmapTip) heatmapTip.classList.remove('visible');
       if (hoveredMove) {
         hoveredMove = null;
         if (pauseSelectMode) this.render(this.currentLayer);
@@ -4416,37 +4510,70 @@ function renderMotionLegend() {
   }
   container.style.display = '';
 
-  // Determine which types to show
-  const allTypes = [...new Set([...Object.keys(DEFAULT_MOTION_COLORS), ...detectedTypes])];
-  const typesToShow = motionLegendShowAll
-    ? allTypes
-    : allTypes.filter(t => detectedTypes.has(t));
-
+  const isHeatmap = colorMode !== 'motion-type';
   const collapseIcon = motionLegendExpanded ? '\u25BC' : '\u25B6';
 
+  // Color mode dropdown
+  const modeOptions = [
+    ['motion-type', 'Motion Type'],
+    ['speed', 'Speed (mm/s)'],
+    ['acceleration', 'Acceleration (mm/s\u00B2)'],
+    ['flow', 'Flow Rate (mm\u00B3/s)'],
+  ];
+  const modeSelect = modeOptions.map(([val, label]) =>
+    `<option value="${val}"${colorMode === val ? ' selected' : ''}>${label}</option>`
+  ).join('');
+
   let html = `<div class="legend-header" onclick="toggleMotionLegend()">
-    <span class="legend-title">Motion Types</span>
-    <button onclick="event.stopPropagation(); resetMotionTypeState()" title="Reset to defaults">Reset</button>
+    <span class="legend-title">Color</span>
+    <select onclick="event.stopPropagation()" onchange="event.stopPropagation(); setColorMode(this.value)" class="legend-mode-select">${modeSelect}</select>
     <span style="font-size:9px">${collapseIcon}</span>
   </div>`;
 
   html += `<div class="legend-body${motionLegendExpanded ? '' : ' collapsed'}">`;
 
-  for (const type of typesToShow) {
-    const checked = motionTypeVisibility[type] !== false ? 'checked' : '';
-    const color = motionTypeColors[type] || '#e0e2e8';
-    const label = MOTION_TYPE_LABELS[type] || type;
-    html += `<div class="legend-row">
-      <input type="checkbox" ${checked} onchange="toggleMotionType('${type}', this.checked)">
-      <input type="color" value="${color}" onchange="setMotionTypeColor('${type}', this.value)">
-      <label onclick="this.parentElement.querySelector('input[type=checkbox]').click()">${label}</label>
+  if (isHeatmap) {
+    // Gradient bar + per-layer stats
+    const layerNum = selectedLayer !== null ? selectedLayer : (viewer.currentLayer || 0);
+    const stats = getHeatmapLayerStats(layerNum);
+    const unitLabel = colorMode === 'speed' ? 'mm/s' : colorMode === 'acceleration' ? 'mm/s\u00B2' : 'mm\u00B3/s';
+
+    html += `<div class="heatmap-gradient">
+      <div class="heatmap-bar"></div>
+      <div class="heatmap-labels">
+        <span>${stats.min.toFixed(1)}</span>
+        <span>${unitLabel}</span>
+        <span>${stats.max.toFixed(1)}</span>
+      </div>
     </div>`;
+    html += `<div class="heatmap-stats">
+      <div>Min: <strong>${stats.min.toFixed(1)}</strong> ${unitLabel}</div>
+      <div>Avg: <strong>${stats.avg.toFixed(1)}</strong> ${unitLabel}</div>
+      <div>Max: <strong>${stats.max.toFixed(1)}</strong> ${unitLabel}</div>
+    </div>`;
+  } else {
+    // Motion type rows
+    const allTypes = [...new Set([...Object.keys(DEFAULT_MOTION_COLORS), ...detectedTypes])];
+    const typesToShow = motionLegendShowAll
+      ? allTypes
+      : allTypes.filter(t => detectedTypes.has(t));
+
+    for (const type of typesToShow) {
+      const checked = motionTypeVisibility[type] !== false ? 'checked' : '';
+      const color = motionTypeColors[type] || '#e0e2e8';
+      const label = MOTION_TYPE_LABELS[type] || type;
+      html += `<div class="legend-row">
+        <input type="checkbox" ${checked} onchange="toggleMotionType('${type}', this.checked)">
+        <input type="color" value="${color}" onchange="setMotionTypeColor('${type}', this.value)">
+        <label onclick="this.parentElement.querySelector('input[type=checkbox]').click()">${label}</label>
+      </div>`;
+    }
   }
 
   html += '</div>';
 
-  // Show all / detected only toggle
-  if (detectedTypes.size > 0) {
+  // Show all / detected only toggle (only in motion-type mode)
+  if (!isHeatmap && detectedTypes.size > 0) {
     const toggleText = motionLegendShowAll ? 'Show detected only' : 'Show all types\u2026';
     html += `<div class="legend-show-all" onclick="toggleMotionLegendShowAll()">${toggleText}</div>`;
   }
@@ -4656,6 +4783,9 @@ function selectLayer(num) {
 
   // Reset simulation on layer change
   resetSimulation();
+
+  // Update heatmap stats for new layer
+  if (colorMode !== 'motion-type') renderMotionLegend();
 
   // Update visual viewer if active
   if (currentView === 'visual') {
@@ -6470,6 +6600,11 @@ let detectedTypes = new Set();
 let motionLegendExpanded = true;
 let motionLegendShowAll = false;
 
+// Heatmap color mode: 'motion-type' | 'speed' | 'acceleration' | 'flow'
+let colorMode = 'motion-type';
+// Cached per-layer heatmap stats: { min, max, avg }
+let heatmapLayerStats = {};
+
 // Simulation state
 let simulationPlaying = false;
 let simulationMoveIndex = 0;
@@ -6554,6 +6689,50 @@ function resetMotionTypeState() {
   renderMotionLegend();
   viewer.clearBuffers();
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function setColorMode(mode) {
+  colorMode = mode;
+  heatmapLayerStats = {};
+  resetSimulation();
+  viewer.clearBuffers();
+  renderMotionLegend();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function getHeatmapValue(move) {
+  if (colorMode === 'speed') return (move.feedRate || 0) / 60; // mm/min → mm/s
+  if (colorMode === 'acceleration') return move.accel || 0;
+  if (colorMode === 'flow') {
+    // Approximate volumetric flow: (eLength / moveLength) * speed
+    const dx = move.x2 - move.x1, dy = move.y2 - move.y1;
+    const moveLen = Math.hypot(dx, dy);
+    if (moveLen < 0.001 || !move.eLength) return 0;
+    const speed = (move.feedRate || 0) / 60;
+    return (move.eLength / moveLen) * speed;
+  }
+  return 0;
+}
+
+function getHeatmapLayerStats(layerNum) {
+  if (heatmapLayerStats[layerNum]) return heatmapLayerStats[layerNum];
+  const moves = parser.layerMoves[layerNum];
+  if (!moves || moves.length === 0) return { min: 0, max: 1, avg: 0 };
+  let min = Infinity, max = -Infinity, sum = 0, count = 0;
+  for (const move of moves) {
+    if (!move.extrude) continue;
+    const v = getHeatmapValue(move);
+    if (v <= 0) continue;
+    if (v < min) min = v;
+    if (v > max) max = v;
+    sum += v;
+    count++;
+  }
+  if (count === 0) return { min: 0, max: 1, avg: 0 };
+  if (min === max) { min = 0; } // Avoid zero-range
+  const stats = { min, max, avg: sum / count };
+  heatmapLayerStats[layerNum] = stats;
+  return stats;
 }
 
 // Initialize firmware UI
