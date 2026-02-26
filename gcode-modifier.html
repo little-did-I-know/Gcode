@@ -239,6 +239,15 @@ main { display: flex; flex: 1; overflow: hidden; }
 #editInfoPanel .edit-delete { background: #dc2626; color: white; border-color: #dc2626; }
 #editInfoPanel .edit-delete:hover { background: #b91c1c; }
 #editInfoPanel .edit-cancel { background: var(--surface2); color: var(--text); }
+#editInfoPanel .edit-params { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+#editInfoPanel .edit-param { display: flex; align-items: center; gap: 3px; }
+#editInfoPanel .edit-param label { font-weight: 600; color: var(--text-dim); font-size: 11px; min-width: 10px; }
+#editInfoPanel .edit-param input { width: 72px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface2); color: var(--text); font-family: var(--mono); font-size: 12px; }
+#editInfoPanel .edit-param input:focus { border-color: var(--accent); outline: none; }
+#editInfoPanel .edit-param input.changed { border-color: var(--orange); background: rgba(251,146,60,.08); }
+#editInfoPanel .edit-apply { background: var(--accent); color: white; border-color: var(--accent); }
+#editInfoPanel .edit-apply:hover { filter: brightness(1.1); }
+#editInfoPanel .edit-error { color: var(--red, #ef4444); font-size: 11px; margin-bottom: 6px; display: none; }
 
 /* EMPTY STATES */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); text-align: center; padding: 40px; gap: 12px; }
@@ -297,6 +306,7 @@ main { display: flex; flex: 1; overflow: hidden; }
 .mod-badge.zoffset { background: rgba(251,146,60,.15); color: var(--orange); }
 .mod-badge.recovery { background: rgba(239,68,68,.15); color: var(--red, #ef4444); }
 .mod-badge.line-delete { background: rgba(239,68,68,.15); color: var(--red, #ef4444); }
+.mod-badge.line-edit { background: rgba(96,165,250,.15); color: var(--accent, #60a5fa); }
 .mod-desc { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mod-actions { display: flex; gap: 2px; }
 .mod-action { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-dim); border-radius: 4px; }
@@ -511,7 +521,9 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div id="editInfoPanel">
           <div class="edit-line" id="editLineText"></div>
           <div class="edit-meta" id="editLineMeta"></div>
+          <div class="edit-params" id="editParamsContainer"></div>
           <div class="edit-actions">
+            <button class="edit-apply" id="editApplyBtn" onclick="applyEditParams()" style="display:none">Apply</button>
             <button class="edit-delete" onclick="deleteSelectedMove()">Delete</button>
             <button class="edit-cancel" onclick="cancelEditSelection()">Cancel</button>
           </div>
@@ -2097,6 +2109,35 @@ function computeERepair(lines, deletedIndex) {
   return repairs;
 }
 
+function computeERepairForEdit(lines, lineIndex, oldEValue, newEValue) {
+  if (oldEValue === null || newEValue === null) return [];
+  const delta = newEValue - oldEValue;
+  if (Math.abs(delta) < 1e-9) return [];
+
+  if (isRelativeEMode(lines, lineIndex)) return [];
+
+  const repairs = [];
+  for (let i = lineIndex + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/^G92\b/i.test(line) && /E/i.test(line)) break;
+    if (/^M83\b/i.test(line)) break;
+    if (/^M82\b/i.test(line)) continue;
+    if (/^G[0123]\b/i.test(line)) {
+      const e = parseE(lines[i]);
+      if (e !== null) {
+        const precision = getEPrecision(lines[i]);
+        const newE = (e + delta).toFixed(precision);
+        const patched = lines[i].replace(
+          /([Ee])([-\d.]+)/,
+          (_, letter) => letter + newE
+        );
+        repairs.push({ lineIndex: i, original: lines[i], patched });
+      }
+    }
+  }
+  return repairs;
+}
+
 function parseE(line) {
   const match = line.match(/[Ee]([-\d.]+)/);
   return match ? parseFloat(match[1]) : null;
@@ -3607,6 +3648,7 @@ class GcodeViewer3D {
     this._drawMeasurement(mvp);
     this._drawPauseSelectOverlays(mvp);
     this._drawEditOverlays(mvp);
+    this._drawEditPreview(mvp);
   }
 
   _drawModMarkers(mvp) {
@@ -3922,6 +3964,27 @@ class GcodeViewer3D {
         this._drawMoveHighlight(mvp, seg, [1.0, 0.15, 0.05, 1.0], 1.0, 0.35, 1.5);
       }
     }
+  }
+
+  _drawEditPreview(mvp) {
+    if (!editMode || !editSelectedMove || !editPreviewParams) return;
+
+    const layer = parser.getLayerByNumber(this.currentLayer);
+    const z = (layer?.zHeight || 0) + 0.15;
+
+    // Draw ghost of original (dimmed)
+    const ghostColor = [0.5, 0.5, 0.5, 1.0];
+    this._drawMoveHighlight(mvp, editSelectedMove, ghostColor, 0.3, 0.15, 0.8);
+
+    // Draw preview at new position
+    const previewMove = {
+      x1: editSelectedMove.x1,
+      y1: editSelectedMove.y1,
+      x2: editPreviewParams.x2,
+      y2: editPreviewParams.y2,
+    };
+    const previewColor = [0.1, 0.9, 0.6, 1.0]; // green-cyan
+    this._drawMoveHighlight(mvp, previewMove, previewColor, 0.9, 0.3, 1.2);
   }
 
   _getMovesWithSameLineIndex(move, layerNum) {
@@ -4345,12 +4408,101 @@ function showEditInfoPanel(move) {
   const panel = document.getElementById('editInfoPanel');
   const lineText = document.getElementById('editLineText');
   const lineMeta = document.getElementById('editLineMeta');
+  const paramsContainer = document.getElementById('editParamsContainer');
+  const applyBtn = document.getElementById('editApplyBtn');
   const rawLine = parser.lines[move.lineIndex] || '';
   const typeLabel = MOTION_TYPE_LABELS[move.type] || move.type;
 
   lineText.textContent = rawLine.trim();
   lineMeta.textContent = `Line ${move.lineIndex + 1} \u00b7 ${typeLabel} \u00b7 ${move.extrude ? 'Extrusion' : 'Travel'}`;
+
+  // Parse parameters and build input fields
+  const parsed = parseGcodeParams(rawLine);
+  editOriginalParams = parsed;
+  editCurrentParams = {
+    command: parsed.command,
+    params: parsed.params.map(p => ({ ...p })),
+    comment: parsed.comment,
+  };
+
+  paramsContainer.innerHTML = '';
+  for (let i = 0; i < editCurrentParams.params.length; i++) {
+    const p = editCurrentParams.params[i];
+    const div = document.createElement('div');
+    div.className = 'edit-param';
+    const label = document.createElement('label');
+    label.textContent = p.letter;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = p.precision > 0 ? (1 / Math.pow(10, p.precision)).toString() : '1';
+    input.value = p.value;
+    input.dataset.paramIndex = i;
+    input.addEventListener('input', onEditParamInput);
+    input.addEventListener('keydown', onEditParamKeydown);
+    div.appendChild(label);
+    div.appendChild(input);
+    paramsContainer.appendChild(div);
+  }
+
+  // Show Apply button only if there are editable params
+  applyBtn.style.display = editCurrentParams.params.length > 0 ? '' : 'none';
+
   panel.classList.add('visible');
+}
+
+function onEditParamInput(e) {
+  const idx = parseInt(e.target.dataset.paramIndex);
+  const newVal = parseFloat(e.target.value);
+  if (isNaN(newVal)) return;
+  editCurrentParams.params[idx].value = newVal;
+
+  // Update raw line preview
+  const lineText = document.getElementById('editLineText');
+  lineText.textContent = buildGcodeLine(editCurrentParams.command, editCurrentParams.params, editCurrentParams.comment);
+
+  // Mark field as changed if different from original
+  const origVal = editOriginalParams.params[idx].value;
+  e.target.classList.toggle('changed', Math.abs(newVal - origVal) > 1e-9);
+
+  // Trigger live preview in viewer
+  updateEditPreview();
+}
+
+function onEditParamKeydown(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    applyEditParams();
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    cancelEditSelection();
+  }
+}
+
+function updateEditPreview() {
+  if (!editSelectedMove || !editCurrentParams || !editOriginalParams) {
+    editPreviewParams = null;
+    return;
+  }
+  // Check if X or Y changed
+  const origX = editOriginalParams.params.find(p => p.letter === 'X');
+  const origY = editOriginalParams.params.find(p => p.letter === 'Y');
+  const curX = editCurrentParams.params.find(p => p.letter === 'X');
+  const curY = editCurrentParams.params.find(p => p.letter === 'Y');
+
+  const xChanged = origX && curX && Math.abs(origX.value - curX.value) > 1e-9;
+  const yChanged = origY && curY && Math.abs(origY.value - curY.value) > 1e-9;
+
+  if (!xChanged && !yChanged) {
+    editPreviewParams = null;
+  } else {
+    editPreviewParams = {
+      x2: curX ? curX.value : editSelectedMove.x2,
+      y2: curY ? curY.value : editSelectedMove.y2,
+    };
+  }
+
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
 
 function hideEditInfoPanel() {
@@ -4360,6 +4512,9 @@ function hideEditInfoPanel() {
 
 function cancelEditSelection() {
   editSelectedMove = null;
+  editOriginalParams = null;
+  editCurrentParams = null;
+  editPreviewParams = null;
   hideEditInfoPanel();
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
@@ -4399,6 +4554,68 @@ async function deleteSelectedMove() {
   await reparseAndRender(layerNum, `Deleted line ${lineIdx + 1}`);
 }
 
+async function applyEditParams() {
+  if (!editSelectedMove || !editCurrentParams || !editOriginalParams) return;
+
+  // Validate all params are numeric
+  for (const p of editCurrentParams.params) {
+    if (typeof p.value !== 'number' || isNaN(p.value)) {
+      showToast('Invalid value for ' + p.letter, 'error');
+      return;
+    }
+  }
+
+  const lineIdx = editSelectedMove.lineIndex;
+  const oldLine = parser.lines[lineIdx];
+  const newLine = buildGcodeLine(editCurrentParams.command, editCurrentParams.params, editCurrentParams.comment);
+
+  // No change — do nothing
+  if (oldLine.trim() === newLine.trim()) {
+    showToast('No changes', 'info');
+    return;
+  }
+
+  // Check if E value changed for E-repair
+  const oldE = editOriginalParams.params.find(p => p.letter === 'E');
+  const newE = editCurrentParams.params.find(p => p.letter === 'E');
+  const oldEVal = oldE ? oldE.value : null;
+  const newEVal = newE ? newE.value : null;
+  const repairs = (oldEVal !== null && newEVal !== null && Math.abs(oldEVal - newEVal) > 1e-9)
+    ? computeERepairForEdit(parser.lines, lineIdx, oldEVal, newEVal)
+    : [];
+
+  // Push undo entry
+  pushEditUndo({
+    type: 'line-edit',
+    layer: selectedLayer,
+    lineIndex: lineIdx,
+    oldLine: oldLine,
+    newLine: newLine,
+    eRepairs: repairs,
+  });
+
+  // Apply E-value repairs
+  for (const r of repairs) {
+    parser.lines[r.lineIndex] = r.patched;
+  }
+
+  // Replace the line
+  parser.lines[lineIdx] = newLine;
+
+  // Clear preview state
+  editPreviewParams = null;
+
+  // Clear selection and re-render
+  const layerNum = selectedLayer;
+  editSelectedMove = null;
+  editHoveredMove = null;
+  editOriginalParams = null;
+  editCurrentParams = null;
+  hideEditInfoPanel();
+
+  await reparseAndRender(layerNum, `Modified line ${lineIdx + 1}`);
+}
+
 function pushEditUndo(entry) {
   editUndoStack.entries = editUndoStack.entries.slice(0, editUndoStack.index + 1);
   editUndoStack.entries.push(entry);
@@ -4410,6 +4627,49 @@ function getActiveEditDeletions() {
   return editUndoStack.entries
     .slice(0, editUndoStack.index + 1)
     .filter(e => e.type === 'line-delete');
+}
+
+function getActiveEditModifications() {
+  return editUndoStack.entries
+    .slice(0, editUndoStack.index + 1)
+    .filter(e => e.type === 'line-edit');
+}
+
+function parseGcodeParams(line) {
+  const trimmed = line.trim();
+  // Extract comment if present
+  const commentIdx = trimmed.indexOf(';');
+  const codePart = commentIdx >= 0 ? trimmed.substring(0, commentIdx) : trimmed;
+  const comment = commentIdx >= 0 ? trimmed.substring(commentIdx) : '';
+  // Extract command (G0, G1, G2, G3, M82, etc.)
+  const cmdMatch = codePart.match(/^([GM]\d+)/i);
+  const command = cmdMatch ? cmdMatch[1].toUpperCase() : '';
+  // Extract parameters
+  const params = [];
+  const paramRegex = /([A-Z])([-\d.]+)/gi;
+  let m;
+  // Skip the command itself in parameter extraction
+  const paramStr = cmdMatch ? codePart.substring(cmdMatch[0].length) : codePart;
+  while ((m = paramRegex.exec(paramStr)) !== null) {
+    const letter = m[1].toUpperCase();
+    const raw = m[2];
+    const dotIdx = raw.indexOf('.');
+    const precision = dotIdx >= 0 ? raw.length - dotIdx - 1 : 0;
+    params.push({ letter, value: parseFloat(raw), precision, raw });
+  }
+  return { command, params, comment };
+}
+
+function buildGcodeLine(command, params, comment) {
+  let line = command;
+  for (const p of params) {
+    const val = typeof p.value === 'number' && !isNaN(p.value)
+      ? p.value.toFixed(p.precision)
+      : p.raw;
+    line += ' ' + p.letter + val;
+  }
+  if (comment) line += ' ' + comment;
+  return line;
 }
 
 async function performEditUndo() {
@@ -4433,6 +4693,23 @@ async function performEditUndo() {
     hideEditInfoPanel();
     await reparseAndRender(selectedLayer, 'Undo: restored deleted line');
   }
+  else if (entry.type === 'line-edit') {
+    // Revert E-repairs (in reverse order)
+    for (let i = entry.eRepairs.length - 1; i >= 0; i--) {
+      const r = entry.eRepairs[i];
+      parser.lines[r.lineIndex] = r.original;
+    }
+    // Restore original line
+    parser.lines[entry.lineIndex] = entry.oldLine;
+
+    editSelectedMove = null;
+    editHoveredMove = null;
+    editOriginalParams = null;
+    editCurrentParams = null;
+    editPreviewParams = null;
+    hideEditInfoPanel();
+    await reparseAndRender(selectedLayer, 'Undo: restored original line');
+  }
   return true;
 }
 
@@ -4453,6 +4730,22 @@ async function performEditRedo() {
     editHoveredMove = null;
     hideEditInfoPanel();
     await reparseAndRender(selectedLayer, 'Redo: deleted line again');
+  }
+  else if (entry.type === 'line-edit') {
+    // Re-apply E-repairs
+    for (const r of entry.eRepairs) {
+      parser.lines[r.lineIndex] = r.patched;
+    }
+    // Re-apply the edited line
+    parser.lines[entry.lineIndex] = entry.newLine;
+
+    editSelectedMove = null;
+    editHoveredMove = null;
+    editOriginalParams = null;
+    editCurrentParams = null;
+    editPreviewParams = null;
+    hideEditInfoPanel();
+    await reparseAndRender(selectedLayer, 'Redo: re-applied edit');
   }
   return true;
 }
@@ -4736,6 +5029,9 @@ function getModdedLayers() {
   // Include layers with active edit deletions
   for (const del of getActiveEditDeletions()) {
     moddedLayers.add(del.layer);
+  }
+  for (const edit of getActiveEditModifications()) {
+    moddedLayers.add(edit.layer);
   }
   return moddedLayers;
 }
@@ -5641,7 +5937,8 @@ function renderModsList() {
   const container = document.getElementById('modsList');
   const noMods = document.getElementById('noMods');
   const editDels = getActiveEditDeletions();
-  const count = modifier.modifications.length + editDels.length;
+  const editMods = getActiveEditModifications();
+  const count = modifier.modifications.length + editDels.length + editMods.length;
   document.getElementById('modsCount').textContent = count;
 
   if (count === 0) {
@@ -5699,6 +5996,14 @@ function renderModsList() {
     html += `<div class="mod-item edit-deletion">
       <span class="mod-badge line-delete">edit</span>
       <span class="mod-desc" title="${del.lineContent.trim()}">${desc}</span>
+    </div>`;
+  }
+  for (let i = 0; i < editMods.length; i++) {
+    const edit = editMods[i];
+    const desc = `Layer ${edit.layer}, line ${edit.lineIndex + 1} modified`;
+    html += `<div class="mod-item edit-modification">
+      <span class="mod-badge line-edit">edit</span>
+      <span class="mod-desc" title="${edit.newLine.trim()}">${desc}</span>
     </div>`;
   }
   container.innerHTML = html;
@@ -5796,6 +6101,12 @@ function updateSliderTicks() {
     if (idx < 0) continue;
     const pct = (idx / Math.max(1, parser.layers.length - 1)) * 100;
     html += `<div class="slider-tick" style="left:${pct}%;background:var(--red, #ef4444)"></div>`;
+  }
+  for (const edit of getActiveEditModifications()) {
+    const idx = parser.layers.findIndex(l => l.number === edit.layer);
+    if (idx < 0) continue;
+    const pct = (idx / Math.max(1, parser.layers.length - 1)) * 100;
+    html += `<div class="slider-tick" style="left:${pct}%;background:var(--accent, #60a5fa)"></div>`;
   }
   container.innerHTML = html;
 }
@@ -6552,6 +6863,9 @@ let hoveredMove = null;
 let editMode = false;
 let editSelectedMove = null;
 let editHoveredMove = null;
+let editOriginalParams = null;
+let editCurrentParams = null;
+let editPreviewParams = null;
 let reparsing = false;
 const _storedColor = localStorage.getItem('gcode_highlight_color');
 let highlightColor = /^#[0-9a-fA-F]{6}$/.test(_storedColor) ? _storedColor : '#ff3333';
