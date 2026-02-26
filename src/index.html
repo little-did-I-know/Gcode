@@ -189,6 +189,8 @@ main { display: flex; flex: 1; overflow: hidden; }
 .viewer-mod-banner.custom { background: rgba(0,200,255,.15); color: var(--accent); border: 1px solid rgba(0,200,255,.25); }
 .viewer-mod-banner.recovery { background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.3); color: var(--red, #ef4444); }
 .viewer-mod-banner.mid-layer-pause { background: rgba(45,212,191,.2); color: var(--teal); border: 1px solid rgba(45,212,191,.3); }
+.edit-mode-banner { display: none; position: absolute; top: 12px; left: 50%; transform: translateX(-50%); padding: 6px 16px; border-radius: 6px; font-size: 12px; font-weight: 600; background: rgba(251,146,60,.2); color: var(--orange); border: 1px solid rgba(251,146,60,.3); pointer-events: none; z-index: 10; white-space: nowrap; }
+.edit-mode-banner.visible { display: block; }
 .viewer-legend {
   position: absolute; bottom: 12px; left: 12px; z-index: 5;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
@@ -496,6 +498,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div class="viewer-canvas-area">
         <canvas id="viewerCanvas"></canvas>
         <div class="viewer-overlay" id="viewerOverlay"></div>
+        <div class="edit-mode-banner" id="editModeBanner">Edit Mode — Experimental</div>
         <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
         <div id="editInfoPanel">
           <div class="edit-line" id="editLineText"></div>

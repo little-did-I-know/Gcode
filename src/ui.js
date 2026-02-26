@@ -51,6 +51,7 @@ function toggleMeasureMode() {
     editSelectedMove = null;
     editHoveredMove = null;
     document.getElementById('editModeToggle').classList.remove('active');
+    document.getElementById('editModeBanner').classList.remove('visible');
     hideEditInfoPanel();
   }
   measurePoints = [];
@@ -78,6 +79,7 @@ function togglePauseSelectMode() {
     editSelectedMove = null;
     editHoveredMove = null;
     document.getElementById('editModeToggle').classList.remove('active');
+    document.getElementById('editModeBanner').classList.remove('visible');
     hideEditInfoPanel();
   }
 
@@ -96,6 +98,7 @@ function toggleEditMode() {
   editSelectedMove = null;
   editHoveredMove = null;
   document.getElementById('editModeToggle').classList.toggle('active', editMode);
+  document.getElementById('editModeBanner').classList.toggle('visible', editMode);
   document.getElementById('viewerCanvas').style.cursor = editMode ? 'crosshair' : '';
 
   // Mutual exclusion
