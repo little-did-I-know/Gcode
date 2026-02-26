@@ -1,0 +1,35 @@
+name: Question
+description: Ask a question about usage or functionality
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question? Ask away — no question is too simple.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What would you like to know?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to do? This helps us give a more useful answer.
+      placeholder: I'm trying to...
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: Any steps you've already taken or documentation you've looked at.
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: If applicable, add screenshots to help explain your question.
