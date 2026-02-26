@@ -606,6 +606,7 @@ export class GcodeViewer3D {
     this._drawMeasurement(mvp);
     this._drawPauseSelectOverlays(mvp);
     this._drawEditOverlays(mvp);
+    this._drawEditPreview(mvp);
   }
 
   _drawModMarkers(mvp) {
@@ -921,6 +922,27 @@ export class GcodeViewer3D {
         this._drawMoveHighlight(mvp, seg, [1.0, 0.15, 0.05, 1.0], 1.0, 0.35, 1.5);
       }
     }
+  }
+
+  _drawEditPreview(mvp) {
+    if (!editMode || !editSelectedMove || !editPreviewParams) return;
+
+    const layer = parser.getLayerByNumber(this.currentLayer);
+    const z = (layer?.zHeight || 0) + 0.15;
+
+    // Draw ghost of original (dimmed)
+    const ghostColor = [0.5, 0.5, 0.5, 1.0];
+    this._drawMoveHighlight(mvp, editSelectedMove, ghostColor, 0.3, 0.15, 0.8);
+
+    // Draw preview at new position
+    const previewMove = {
+      x1: editSelectedMove.x1,
+      y1: editSelectedMove.y1,
+      x2: editPreviewParams.x2,
+      y2: editPreviewParams.y2,
+    };
+    const previewColor = [0.1, 0.9, 0.6, 1.0]; // green-cyan
+    this._drawMoveHighlight(mvp, previewMove, previewColor, 0.9, 0.3, 1.2);
   }
 
   _getMovesWithSameLineIndex(move, layerNum) {

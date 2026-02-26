@@ -239,6 +239,15 @@ main { display: flex; flex: 1; overflow: hidden; }
 #editInfoPanel .edit-delete { background: #dc2626; color: white; border-color: #dc2626; }
 #editInfoPanel .edit-delete:hover { background: #b91c1c; }
 #editInfoPanel .edit-cancel { background: var(--surface2); color: var(--text); }
+#editInfoPanel .edit-params { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+#editInfoPanel .edit-param { display: flex; align-items: center; gap: 3px; }
+#editInfoPanel .edit-param label { font-weight: 600; color: var(--text-dim); font-size: 11px; min-width: 10px; }
+#editInfoPanel .edit-param input { width: 72px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface2); color: var(--text); font-family: var(--mono); font-size: 12px; }
+#editInfoPanel .edit-param input:focus { border-color: var(--accent); outline: none; }
+#editInfoPanel .edit-param input.changed { border-color: var(--orange); background: rgba(251,146,60,.08); }
+#editInfoPanel .edit-apply { background: var(--accent); color: white; border-color: var(--accent); }
+#editInfoPanel .edit-apply:hover { filter: brightness(1.1); }
+#editInfoPanel .edit-error { color: var(--red, #ef4444); font-size: 11px; margin-bottom: 6px; display: none; }
 
 /* EMPTY STATES */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); text-align: center; padding: 40px; gap: 12px; }
@@ -297,6 +306,7 @@ main { display: flex; flex: 1; overflow: hidden; }
 .mod-badge.zoffset { background: rgba(251,146,60,.15); color: var(--orange); }
 .mod-badge.recovery { background: rgba(239,68,68,.15); color: var(--red, #ef4444); }
 .mod-badge.line-delete { background: rgba(239,68,68,.15); color: var(--red, #ef4444); }
+.mod-badge.line-edit { background: rgba(96,165,250,.15); color: var(--accent, #60a5fa); }
 .mod-desc { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mod-actions { display: flex; gap: 2px; }
 .mod-action { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-dim); border-radius: 4px; }
@@ -511,7 +521,9 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div id="editInfoPanel">
           <div class="edit-line" id="editLineText"></div>
           <div class="edit-meta" id="editLineMeta"></div>
+          <div class="edit-params" id="editParamsContainer"></div>
           <div class="edit-actions">
+            <button class="edit-apply" id="editApplyBtn" onclick="applyEditParams()" style="display:none">Apply</button>
             <button class="edit-delete" onclick="deleteSelectedMove()">Delete</button>
             <button class="edit-cancel" onclick="cancelEditSelection()">Cancel</button>
           </div>

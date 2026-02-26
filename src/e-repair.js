@@ -61,6 +61,35 @@ export function computeERepair(lines, deletedIndex) {
   return repairs;
 }
 
+export function computeERepairForEdit(lines, lineIndex, oldEValue, newEValue) {
+  if (oldEValue === null || newEValue === null) return [];
+  const delta = newEValue - oldEValue;
+  if (Math.abs(delta) < 1e-9) return [];
+
+  if (isRelativeEMode(lines, lineIndex)) return [];
+
+  const repairs = [];
+  for (let i = lineIndex + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/^G92\b/i.test(line) && /E/i.test(line)) break;
+    if (/^M83\b/i.test(line)) break;
+    if (/^M82\b/i.test(line)) continue;
+    if (/^G[0123]\b/i.test(line)) {
+      const e = parseE(lines[i]);
+      if (e !== null) {
+        const precision = getEPrecision(lines[i]);
+        const newE = (e + delta).toFixed(precision);
+        const patched = lines[i].replace(
+          /([Ee])([-\d.]+)/,
+          (_, letter) => letter + newE
+        );
+        repairs.push({ lineIndex: i, original: lines[i], patched });
+      }
+    }
+  }
+  return repairs;
+}
+
 function parseE(line) {
   const match = line.match(/[Ee]([-\d.]+)/);
   return match ? parseFloat(match[1]) : null;

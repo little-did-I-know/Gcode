@@ -31,7 +31,7 @@ A browser-based G-code editor for 3D printing. Visually inspect layers in 3D, ad
 | ![3D Visualization](screenshots/03-visual-view.png) **3D Layer Visualization** — WebGL rendering with motion-type coloring, travel moves, and interactive camera controls | ![Hole Detection](screenshots/10-hole-detection.png) **Automatic Hole Detection** — Scan all layers to find holes, calculate insert depths, and add pauses automatically |
 | ![Playback](screenshots/16-playback.gif) **Print Simulation** — Play through the print move-by-move with speed control and pause markers | ![Code View](screenshots/02-code-view.png) **Syntax-Highlighted Code** — Browse G-code with search, highlighting, and modification preview |
 | ![Modifications](screenshots/05-visual-with-mod.png) **Layer Modifications** — Pauses, filament changes, Z-offsets, eject sequences, recovery, and custom G-code | ![Reference](screenshots/12-reference-tab.png) **Built-in G-code Reference** — 40+ commands with firmware-specific notes and click-to-insert |
-| ![Edit Mode](screenshots/21-edit-mode.png) **Edit Mode** (Experimental) — Select and delete individual moves directly in the 3D view to fix slicer defects | |
+| ![Edit Mode](screenshots/21-edit-mode.png) **Edit Mode** (Experimental) — Select, edit parameters, or delete individual moves directly in the 3D view with live preview | |
 
 ## Getting Started
 
@@ -318,25 +318,26 @@ Measure point-to-point distance on the current layer.
 
 ### Edit Mode (Experimental)
 
-Directly select and delete individual G-code moves from the 3D view. Useful for removing small defects like zits, blobs, or unwanted extrusion segments left by the slicer.
+Directly select, edit, and delete individual G-code moves from the 3D view. Useful for tweaking parameters or removing small defects like zits, blobs, or unwanted extrusion segments left by the slicer.
 
 ![Edit Mode](screenshots/21-edit-mode.gif)
 
-> **Note:** Edit mode is experimental. Deletions modify the G-code directly and adjust E-values on surrounding lines to maintain extrusion continuity. Always verify the output before printing.
+> **Note:** Edit mode is experimental. Edits modify the G-code directly and adjust E-values on surrounding lines to maintain extrusion continuity. Always verify the output before printing.
 
 **How to use:**
 
 1. Switch to the **Visual** view and click the **Edit** button in the toolbar — the cursor changes to a crosshair and an orange "Edit Mode — Experimental" banner appears.
 2. **Hover** over moves in the 3D view to preview them (highlighted in red-orange).
-3. **Click** a move to select it — the info panel shows the raw G-code line, line number, motion type, and whether it's an extrusion or travel move.
-4. Press **Delete** or **Backspace** (or click the **Delete** button in the info panel) to remove the selected move.
-5. The deletion is tracked in the modifications list and shown as a layer badge in the left panel.
+3. **Click** a move to select it — the info panel shows the raw G-code line, editable parameter fields (X, Y, Z, E, F, etc.), and action buttons.
+4. **Edit parameters** — modify any value in the inline fields. The raw line preview updates live, and X/Y changes show a green-cyan preview in the 3D view. Press **Enter** or click **Apply** to commit.
+5. **Delete** — press **Delete**/**Backspace** or click the **Delete** button to remove the selected move.
+6. All edits and deletions are tracked in the modifications list and shown as layer badges in the left panel.
 
 ![Edit Mode Selected](screenshots/21-edit-mode.png)
 
-**Undo/Redo:** Edit deletions are fully integrated with the undo system — press **Ctrl+Z** to undo a deletion and **Ctrl+Shift+Z** to redo.
+**Undo/Redo:** All edit mode changes are fully integrated with the undo system — press **Ctrl+Z** to undo and **Ctrl+Shift+Z** to redo.
 
-**E-value repair:** When a line is deleted in absolute extrusion mode, the tool automatically adjusts E-values on subsequent lines to compensate for the removed extrusion, preventing under/over-extrusion after the deleted segment.
+**E-value repair:** When a line is deleted or its E parameter is modified in absolute extrusion mode, the tool automatically adjusts E-values on subsequent lines to compensate, preventing under/over-extrusion.
 
 ## Print Simulation
 
@@ -393,6 +394,7 @@ Toggle between dark and light themes using the sun/moon button in the header. Th
 | `1`–`8` | Switch tool tab |
 | `F` | Reset camera |
 | `P` | Play/Pause simulation |
+| `Enter` | Apply parameter edit (Edit mode) |
 | `Delete` / `Backspace` | Delete selected move (Edit mode) |
 | `Escape` | Cancel selection (Edit mode) |
 | `?` | Show keyboard shortcuts help |
