@@ -1,0 +1,44 @@
+name: Feature Request
+description: Suggest a new feature or capability
+labels: ["feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea for something new? We'd love to hear it!
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What feature would you like?
+      description: A clear description of the feature you're proposing.
+      placeholder: I'd like to be able to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What workflow or use case would this help with?
+      placeholder: Currently I have to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you found any workarounds or alternative approaches?
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: Mockups or examples
+      description: Sketches, screenshots from other tools, or descriptions of how this might look/work.
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Anything else — related issues, links, etc.

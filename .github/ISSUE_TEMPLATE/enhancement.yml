@@ -1,0 +1,64 @@
+name: Enhancement
+description: Suggest an improvement to an existing feature
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Got an idea to make an existing feature better? Let us know!
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area of the tool?
+      options:
+        - 3D Viewer
+        - G-code Editor
+        - Layer Navigation
+        - Modifications (pause, filament change, etc.)
+        - Edit Mode
+        - Simulation / Playback
+        - File Handling (import/export)
+        - UI / Theme
+        - Keyboard Shortcuts
+        - Performance
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What improvement would you like?
+      description: Describe the change you'd like to see.
+      placeholder: It would be better if...
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: Current behavior
+      description: How does it work today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed behavior
+      description: How should it work after the improvement?
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or examples
+      description: If applicable, add visuals to illustrate the improvement.
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Anything else that might be relevant.

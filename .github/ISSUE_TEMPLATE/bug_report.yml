@@ -1,0 +1,71 @@
+name: Bug Report
+description: Report something that isn't working correctly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the sections below so we can reproduce and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+      placeholder: Describe what went wrong...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen instead?
+      placeholder: I expected...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this?
+      placeholder: |
+        1. Load a G-code file
+        2. Go to '...'
+        3. Click on '...'
+        4. See error
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      options:
+        - Chrome
+        - Firefox
+        - Safari
+        - Edge
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: file-info
+    attributes:
+      label: G-code file details
+      description: Slicer, firmware, approximate file size — anything relevant.
+      placeholder: e.g. PrusaSlicer 2.7, Bambu firmware, ~2MB file
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or screen recordings
+      description: If applicable, add screenshots or recordings to help explain the problem.
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Anything else that might be relevant.
