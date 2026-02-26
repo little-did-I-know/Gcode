@@ -20,6 +20,9 @@ export class GcodeViewer3D {
     this.simulating = false;
     this.simMoveIndex = 0;
 
+    // Cross-section clipping plane state
+    this.clipPlane = null; // [nx, ny, nz, d] or null when inactive
+
     // Camera state
     this.cam = {
       rotX: 0.6,
@@ -52,7 +55,9 @@ export class GcodeViewer3D {
     in float a_alpha;
     out vec3 v_color;
     out float v_alpha;
+    out vec3 v_worldPos;
     void main() {
+      v_worldPos = a_pos;
       gl_Position = u_mvp * vec4(a_pos, 1.0);
       v_color = a_color;
       v_alpha = u_alphaOverride > 0.0 ? u_alphaOverride : a_alpha;
@@ -61,10 +66,14 @@ export class GcodeViewer3D {
 
   static FS = `#version 300 es
     precision mediump float;
+    uniform vec4 u_clipPlane;
     in vec3 v_color;
     in float v_alpha;
+    in vec3 v_worldPos;
     out vec4 fragColor;
     void main() {
+      if (dot(u_clipPlane.xyz, u_clipPlane.xyz) > 0.0 &&
+          dot(u_clipPlane.xyz, v_worldPos) + u_clipPlane.w > 0.0) discard;
       fragColor = vec4(v_color, v_alpha);
     }
   `;
@@ -75,7 +84,9 @@ export class GcodeViewer3D {
     in vec3 a_pos;
     in vec4 a_color;
     out vec4 v_color;
+    out vec3 v_worldPos;
     void main() {
+      v_worldPos = a_pos;
       gl_Position = u_mvp * vec4(a_pos, 1.0);
       v_color = a_color;
     }
@@ -83,9 +94,13 @@ export class GcodeViewer3D {
 
   static LINE_FS = `#version 300 es
     precision mediump float;
+    uniform vec4 u_clipPlane;
     in vec4 v_color;
+    in vec3 v_worldPos;
     out vec4 fragColor;
     void main() {
+      if (dot(u_clipPlane.xyz, u_clipPlane.xyz) > 0.0 &&
+          dot(u_clipPlane.xyz, v_worldPos) + u_clipPlane.w > 0.0) discard;
       fragColor = v_color;
     }
   `;
@@ -410,6 +425,7 @@ export class GcodeViewer3D {
     this.u_mvp = gl.getUniformLocation(this.prog, 'u_mvp');
     // u_alphaOverride: set > 0 to override per-vertex alpha, set <= 0 to use vertex alpha
     this.u_alphaOverride = gl.getUniformLocation(this.prog, 'u_alphaOverride');
+    this.u_clipPlane = gl.getUniformLocation(this.prog, 'u_clipPlane');
     this.a_pos = gl.getAttribLocation(this.prog, 'a_pos');
     this.a_color = gl.getAttribLocation(this.prog, 'a_color');
     this.a_alpha = gl.getAttribLocation(this.prog, 'a_alpha');
@@ -423,6 +439,7 @@ export class GcodeViewer3D {
     this.line_u_mvp = gl.getUniformLocation(this.lineProg, 'u_mvp');
     this.line_a_pos = gl.getAttribLocation(this.lineProg, 'a_pos');
     this.line_a_color = gl.getAttribLocation(this.lineProg, 'a_color');
+    this.line_u_clipPlane = gl.getUniformLocation(this.lineProg, 'u_clipPlane');
 
     // Enable blending for transparency
     gl.enable(gl.BLEND);
@@ -471,6 +488,7 @@ export class GcodeViewer3D {
 
     gl.useProgram(this.lineProg);
     gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+    gl.uniform4fv(this.line_u_clipPlane, [0, 0, 0, 0]);
     gl.enableVertexAttribArray(this.line_a_pos);
     gl.vertexAttribPointer(this.line_a_pos, 3, gl.FLOAT, false, stride, 0);
     gl.enableVertexAttribArray(this.line_a_color);
@@ -498,6 +516,7 @@ export class GcodeViewer3D {
     // Draw layers 0..maxVisibleLayer
     gl.useProgram(this.prog);
     gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+    gl.uniform4fv(this.u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
 
     for (let ln = 0; ln <= this.maxVisibleLayer; ln++) {
       const buf = this._buildLayerGeometry(ln);
@@ -544,6 +563,7 @@ export class GcodeViewer3D {
         if (buf.travelVao && buf.travelCount > 0 && offsets) {
           gl.useProgram(this.lineProg);
           gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+          gl.uniform4fv(this.line_u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
           gl.bindVertexArray(buf.travelVao);
 
           const si = Math.max(0, Math.min(this.simMoveIndex, offsets.length - 1));
@@ -561,6 +581,7 @@ export class GcodeViewer3D {
           gl.bindVertexArray(null);
           gl.useProgram(this.prog);
           gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+          gl.uniform4fv(this.u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
         }
 
         // Draw leading highlight on the active move
@@ -573,6 +594,7 @@ export class GcodeViewer3D {
             // Re-enable ribbon shader after highlight draw
             gl.useProgram(this.prog);
             gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+            gl.uniform4fv(this.u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
           }
         }
 
@@ -591,11 +613,13 @@ export class GcodeViewer3D {
         if (isCurrent && buf.travelVao && buf.travelCount > 0) {
           gl.useProgram(this.lineProg);
           gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+          gl.uniform4fv(this.line_u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
           gl.bindVertexArray(buf.travelVao);
           gl.drawArrays(gl.LINES, 0, buf.travelCount);
           gl.bindVertexArray(null);
           gl.useProgram(this.prog);
           gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+          gl.uniform4fv(this.u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
         }
       }
     }
@@ -652,6 +676,7 @@ export class GcodeViewer3D {
 
     gl.useProgram(this.lineProg);
     gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+    gl.uniform4fv(this.line_u_clipPlane, [0, 0, 0, 0]);
 
     const vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
@@ -720,6 +745,7 @@ export class GcodeViewer3D {
 
     gl.useProgram(this.lineProg);
     gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+    gl.uniform4fv(this.line_u_clipPlane, [0, 0, 0, 0]);
 
     const vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
@@ -823,6 +849,7 @@ export class GcodeViewer3D {
     const stride = 7 * 4;
     gl.useProgram(this.lineProg);
     gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+    gl.uniform4fv(this.line_u_clipPlane, [0, 0, 0, 0]);
     const vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
     gl.bufferData(gl.ARRAY_BUFFER, data, gl.STREAM_DRAW);
@@ -870,6 +897,7 @@ export class GcodeViewer3D {
     const stride = 7 * 4;
     gl.useProgram(this.lineProg);
     gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+    gl.uniform4fv(this.line_u_clipPlane, [0, 0, 0, 0]);
     const vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
     gl.bufferData(gl.ARRAY_BUFFER, data, gl.STREAM_DRAW);
@@ -951,6 +979,16 @@ export class GcodeViewer3D {
     const target = move.lineIndex;
     const matches = moves.filter(m => m.lineIndex === target);
     return matches.length > 0 ? matches : [move];
+  }
+
+  setClipPlane(plane) {
+    this.clipPlane = plane; // [nx, ny, nz, d]
+    this.render(this.currentLayer);
+  }
+
+  clearClipPlane() {
+    this.clipPlane = null;
+    this.render(this.currentLayer);
   }
 
   fitBounds() {
@@ -1235,4 +1273,18 @@ export class GcodeViewer3D {
       if (currentView === 'visual') { this.resize(); this.render(this.currentLayer); }
     }).observe(c.parentElement);
   }
+}
+
+/**
+ * Compute clip plane vec4 from rotation (azimuth), tilt, and sweep distance.
+ * rot=0,tilt=0 → vertical plane facing +X. tilt=90 → horizontal.
+ * Returns [nx, ny, nz, d] where fragment is discarded if dot(n, pos) + d > 0.
+ */
+export function computeClipPlane(rotDeg, tiltDeg, sweep) {
+  const rot = rotDeg * Math.PI / 180;
+  const tilt = tiltDeg * Math.PI / 180;
+  const nx = Math.cos(rot) * Math.cos(tilt);
+  const ny = Math.sin(rot) * Math.cos(tilt);
+  const nz = Math.sin(tilt);
+  return [nx, ny, nz, -sweep];
 }
