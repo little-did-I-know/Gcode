@@ -219,6 +219,17 @@ main { display: flex; flex: 1; overflow: hidden; }
 }
 .legend-show-all:hover { text-decoration: underline; }
 
+/* EDIT INFO PANEL */
+#editInfoPanel { position: absolute; top: 44px; right: 10px; z-index: 100; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-family: var(--mono); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.3); display: none; max-width: 340px; pointer-events: auto; }
+#editInfoPanel.visible { display: block; }
+#editInfoPanel .edit-line { color: var(--text); margin-bottom: 6px; word-break: break-all; }
+#editInfoPanel .edit-meta { color: var(--text-dim); font-size: 11px; margin-bottom: 8px; }
+#editInfoPanel .edit-actions { display: flex; gap: 8px; }
+#editInfoPanel .edit-actions button { padding: 4px 12px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; font-size: 12px; }
+#editInfoPanel .edit-delete { background: #dc2626; color: white; border-color: #dc2626; }
+#editInfoPanel .edit-delete:hover { background: #b91c1c; }
+#editInfoPanel .edit-cancel { background: var(--surface2); color: var(--text); }
+
 /* EMPTY STATES */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); text-align: center; padding: 40px; gap: 12px; }
 .empty-state svg { opacity: .3; }
@@ -485,6 +496,14 @@ main { display: flex; flex: 1; overflow: hidden; }
         <canvas id="viewerCanvas"></canvas>
         <div class="viewer-overlay" id="viewerOverlay"></div>
         <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
+        <div id="editInfoPanel">
+          <div class="edit-line" id="editLineText"></div>
+          <div class="edit-meta" id="editLineMeta"></div>
+          <div class="edit-actions">
+            <button class="edit-delete" onclick="deleteSelectedMove()">Delete</button>
+            <button class="edit-cancel" onclick="cancelEditSelection()">Cancel</button>
+          </div>
+        </div>
         </div>
         <div class="layer-slider-wrap">
           <label id="sliderLabel">Layer 0</label>

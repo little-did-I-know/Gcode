@@ -120,9 +120,77 @@ function toggleEditMode() {
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
 
+function showEditInfoPanel(move) {
+  const panel = document.getElementById('editInfoPanel');
+  const lineText = document.getElementById('editLineText');
+  const lineMeta = document.getElementById('editLineMeta');
+  const rawLine = parser.lines[move.lineIndex] || '';
+  const typeLabel = MOTION_TYPE_LABELS[move.type] || move.type;
+
+  lineText.textContent = rawLine.trim();
+  lineMeta.textContent = `Line ${move.lineIndex + 1} \u00b7 ${typeLabel} \u00b7 ${move.extrude ? 'Extrusion' : 'Travel'}`;
+  panel.classList.add('visible');
+}
+
 function hideEditInfoPanel() {
   const panel = document.getElementById('editInfoPanel');
   if (panel) panel.classList.remove('visible');
+}
+
+function cancelEditSelection() {
+  editSelectedMove = null;
+  hideEditInfoPanel();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function deleteSelectedMove() {
+  if (!editSelectedMove) return;
+  const lineIdx = editSelectedMove.lineIndex;
+  const lineContent = parser.lines[lineIdx];
+
+  // Compute E-value repairs before removing the line
+  const repairs = computeERepair(parser.lines, lineIdx);
+
+  // Apply E-value repairs
+  for (const r of repairs) {
+    parser.lines[r.lineIndex] = r.patched;
+  }
+
+  // Remove the line
+  parser.lines.splice(lineIdx, 1);
+
+  // Clear selection
+  const layerNum = selectedLayer;
+  editSelectedMove = null;
+  editHoveredMove = null;
+  hideEditInfoPanel();
+
+  // Re-parse and re-render
+  reparseAndRender(layerNum, `Deleted line ${lineIdx + 1}`);
+}
+
+async function reparseAndRender(targetLayer, toastMsg) {
+  const text = parser.lines.join('\n');
+  await parser.parseAsync(text, parser.fileName);
+  initMotionTypeState();
+  viewer.clearBuffers();
+  buildSections();
+  renderLayerList();
+  updateSlider();
+
+  // Try to stay on the same layer
+  const layer = parser.getLayerByNumber(targetLayer);
+  if (layer) {
+    selectLayer(targetLayer);
+  } else if (parser.layers.length > 0) {
+    selectLayer(parser.layers[parser.layers.length - 1].number);
+  }
+
+  if (currentView === 'visual') {
+    viewer.render(viewer.currentLayer);
+  }
+
+  if (toastMsg) showToast(toastMsg, 'success');
 }
 
 function setHighlightColor(hex) {
