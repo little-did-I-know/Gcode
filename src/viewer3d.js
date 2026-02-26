@@ -579,6 +579,7 @@ export class GcodeViewer3D {
     this._drawHoleHighlights(mvp);
     this._drawMeasurement(mvp);
     this._drawPauseSelectOverlays(mvp);
+    this._drawEditOverlays(mvp);
   }
 
   _drawModMarkers(mvp) {
@@ -873,6 +874,35 @@ export class GcodeViewer3D {
     if (selectedMove) {
       this._drawMoveHighlight(mvp, selectedMove, color, 1.0, 0.3, 1.5);
     }
+  }
+
+  _drawEditOverlays(mvp) {
+    if (!editMode) return;
+    const editColor = [1.0, 0.3, 0.1, 1.0]; // red-orange
+
+    // Hovered move (dimmer, thinner) — draw all segments sharing lineIndex for arcs
+    if (editHoveredMove && editHoveredMove !== editSelectedMove) {
+      const segments = this._getMovesWithSameLineIndex(editHoveredMove, this.currentLayer);
+      for (const seg of segments) {
+        this._drawMoveHighlight(mvp, seg, editColor, 0.5, 0.2, 1.0);
+      }
+    }
+
+    // Selected move (brighter, thicker)
+    if (editSelectedMove) {
+      const segments = this._getMovesWithSameLineIndex(editSelectedMove, this.currentLayer);
+      for (const seg of segments) {
+        this._drawMoveHighlight(mvp, seg, [1.0, 0.15, 0.05, 1.0], 1.0, 0.35, 1.5);
+      }
+    }
+  }
+
+  _getMovesWithSameLineIndex(move, layerNum) {
+    const moves = parser.layerMoves[layerNum];
+    if (!moves) return [move];
+    const target = move.lineIndex;
+    const matches = moves.filter(m => m.lineIndex === target);
+    return matches.length > 0 ? matches : [move];
   }
 
   fitBounds() {
