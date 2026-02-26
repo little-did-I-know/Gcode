@@ -309,6 +309,9 @@ window.addEventListener('keydown', e => {
   // Simulation play/pause
   if (e.key === 'p' && currentView === 'visual') { toggleSimulation(); return; }
 
+  // Cross-section toggle
+  if (e.key === 'x' && currentView === 'visual') { toggleCrossSection(); return; }
+
   // Help overlay
   if (e.key === '?') { toggleShortcutsOverlay(); return; }
 });
