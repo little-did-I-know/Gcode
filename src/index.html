@@ -189,6 +189,8 @@ main { display: flex; flex: 1; overflow: hidden; }
 .viewer-mod-banner.custom { background: rgba(0,200,255,.15); color: var(--accent); border: 1px solid rgba(0,200,255,.25); }
 .viewer-mod-banner.recovery { background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.3); color: var(--red, #ef4444); }
 .viewer-mod-banner.mid-layer-pause { background: rgba(45,212,191,.2); color: var(--teal); border: 1px solid rgba(45,212,191,.3); }
+.edit-mode-banner { display: none; position: absolute; top: 12px; left: 50%; transform: translateX(-50%); padding: 6px 16px; border-radius: 6px; font-size: 12px; font-weight: 600; background: rgba(251,146,60,.2); color: var(--orange); border: 1px solid rgba(251,146,60,.3); pointer-events: none; z-index: 10; white-space: nowrap; }
+.edit-mode-banner.visible { display: block; }
 .viewer-legend {
   position: absolute; bottom: 12px; left: 12px; z-index: 5;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
@@ -226,6 +228,17 @@ main { display: flex; flex: 1; overflow: hidden; }
 .heatmap-stats strong { color: var(--accent); }
 #heatmapTooltip { position: fixed; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity 0.1s; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 8px; font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,.3); white-space: nowrap; }
 #heatmapTooltip.visible { opacity: 1; }
+
+/* EDIT INFO PANEL */
+#editInfoPanel { position: absolute; top: 44px; right: 10px; z-index: 100; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-family: var(--mono); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.3); display: none; max-width: 340px; pointer-events: auto; }
+#editInfoPanel.visible { display: block; }
+#editInfoPanel .edit-line { color: var(--text); margin-bottom: 6px; word-break: break-all; }
+#editInfoPanel .edit-meta { color: var(--text-dim); font-size: 11px; margin-bottom: 8px; }
+#editInfoPanel .edit-actions { display: flex; gap: 8px; }
+#editInfoPanel .edit-actions button { padding: 4px 12px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; font-size: 12px; }
+#editInfoPanel .edit-delete { background: #dc2626; color: white; border-color: #dc2626; }
+#editInfoPanel .edit-delete:hover { background: #b91c1c; }
+#editInfoPanel .edit-cancel { background: var(--surface2); color: var(--text); }
 
 /* EMPTY STATES */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); text-align: center; padding: 40px; gap: 12px; }
@@ -283,6 +296,7 @@ main { display: flex; flex: 1; overflow: hidden; }
 .mod-badge.custom { background: rgba(0,200,255,.12); color: var(--accent); }
 .mod-badge.zoffset { background: rgba(251,146,60,.15); color: var(--orange); }
 .mod-badge.recovery { background: rgba(239,68,68,.15); color: var(--red, #ef4444); }
+.mod-badge.line-delete { background: rgba(239,68,68,.15); color: var(--red, #ef4444); }
 .mod-desc { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mod-actions { display: flex; gap: 2px; }
 .mod-action { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-dim); border-radius: 4px; }
@@ -472,6 +486,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="hole-detect-btn" id="holeDetectToggle" onclick="toggleHoleMode()" title="Toggle hole detection mode">Hole Detect</button>
         <button class="hole-detect-btn" id="measureToggle" onclick="toggleMeasureMode()" title="Measure distance">Measure</button>
         <button class="hole-detect-btn" id="pauseSelectToggle" onclick="togglePauseSelectMode()" title="Click in 3D view to select pause point">Pause Select</button>
+        <button class="hole-detect-btn" id="editModeToggle" onclick="toggleEditMode()" title="Select and delete moves">Edit</button>
         <div class="color-picker-row" id="colorPickerRow">
           <button class="color-swatch active" data-color="#ff3333" style="background:#ff3333" onclick="setHighlightColor('#ff3333')" title="Red"></button>
           <button class="color-swatch" data-color="#ffdd00" style="background:#ffdd00" onclick="setHighlightColor('#ffdd00')" title="Yellow"></button>
@@ -491,7 +506,16 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div class="viewer-canvas-area">
         <canvas id="viewerCanvas"></canvas>
         <div class="viewer-overlay" id="viewerOverlay"></div>
+        <div class="edit-mode-banner" id="editModeBanner">Edit Mode — Experimental</div>
         <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
+        <div id="editInfoPanel">
+          <div class="edit-line" id="editLineText"></div>
+          <div class="edit-meta" id="editLineMeta"></div>
+          <div class="edit-actions">
+            <button class="edit-delete" onclick="deleteSelectedMove()">Delete</button>
+            <button class="edit-cancel" onclick="cancelEditSelection()">Cancel</button>
+          </div>
+        </div>
         </div>
         <div class="layer-slider-wrap">
           <label id="sliderLabel">Layer 0</label>

@@ -46,6 +46,14 @@ function toggleMeasureMode() {
     selectedMove = null;
     document.getElementById('pauseSelectToggle').classList.remove('active');
   }
+  if (measureMode && editMode) {
+    editMode = false;
+    editSelectedMove = null;
+    editHoveredMove = null;
+    document.getElementById('editModeToggle').classList.remove('active');
+    document.getElementById('editModeBanner').classList.remove('visible');
+    hideEditInfoPanel();
+  }
   measurePoints = [];
   document.getElementById('measureToggle').classList.toggle('active', measureMode);
   document.getElementById('viewerCanvas').style.cursor = measureMode ? 'crosshair' : '';
@@ -66,6 +74,14 @@ function togglePauseSelectMode() {
     measurePoints = [];
     document.getElementById('measureToggle').classList.remove('active');
   }
+  if (pauseSelectMode && editMode) {
+    editMode = false;
+    editSelectedMove = null;
+    editHoveredMove = null;
+    document.getElementById('editModeToggle').classList.remove('active');
+    document.getElementById('editModeBanner').classList.remove('visible');
+    hideEditInfoPanel();
+  }
 
   // Auto-switch to visual view and pause tab
   if (pauseSelectMode) {
@@ -75,6 +91,182 @@ function togglePauseSelectMode() {
   }
 
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function toggleEditMode() {
+  editMode = !editMode;
+  editSelectedMove = null;
+  editHoveredMove = null;
+  document.getElementById('editModeToggle').classList.toggle('active', editMode);
+  document.getElementById('editModeBanner').classList.toggle('visible', editMode);
+  document.getElementById('viewerCanvas').style.cursor = editMode ? 'crosshair' : '';
+
+  // Mutual exclusion
+  if (editMode) {
+    if (measureMode) {
+      measureMode = false;
+      measurePoints = [];
+      document.getElementById('measureToggle').classList.remove('active');
+    }
+    if (pauseSelectMode) {
+      pauseSelectMode = false;
+      selectedMove = null;
+      document.getElementById('pauseSelectToggle').classList.remove('active');
+      document.getElementById('colorPickerRow').classList.remove('visible');
+    }
+    if (currentView !== 'visual') setView('visual');
+  }
+
+  // Hide info panel when deactivating
+  hideEditInfoPanel();
+
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function showEditInfoPanel(move) {
+  const panel = document.getElementById('editInfoPanel');
+  const lineText = document.getElementById('editLineText');
+  const lineMeta = document.getElementById('editLineMeta');
+  const rawLine = parser.lines[move.lineIndex] || '';
+  const typeLabel = MOTION_TYPE_LABELS[move.type] || move.type;
+
+  lineText.textContent = rawLine.trim();
+  lineMeta.textContent = `Line ${move.lineIndex + 1} \u00b7 ${typeLabel} \u00b7 ${move.extrude ? 'Extrusion' : 'Travel'}`;
+  panel.classList.add('visible');
+}
+
+function hideEditInfoPanel() {
+  const panel = document.getElementById('editInfoPanel');
+  if (panel) panel.classList.remove('visible');
+}
+
+function cancelEditSelection() {
+  editSelectedMove = null;
+  hideEditInfoPanel();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+async function deleteSelectedMove() {
+  if (!editSelectedMove) return;
+  const lineIdx = editSelectedMove.lineIndex;
+  const lineContent = parser.lines[lineIdx];
+
+  // Compute E-value repairs before removing the line
+  const repairs = computeERepair(parser.lines, lineIdx);
+
+  // Push undo entry
+  pushEditUndo({
+    type: 'line-delete',
+    layer: selectedLayer,
+    lineIndex: lineIdx,
+    lineContent: lineContent,
+    eRepairs: repairs,
+  });
+
+  // Apply E-value repairs
+  for (const r of repairs) {
+    parser.lines[r.lineIndex] = r.patched;
+  }
+
+  // Remove the line
+  parser.lines.splice(lineIdx, 1);
+
+  // Clear selection
+  const layerNum = selectedLayer;
+  editSelectedMove = null;
+  editHoveredMove = null;
+  hideEditInfoPanel();
+
+  // Re-parse and re-render
+  await reparseAndRender(layerNum, `Deleted line ${lineIdx + 1}`);
+}
+
+function pushEditUndo(entry) {
+  editUndoStack.entries = editUndoStack.entries.slice(0, editUndoStack.index + 1);
+  editUndoStack.entries.push(entry);
+  if (editUndoStack.entries.length > editUndoStack.maxSize) editUndoStack.entries.shift();
+  editUndoStack.index = editUndoStack.entries.length - 1;
+}
+
+function getActiveEditDeletions() {
+  return editUndoStack.entries
+    .slice(0, editUndoStack.index + 1)
+    .filter(e => e.type === 'line-delete');
+}
+
+async function performEditUndo() {
+  if (editUndoStack.index < 0) return false;
+  const entry = editUndoStack.entries[editUndoStack.index];
+  editUndoStack.index--;
+
+  if (entry.type === 'line-delete') {
+    // Revert E-repairs (in reverse order)
+    for (let i = entry.eRepairs.length - 1; i >= 0; i--) {
+      const r = entry.eRepairs[i];
+      // Adjust index: line was removed, so repairs were at shifted indices
+      const adjustedIdx = r.lineIndex > entry.lineIndex ? r.lineIndex - 1 : r.lineIndex;
+      parser.lines[adjustedIdx] = r.original;
+    }
+    // Re-insert the deleted line
+    parser.lines.splice(entry.lineIndex, 0, entry.lineContent);
+
+    editSelectedMove = null;
+    editHoveredMove = null;
+    hideEditInfoPanel();
+    await reparseAndRender(selectedLayer, 'Undo: restored deleted line');
+  }
+  return true;
+}
+
+async function performEditRedo() {
+  if (editUndoStack.index >= editUndoStack.entries.length - 1) return false;
+  editUndoStack.index++;
+  const entry = editUndoStack.entries[editUndoStack.index];
+
+  if (entry.type === 'line-delete') {
+    // Re-apply E-repairs
+    for (const r of entry.eRepairs) {
+      parser.lines[r.lineIndex] = r.patched;
+    }
+    // Re-delete the line
+    parser.lines.splice(entry.lineIndex, 1);
+
+    editSelectedMove = null;
+    editHoveredMove = null;
+    hideEditInfoPanel();
+    await reparseAndRender(selectedLayer, 'Redo: deleted line again');
+  }
+  return true;
+}
+
+async function reparseAndRender(targetLayer, toastMsg) {
+  reparsing = true;
+  try {
+    const text = parser.lines.join('\n');
+    await parser.parseAsync(text, parser.fileName);
+    initMotionTypeState();
+    viewer.clearBuffers();
+    buildSections();
+    renderLayerList();
+    updateSlider();
+
+    // Try to stay on the same layer
+    const layer = parser.getLayerByNumber(targetLayer);
+    if (layer) {
+      selectLayer(targetLayer);
+    } else if (parser.layers.length > 0) {
+      selectLayer(parser.layers[parser.layers.length - 1].number);
+    }
+
+    if (currentView === 'visual') {
+      viewer.render(viewer.currentLayer);
+    }
+
+    renderModsList();
+    if (toastMsg) showToast(toastMsg, 'success');
+  } finally {
+    reparsing = false;
+  }
 }
 
 function setHighlightColor(hex) {
@@ -322,6 +514,10 @@ function getModdedLayers() {
         moddedLayers.add(layer.number);
       }
     }
+  }
+  // Include layers with active edit deletions
+  for (const del of getActiveEditDeletions()) {
+    moddedLayers.add(del.layer);
   }
   return moddedLayers;
 }
@@ -1226,7 +1422,8 @@ function refreshAfterMod() {
 function renderModsList() {
   const container = document.getElementById('modsList');
   const noMods = document.getElementById('noMods');
-  const count = modifier.modifications.length;
+  const editDels = getActiveEditDeletions();
+  const count = modifier.modifications.length + editDels.length;
   document.getElementById('modsCount').textContent = count;
 
   if (count === 0) {
@@ -1274,6 +1471,16 @@ function renderModsList() {
       <div class="mod-actions">
         <button class="mod-action delete" onclick="modifier.remove('${mod.id}');refreshAfterMod()" title="Delete">&times;</button>
       </div>
+    </div>`;
+  }
+
+  // Show edit deletions
+  for (let i = 0; i < editDels.length; i++) {
+    const del = editDels[i];
+    const desc = `Layer ${del.layer}, line ${del.lineIndex + 1} removed`;
+    html += `<div class="mod-item edit-deletion">
+      <span class="mod-badge line-delete">edit</span>
+      <span class="mod-desc" title="${del.lineContent.trim()}">${desc}</span>
     </div>`;
   }
   container.innerHTML = html;
@@ -1365,6 +1572,12 @@ function updateSliderTicks() {
     const pct = (idx / Math.max(1, parser.layers.length - 1)) * 100;
     const color = mod.type === 'pause' ? 'var(--yellow)' : mod.type === 'filament' ? 'var(--purple)' : mod.type === 'zoffset' ? 'var(--orange)' : 'var(--accent)';
     html += `<div class="slider-tick" style="left:${pct}%;background:${color}"></div>`;
+  }
+  for (const del of getActiveEditDeletions()) {
+    const idx = parser.layers.findIndex(l => l.number === del.layer);
+    if (idx < 0) continue;
+    const pct = (idx / Math.max(1, parser.layers.length - 1)) * 100;
+    html += `<div class="slider-tick" style="left:${pct}%;background:var(--red, #ef4444)"></div>`;
   }
   container.innerHTML = html;
 }
@@ -1644,7 +1857,8 @@ function exportGcode() {
 }
 
 // ===== UNDO/REDO =====
-function performUndo() {
+async function performUndo() {
+  if (await performEditUndo()) return;
   const state = undoStack.undo();
   if (state) {
     modifier.modifications = state;
@@ -1662,7 +1876,8 @@ function performUndo() {
   }
 }
 
-function performRedo() {
+async function performRedo() {
+  if (await performEditRedo()) return;
   const state = undoStack.redo();
   if (state) {
     modifier.modifications = state;
@@ -1722,9 +1937,17 @@ function toggleSimulation() {
 }
 
 function startSimulation() {
+  if (reparsing) return;
   if (selectedLayer === null) return;
   const moves = parser.layerMoves[selectedLayer];
   if (!moves || moves.length === 0) return;
+
+  // Cache staleness check
+  const cachedOffsets = viewer.moveOffsets.get(selectedLayer);
+  if (cachedOffsets && cachedOffsets.length !== moves.length) {
+    console.warn('[sim] Cache stale: moveOffsets has', cachedOffsets.length, 'entries but layerMoves has', moves.length, '— clearing buffers');
+    viewer.clearBuffers();
+  }
 
   simulationPlaying = true;
   viewer.simulating = true;

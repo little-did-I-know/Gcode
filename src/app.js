@@ -18,6 +18,7 @@ const modifier = new GcodeModifier();
 const holeDetector = new HoleDetector();
 const insertManager = new InsertManager();
 const undoStack = new UndoStack();
+const editUndoStack = { entries: [], index: -1, maxSize: 50 };
 let selectedLayer = null;
 let holeDetectMode = false;
 let measureMode = false;
@@ -25,6 +26,10 @@ let measurePoints = [];
 let pauseSelectMode = false;
 let selectedMove = null;
 let hoveredMove = null;
+let editMode = false;
+let editSelectedMove = null;
+let editHoveredMove = null;
+let reparsing = false;
 const _storedColor = localStorage.getItem('gcode_highlight_color');
 let highlightColor = /^#[0-9a-fA-F]{6}$/.test(_storedColor) ? _storedColor : '#ff3333';
 
@@ -259,6 +264,16 @@ window.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); if (currentView === 'code') showSearchBar(); return; }
 
   if (isInput) return;
+
+  // Edit mode shortcuts
+  if (editMode) {
+    if (e.key === 'Escape') { cancelEditSelection(); return; }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && editSelectedMove) {
+      e.preventDefault();
+      deleteSelectedMove();
+      return;
+    }
+  }
 
   // Tab switching: 1-8
   const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts', '7': 'reference', '8': 'recovery' };

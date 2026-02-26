@@ -189,6 +189,8 @@ main { display: flex; flex: 1; overflow: hidden; }
 .viewer-mod-banner.custom { background: rgba(0,200,255,.15); color: var(--accent); border: 1px solid rgba(0,200,255,.25); }
 .viewer-mod-banner.recovery { background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.3); color: var(--red, #ef4444); }
 .viewer-mod-banner.mid-layer-pause { background: rgba(45,212,191,.2); color: var(--teal); border: 1px solid rgba(45,212,191,.3); }
+.edit-mode-banner { display: none; position: absolute; top: 12px; left: 50%; transform: translateX(-50%); padding: 6px 16px; border-radius: 6px; font-size: 12px; font-weight: 600; background: rgba(251,146,60,.2); color: var(--orange); border: 1px solid rgba(251,146,60,.3); pointer-events: none; z-index: 10; white-space: nowrap; }
+.edit-mode-banner.visible { display: block; }
 .viewer-legend {
   position: absolute; bottom: 12px; left: 12px; z-index: 5;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
@@ -226,6 +228,17 @@ main { display: flex; flex: 1; overflow: hidden; }
 .heatmap-stats strong { color: var(--accent); }
 #heatmapTooltip { position: fixed; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity 0.1s; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 8px; font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,.3); white-space: nowrap; }
 #heatmapTooltip.visible { opacity: 1; }
+
+/* EDIT INFO PANEL */
+#editInfoPanel { position: absolute; top: 44px; right: 10px; z-index: 100; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-family: var(--mono); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.3); display: none; max-width: 340px; pointer-events: auto; }
+#editInfoPanel.visible { display: block; }
+#editInfoPanel .edit-line { color: var(--text); margin-bottom: 6px; word-break: break-all; }
+#editInfoPanel .edit-meta { color: var(--text-dim); font-size: 11px; margin-bottom: 8px; }
+#editInfoPanel .edit-actions { display: flex; gap: 8px; }
+#editInfoPanel .edit-actions button { padding: 4px 12px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; font-size: 12px; }
+#editInfoPanel .edit-delete { background: #dc2626; color: white; border-color: #dc2626; }
+#editInfoPanel .edit-delete:hover { background: #b91c1c; }
+#editInfoPanel .edit-cancel { background: var(--surface2); color: var(--text); }
 
 /* EMPTY STATES */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); text-align: center; padding: 40px; gap: 12px; }
@@ -283,6 +296,7 @@ main { display: flex; flex: 1; overflow: hidden; }
 .mod-badge.custom { background: rgba(0,200,255,.12); color: var(--accent); }
 .mod-badge.zoffset { background: rgba(251,146,60,.15); color: var(--orange); }
 .mod-badge.recovery { background: rgba(239,68,68,.15); color: var(--red, #ef4444); }
+.mod-badge.line-delete { background: rgba(239,68,68,.15); color: var(--red, #ef4444); }
 .mod-desc { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mod-actions { display: flex; gap: 2px; }
 .mod-action { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-dim); border-radius: 4px; }
@@ -472,6 +486,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="hole-detect-btn" id="holeDetectToggle" onclick="toggleHoleMode()" title="Toggle hole detection mode">Hole Detect</button>
         <button class="hole-detect-btn" id="measureToggle" onclick="toggleMeasureMode()" title="Measure distance">Measure</button>
         <button class="hole-detect-btn" id="pauseSelectToggle" onclick="togglePauseSelectMode()" title="Click in 3D view to select pause point">Pause Select</button>
+        <button class="hole-detect-btn" id="editModeToggle" onclick="toggleEditMode()" title="Select and delete moves">Edit</button>
         <div class="color-picker-row" id="colorPickerRow">
           <button class="color-swatch active" data-color="#ff3333" style="background:#ff3333" onclick="setHighlightColor('#ff3333')" title="Red"></button>
           <button class="color-swatch" data-color="#ffdd00" style="background:#ffdd00" onclick="setHighlightColor('#ffdd00')" title="Yellow"></button>
@@ -491,7 +506,16 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div class="viewer-canvas-area">
         <canvas id="viewerCanvas"></canvas>
         <div class="viewer-overlay" id="viewerOverlay"></div>
+        <div class="edit-mode-banner" id="editModeBanner">Edit Mode — Experimental</div>
         <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
+        <div id="editInfoPanel">
+          <div class="edit-line" id="editLineText"></div>
+          <div class="edit-meta" id="editLineMeta"></div>
+          <div class="edit-actions">
+            <button class="edit-delete" onclick="deleteSelectedMove()">Delete</button>
+            <button class="edit-cancel" onclick="cancelEditSelection()">Cancel</button>
+          </div>
+        </div>
         </div>
         <div class="layer-slider-wrap">
           <label id="sliderLabel">Layer 0</label>
@@ -2010,6 +2034,89 @@ class HoleDetector {
   }
 }
 
+// E-value repair for line deletion in absolute extrusion mode.
+
+function computeERepair(lines, deletedIndex) {
+  const deletedLine = lines[deletedIndex];
+
+  // Check if deleted line has an E parameter
+  const deletedE = parseE(deletedLine);
+  if (deletedE === null) return [];
+
+  // Detect extrusion mode: scan backward for most recent M82/M83
+  if (isRelativeEMode(lines, deletedIndex)) return [];
+
+  // Find previous E value (scan backward)
+  let prevE = 0;
+  for (let i = deletedIndex - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (/^G92\b/i.test(line.trim()) && /E/i.test(line)) {
+      const resetE = parseE(line);
+      prevE = resetE !== null ? resetE : 0;
+      break;
+    }
+    const e = parseE(line);
+    if (e !== null) { prevE = e; break; }
+  }
+
+  const delta = deletedE - prevE;
+  if (Math.abs(delta) < 1e-9) return [];
+
+  // Scan forward, adjust E values
+  const repairs = [];
+  for (let i = deletedIndex + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    // Stop at G92 E reset
+    if (/^G92\b/i.test(line) && /E/i.test(line)) break;
+
+    // If we hit M83, stop — subsequent lines are relative
+    if (/^M83\b/i.test(line)) break;
+    // Skip M82 (stays absolute)
+    if (/^M82\b/i.test(line)) continue;
+
+    // Only patch G0/G1/G2/G3 lines with E
+    if (/^G[0123]\b/i.test(line)) {
+      const e = parseE(lines[i]);
+      if (e !== null) {
+        const precision = getEPrecision(lines[i]);
+        const newE = (e - delta).toFixed(precision);
+        const patched = lines[i].replace(
+          /([Ee])([-\d.]+)/,
+          (_, letter) => letter + newE
+        );
+        repairs.push({
+          lineIndex: i,
+          original: lines[i],
+          patched: patched,
+        });
+      }
+    }
+  }
+
+  return repairs;
+}
+
+function parseE(line) {
+  const match = line.match(/[Ee]([-\d.]+)/);
+  return match ? parseFloat(match[1]) : null;
+}
+
+function getEPrecision(line) {
+  const match = line.match(/[Ee][-]?(\d+\.(\d+)|\d+)/);
+  if (match && match[2]) return match[2].length;
+  return 5;
+}
+
+function isRelativeEMode(lines, fromIndex) {
+  for (let i = fromIndex - 1; i >= 0; i--) {
+    const trimmed = lines[i].trim();
+    if (/^M83\b/i.test(trimmed)) return true;
+    if (/^M82\b/i.test(trimmed)) return false;
+  }
+  return false; // default is absolute
+}
+
 // ===== G-CODE PARSER =====
 class GcodeParser {
   constructor() {
@@ -3499,6 +3606,7 @@ class GcodeViewer3D {
     this._drawHoleHighlights(mvp);
     this._drawMeasurement(mvp);
     this._drawPauseSelectOverlays(mvp);
+    this._drawEditOverlays(mvp);
   }
 
   _drawModMarkers(mvp) {
@@ -3795,6 +3903,35 @@ class GcodeViewer3D {
     }
   }
 
+  _drawEditOverlays(mvp) {
+    if (!editMode) return;
+    const editColor = [1.0, 0.3, 0.1, 1.0]; // red-orange
+
+    // Hovered move (dimmer, thinner) — draw all segments sharing lineIndex for arcs
+    if (editHoveredMove && editHoveredMove !== editSelectedMove) {
+      const segments = this._getMovesWithSameLineIndex(editHoveredMove, this.currentLayer);
+      for (const seg of segments) {
+        this._drawMoveHighlight(mvp, seg, editColor, 0.5, 0.2, 1.0);
+      }
+    }
+
+    // Selected move (brighter, thicker)
+    if (editSelectedMove) {
+      const segments = this._getMovesWithSameLineIndex(editSelectedMove, this.currentLayer);
+      for (const seg of segments) {
+        this._drawMoveHighlight(mvp, seg, [1.0, 0.15, 0.05, 1.0], 1.0, 0.35, 1.5);
+      }
+    }
+  }
+
+  _getMovesWithSameLineIndex(move, layerNum) {
+    const moves = parser.layerMoves[layerNum];
+    if (!moves) return [move];
+    const target = move.lineIndex;
+    const matches = moves.filter(m => m.lineIndex === target);
+    return matches.length > 0 ? matches : [move];
+  }
+
   fitBounds() {
     this.cam.rotX = 0.6;
     this.cam.rotZ = 0.4;
@@ -3861,6 +3998,33 @@ class GcodeViewer3D {
       });
     });
 
+    // Hover preview for edit mode
+    let editHoverRaf = false;
+    c.addEventListener('mousemove', e => {
+      if (!editMode || this._dragging) return;
+      if (editHoverRaf) return;
+      editHoverRaf = true;
+      requestAnimationFrame(() => {
+        editHoverRaf = false;
+        if (!editMode || this._dragging) return;
+        const rect = c.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const layer = parser.getLayerByNumber(this.currentLayer);
+        const z = layer?.zHeight || 0;
+        const pt = this.screenToLayerPoint(sx, sy, z);
+        if (!pt) {
+          if (editHoveredMove) { editHoveredMove = null; this.render(this.currentLayer); }
+          return;
+        }
+        const move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
+        if (move !== editHoveredMove) {
+          editHoveredMove = move;
+          this.render(this.currentLayer);
+        }
+      });
+    });
+
     // Hover value tooltip for heatmap mode
     let heatmapTip = null;
     let heatmapHoverRaf = false;
@@ -3898,6 +4062,10 @@ class GcodeViewer3D {
     });
 
     c.addEventListener('mouseleave', () => {
+      if (editHoveredMove) {
+        editHoveredMove = null;
+        if (editMode) this.render(this.currentLayer);
+      }
       if (heatmapTip) heatmapTip.classList.remove('visible');
       if (hoveredMove) {
         hoveredMove = null;
@@ -4022,6 +4190,23 @@ class GcodeViewer3D {
           showToast('No extrusion move found near click point', 'warning');
         }
       }
+
+      // Edit mode click
+      if (editMode && selectedLayer !== null) {
+        const pt = this.screenToLayerPoint(sx, sy, z);
+        if (!pt) return;
+        const move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
+        if (move) {
+          editSelectedMove = move;
+          editHoveredMove = null;
+          this.render(this.currentLayer);
+          showEditInfoPanel(move);
+        } else {
+          editSelectedMove = null;
+          hideEditInfoPanel();
+          this.render(this.currentLayer);
+        }
+      }
     });
 
     // Resize observer
@@ -4079,6 +4264,14 @@ function toggleMeasureMode() {
     selectedMove = null;
     document.getElementById('pauseSelectToggle').classList.remove('active');
   }
+  if (measureMode && editMode) {
+    editMode = false;
+    editSelectedMove = null;
+    editHoveredMove = null;
+    document.getElementById('editModeToggle').classList.remove('active');
+    document.getElementById('editModeBanner').classList.remove('visible');
+    hideEditInfoPanel();
+  }
   measurePoints = [];
   document.getElementById('measureToggle').classList.toggle('active', measureMode);
   document.getElementById('viewerCanvas').style.cursor = measureMode ? 'crosshair' : '';
@@ -4099,6 +4292,14 @@ function togglePauseSelectMode() {
     measurePoints = [];
     document.getElementById('measureToggle').classList.remove('active');
   }
+  if (pauseSelectMode && editMode) {
+    editMode = false;
+    editSelectedMove = null;
+    editHoveredMove = null;
+    document.getElementById('editModeToggle').classList.remove('active');
+    document.getElementById('editModeBanner').classList.remove('visible');
+    hideEditInfoPanel();
+  }
 
   // Auto-switch to visual view and pause tab
   if (pauseSelectMode) {
@@ -4108,6 +4309,182 @@ function togglePauseSelectMode() {
   }
 
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function toggleEditMode() {
+  editMode = !editMode;
+  editSelectedMove = null;
+  editHoveredMove = null;
+  document.getElementById('editModeToggle').classList.toggle('active', editMode);
+  document.getElementById('editModeBanner').classList.toggle('visible', editMode);
+  document.getElementById('viewerCanvas').style.cursor = editMode ? 'crosshair' : '';
+
+  // Mutual exclusion
+  if (editMode) {
+    if (measureMode) {
+      measureMode = false;
+      measurePoints = [];
+      document.getElementById('measureToggle').classList.remove('active');
+    }
+    if (pauseSelectMode) {
+      pauseSelectMode = false;
+      selectedMove = null;
+      document.getElementById('pauseSelectToggle').classList.remove('active');
+      document.getElementById('colorPickerRow').classList.remove('visible');
+    }
+    if (currentView !== 'visual') setView('visual');
+  }
+
+  // Hide info panel when deactivating
+  hideEditInfoPanel();
+
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function showEditInfoPanel(move) {
+  const panel = document.getElementById('editInfoPanel');
+  const lineText = document.getElementById('editLineText');
+  const lineMeta = document.getElementById('editLineMeta');
+  const rawLine = parser.lines[move.lineIndex] || '';
+  const typeLabel = MOTION_TYPE_LABELS[move.type] || move.type;
+
+  lineText.textContent = rawLine.trim();
+  lineMeta.textContent = `Line ${move.lineIndex + 1} \u00b7 ${typeLabel} \u00b7 ${move.extrude ? 'Extrusion' : 'Travel'}`;
+  panel.classList.add('visible');
+}
+
+function hideEditInfoPanel() {
+  const panel = document.getElementById('editInfoPanel');
+  if (panel) panel.classList.remove('visible');
+}
+
+function cancelEditSelection() {
+  editSelectedMove = null;
+  hideEditInfoPanel();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+async function deleteSelectedMove() {
+  if (!editSelectedMove) return;
+  const lineIdx = editSelectedMove.lineIndex;
+  const lineContent = parser.lines[lineIdx];
+
+  // Compute E-value repairs before removing the line
+  const repairs = computeERepair(parser.lines, lineIdx);
+
+  // Push undo entry
+  pushEditUndo({
+    type: 'line-delete',
+    layer: selectedLayer,
+    lineIndex: lineIdx,
+    lineContent: lineContent,
+    eRepairs: repairs,
+  });
+
+  // Apply E-value repairs
+  for (const r of repairs) {
+    parser.lines[r.lineIndex] = r.patched;
+  }
+
+  // Remove the line
+  parser.lines.splice(lineIdx, 1);
+
+  // Clear selection
+  const layerNum = selectedLayer;
+  editSelectedMove = null;
+  editHoveredMove = null;
+  hideEditInfoPanel();
+
+  // Re-parse and re-render
+  await reparseAndRender(layerNum, `Deleted line ${lineIdx + 1}`);
+}
+
+function pushEditUndo(entry) {
+  editUndoStack.entries = editUndoStack.entries.slice(0, editUndoStack.index + 1);
+  editUndoStack.entries.push(entry);
+  if (editUndoStack.entries.length > editUndoStack.maxSize) editUndoStack.entries.shift();
+  editUndoStack.index = editUndoStack.entries.length - 1;
+}
+
+function getActiveEditDeletions() {
+  return editUndoStack.entries
+    .slice(0, editUndoStack.index + 1)
+    .filter(e => e.type === 'line-delete');
+}
+
+async function performEditUndo() {
+  if (editUndoStack.index < 0) return false;
+  const entry = editUndoStack.entries[editUndoStack.index];
+  editUndoStack.index--;
+
+  if (entry.type === 'line-delete') {
+    // Revert E-repairs (in reverse order)
+    for (let i = entry.eRepairs.length - 1; i >= 0; i--) {
+      const r = entry.eRepairs[i];
+      // Adjust index: line was removed, so repairs were at shifted indices
+      const adjustedIdx = r.lineIndex > entry.lineIndex ? r.lineIndex - 1 : r.lineIndex;
+      parser.lines[adjustedIdx] = r.original;
+    }
+    // Re-insert the deleted line
+    parser.lines.splice(entry.lineIndex, 0, entry.lineContent);
+
+    editSelectedMove = null;
+    editHoveredMove = null;
+    hideEditInfoPanel();
+    await reparseAndRender(selectedLayer, 'Undo: restored deleted line');
+  }
+  return true;
+}
+
+async function performEditRedo() {
+  if (editUndoStack.index >= editUndoStack.entries.length - 1) return false;
+  editUndoStack.index++;
+  const entry = editUndoStack.entries[editUndoStack.index];
+
+  if (entry.type === 'line-delete') {
+    // Re-apply E-repairs
+    for (const r of entry.eRepairs) {
+      parser.lines[r.lineIndex] = r.patched;
+    }
+    // Re-delete the line
+    parser.lines.splice(entry.lineIndex, 1);
+
+    editSelectedMove = null;
+    editHoveredMove = null;
+    hideEditInfoPanel();
+    await reparseAndRender(selectedLayer, 'Redo: deleted line again');
+  }
+  return true;
+}
+
+async function reparseAndRender(targetLayer, toastMsg) {
+  reparsing = true;
+  try {
+    const text = parser.lines.join('\n');
+    await parser.parseAsync(text, parser.fileName);
+    initMotionTypeState();
+    viewer.clearBuffers();
+    buildSections();
+    renderLayerList();
+    updateSlider();
+
+    // Try to stay on the same layer
+    const layer = parser.getLayerByNumber(targetLayer);
+    if (layer) {
+      selectLayer(targetLayer);
+    } else if (parser.layers.length > 0) {
+      selectLayer(parser.layers[parser.layers.length - 1].number);
+    }
+
+    if (currentView === 'visual') {
+      viewer.render(viewer.currentLayer);
+    }
+
+    renderModsList();
+    if (toastMsg) showToast(toastMsg, 'success');
+  } finally {
+    reparsing = false;
+  }
 }
 
 function setHighlightColor(hex) {
@@ -4355,6 +4732,10 @@ function getModdedLayers() {
         moddedLayers.add(layer.number);
       }
     }
+  }
+  // Include layers with active edit deletions
+  for (const del of getActiveEditDeletions()) {
+    moddedLayers.add(del.layer);
   }
   return moddedLayers;
 }
@@ -5259,7 +5640,8 @@ function refreshAfterMod() {
 function renderModsList() {
   const container = document.getElementById('modsList');
   const noMods = document.getElementById('noMods');
-  const count = modifier.modifications.length;
+  const editDels = getActiveEditDeletions();
+  const count = modifier.modifications.length + editDels.length;
   document.getElementById('modsCount').textContent = count;
 
   if (count === 0) {
@@ -5307,6 +5689,16 @@ function renderModsList() {
       <div class="mod-actions">
         <button class="mod-action delete" onclick="modifier.remove('${mod.id}');refreshAfterMod()" title="Delete">&times;</button>
       </div>
+    </div>`;
+  }
+
+  // Show edit deletions
+  for (let i = 0; i < editDels.length; i++) {
+    const del = editDels[i];
+    const desc = `Layer ${del.layer}, line ${del.lineIndex + 1} removed`;
+    html += `<div class="mod-item edit-deletion">
+      <span class="mod-badge line-delete">edit</span>
+      <span class="mod-desc" title="${del.lineContent.trim()}">${desc}</span>
     </div>`;
   }
   container.innerHTML = html;
@@ -5398,6 +5790,12 @@ function updateSliderTicks() {
     const pct = (idx / Math.max(1, parser.layers.length - 1)) * 100;
     const color = mod.type === 'pause' ? 'var(--yellow)' : mod.type === 'filament' ? 'var(--purple)' : mod.type === 'zoffset' ? 'var(--orange)' : 'var(--accent)';
     html += `<div class="slider-tick" style="left:${pct}%;background:${color}"></div>`;
+  }
+  for (const del of getActiveEditDeletions()) {
+    const idx = parser.layers.findIndex(l => l.number === del.layer);
+    if (idx < 0) continue;
+    const pct = (idx / Math.max(1, parser.layers.length - 1)) * 100;
+    html += `<div class="slider-tick" style="left:${pct}%;background:var(--red, #ef4444)"></div>`;
   }
   container.innerHTML = html;
 }
@@ -5677,7 +6075,8 @@ function exportGcode() {
 }
 
 // ===== UNDO/REDO =====
-function performUndo() {
+async function performUndo() {
+  if (await performEditUndo()) return;
   const state = undoStack.undo();
   if (state) {
     modifier.modifications = state;
@@ -5695,7 +6094,8 @@ function performUndo() {
   }
 }
 
-function performRedo() {
+async function performRedo() {
+  if (await performEditRedo()) return;
   const state = undoStack.redo();
   if (state) {
     modifier.modifications = state;
@@ -5755,9 +6155,17 @@ function toggleSimulation() {
 }
 
 function startSimulation() {
+  if (reparsing) return;
   if (selectedLayer === null) return;
   const moves = parser.layerMoves[selectedLayer];
   if (!moves || moves.length === 0) return;
+
+  // Cache staleness check
+  const cachedOffsets = viewer.moveOffsets.get(selectedLayer);
+  if (cachedOffsets && cachedOffsets.length !== moves.length) {
+    console.warn('[sim] Cache stale: moveOffsets has', cachedOffsets.length, 'entries but layerMoves has', moves.length, '— clearing buffers');
+    viewer.clearBuffers();
+  }
 
   simulationPlaying = true;
   viewer.simulating = true;
@@ -6133,6 +6541,7 @@ const modifier = new GcodeModifier();
 const holeDetector = new HoleDetector();
 const insertManager = new InsertManager();
 const undoStack = new UndoStack();
+const editUndoStack = { entries: [], index: -1, maxSize: 50 };
 let selectedLayer = null;
 let holeDetectMode = false;
 let measureMode = false;
@@ -6140,6 +6549,10 @@ let measurePoints = [];
 let pauseSelectMode = false;
 let selectedMove = null;
 let hoveredMove = null;
+let editMode = false;
+let editSelectedMove = null;
+let editHoveredMove = null;
+let reparsing = false;
 const _storedColor = localStorage.getItem('gcode_highlight_color');
 let highlightColor = /^#[0-9a-fA-F]{6}$/.test(_storedColor) ? _storedColor : '#ff3333';
 
@@ -6374,6 +6787,16 @@ window.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); if (currentView === 'code') showSearchBar(); return; }
 
   if (isInput) return;
+
+  // Edit mode shortcuts
+  if (editMode) {
+    if (e.key === 'Escape') { cancelEditSelection(); return; }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && editSelectedMove) {
+      e.preventDefault();
+      deleteSelectedMove();
+      return;
+    }
+  }
 
   // Tab switching: 1-8
   const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts', '7': 'reference', '8': 'recovery' };
