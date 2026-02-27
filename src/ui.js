@@ -809,6 +809,10 @@ function loadFile(file) {
     updateSlider();
     buildSections();
     initMotionTypeState();
+    // Analyze motion (infer profile from parsed lines, then analyze)
+    const inferredProfile = MotionAnalyzer.inferProfile(parser.lines);
+    Object.assign(motionAnalyzer.profile, inferredProfile);
+    motionAnalyzer.analyzeAllLayers(parser.layerMoves);
     renderMotionLegend();
     if (parser.layers.length > 0) selectLayer(parser.layers[0].number);
     else renderFullPreview();

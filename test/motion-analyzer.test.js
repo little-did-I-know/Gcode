@@ -146,3 +146,48 @@ describe('MotionAnalyzer.calcJunctionVelocity', () => {
     assert.ok(result < 5, `Expected near-zero but got ${result}`);
   });
 });
+
+describe('MotionAnalyzer.analyze', () => {
+  it('analyzes a simple layer of moves', () => {
+    const analyzer = new MotionAnalyzer({ acceleration: 1000, jerk: 8 });
+    const moves = [
+      { x1: 0, y1: 0, x2: 10, y2: 0, feedRate: 3000, extrude: true },
+      { x1: 10, y1: 0, x2: 20, y2: 0, feedRate: 3000, extrude: true },
+      { x1: 20, y1: 0, x2: 20, y2: 10, feedRate: 3000, extrude: true },
+    ];
+
+    const results = analyzer.analyze(moves);
+
+    assert.strictEqual(results.length, 3);
+    assert.ok(results[0].requestedSpeed > 0);
+    assert.ok(results[0].actualPeakSpeed > 0);
+    assert.ok(results[0].actualPeakSpeed <= results[0].requestedSpeed);
+  });
+
+  it('slows down for sharp corners', () => {
+    const analyzer = new MotionAnalyzer({ acceleration: 1000, jerk: 8 });
+    const moves = [
+      { x1: 0, y1: 0, x2: 50, y2: 0, feedRate: 6000, extrude: true },
+      { x1: 50, y1: 0, x2: 50, y2: 50, feedRate: 6000, extrude: true },
+    ];
+
+    const results = analyzer.analyze(moves);
+
+    assert.ok(results[0].exitSpeed < results[0].actualPeakSpeed,
+      'Exit speed should be lower than peak due to corner');
+  });
+
+  it('returns motion phases (accel/cruise/decel times)', () => {
+    const analyzer = new MotionAnalyzer({ acceleration: 1000 });
+    const moves = [
+      { x1: 0, y1: 0, x2: 100, y2: 0, feedRate: 6000, extrude: true },
+    ];
+
+    const results = analyzer.analyze(moves);
+
+    assert.ok('timeAccel' in results[0]);
+    assert.ok('timeCruise' in results[0]);
+    assert.ok('timeDecel' in results[0]);
+    assert.ok(results[0].timeAccel >= 0);
+  });
+});

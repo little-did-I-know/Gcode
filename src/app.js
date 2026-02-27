@@ -9,6 +9,7 @@ import { HoleDetector } from './hole-detector.js';
 import { GcodeParser } from './parser.js';
 import { GcodeModifier } from './modifier.js';
 import { GcodeViewer3D } from './viewer3d.js';
+import { MotionAnalyzer } from './motion-analyzer.js';
 
 let currentFirmware = 'bambu';
 
@@ -18,6 +19,7 @@ const modifier = new GcodeModifier();
 const holeDetector = new HoleDetector();
 const insertManager = new InsertManager();
 const undoStack = new UndoStack();
+const motionAnalyzer = new MotionAnalyzer();
 const editUndoStack = { entries: [], index: -1, maxSize: 50 };
 let selectedLayer = null;
 let holeDetectMode = false;
