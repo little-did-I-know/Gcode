@@ -177,6 +177,14 @@ main { display: flex; flex: 1; overflow: hidden; }
 .sim-pause-flash { display: none; align-items: center; gap: 6px; padding: 3px 10px; background: rgba(250,204,21,0.15); border: 1px solid rgba(250,204,21,0.4); border-radius: 4px; color: var(--yellow, #facc15); font-size: 11px; font-weight: 600; white-space: nowrap; animation: sim-flash-pulse 0.6s ease-in-out; }
 .sim-pause-flash.visible { display: flex; }
 @keyframes sim-flash-pulse { 0% { opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+.cross-section-controls { display: none; flex-direction: column; gap: 6px; position: absolute; top: 8px; right: 8px; padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: var(--text-dim); z-index: 20; min-width: 200px; max-width: 240px; pointer-events: auto; box-shadow: 0 2px 12px rgba(0,0,0,0.3); }
+.cross-section-controls.active { display: flex; }
+.cross-section-controls label { font-size: 11px; color: var(--text-dim); display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.cross-section-controls input[type="range"] { flex: 1; min-width: 100px; }
+.cross-section-controls .cs-buttons { display: flex; gap: 4px; justify-content: flex-end; }
+.cross-section-controls button { padding: 2px 10px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-panel); color: var(--text); cursor: pointer; }
+.cross-section-controls button:hover { background: var(--accent); color: #fff; }
+#crossSectionToggle.active { background: var(--accent); color: #fff; }
 .view-toggle { display: flex; gap: 2px; background: var(--surface2); border-radius: 6px; padding: 2px; }
 .view-toggle button { padding: 4px 12px; border: none; background: none; color: var(--text-dim); border-radius: 4px; font-size: 12px; font-weight: 600; transition: all .15s; }
 .view-toggle button.active { background: var(--accent-dim); color: var(--accent); }
@@ -497,6 +505,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="hole-detect-btn" id="measureToggle" onclick="toggleMeasureMode()" title="Measure distance">Measure</button>
         <button class="hole-detect-btn" id="pauseSelectToggle" onclick="togglePauseSelectMode()" title="Click in 3D view to select pause point">Pause Select</button>
         <button class="hole-detect-btn" id="editModeToggle" onclick="toggleEditMode()" title="Select and delete moves">Edit</button>
+        <button class="hole-detect-btn" id="crossSectionToggle" onclick="toggleCrossSection()" title="Cross-section view (X)">Cross-Section</button>
         <div class="color-picker-row" id="colorPickerRow">
           <button class="color-swatch active" data-color="#ff3333" style="background:#ff3333" onclick="setHighlightColor('#ff3333')" title="Red"></button>
           <button class="color-swatch" data-color="#ffdd00" style="background:#ffdd00" onclick="setHighlightColor('#ffdd00')" title="Yellow"></button>
@@ -526,6 +535,18 @@ main { display: flex; flex: 1; overflow: hidden; }
             <button class="edit-apply" id="editApplyBtn" onclick="applyEditParams()" style="display:none">Apply</button>
             <button class="edit-delete" onclick="deleteSelectedMove()">Delete</button>
             <button class="edit-cancel" onclick="cancelEditSelection()">Cancel</button>
+          </div>
+        </div>
+        <div class="cross-section-controls" id="crossSectionControls">
+          <label>Rotation <span id="csRotValue">0</span>&deg;</label>
+          <input type="range" id="csRotSlider" min="0" max="360" value="0" step="1" oninput="onCrossSectionChange()">
+          <label>Tilt <span id="csTiltValue">0</span>&deg;</label>
+          <input type="range" id="csTiltSlider" min="0" max="90" value="0" step="1" oninput="onCrossSectionChange()">
+          <label>Sweep <span id="csSweepValue">0</span>mm</label>
+          <input type="range" id="csSweepSlider" min="0" max="100" value="50" step="0.1" oninput="onCrossSectionChange()">
+          <div class="cs-buttons">
+            <button onclick="flipCrossSection()" title="Flip clipped side">Flip</button>
+            <button onclick="resetCrossSection()" title="Reset to default">Reset</button>
           </div>
         </div>
         </div>
@@ -801,6 +822,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       <tr><td><kbd>F</kbd></td><td>Reset camera</td></tr>
       <tr><td><kbd>?</kbd></td><td>This help</td></tr>
       <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>Find in file</td></tr>
+      <tr><td><kbd>X</kbd></td><td>Toggle cross-section</td></tr>
     </table>
   </div>
 </div>
@@ -3062,6 +3084,9 @@ class GcodeViewer3D {
     this.simulating = false;
     this.simMoveIndex = 0;
 
+    // Cross-section clipping plane state
+    this.clipPlane = null; // [nx, ny, nz, d] or null when inactive
+
     // Camera state
     this.cam = {
       rotX: 0.6,
@@ -3094,7 +3119,9 @@ class GcodeViewer3D {
     in float a_alpha;
     out vec3 v_color;
     out float v_alpha;
+    out vec3 v_worldPos;
     void main() {
+      v_worldPos = a_pos;
       gl_Position = u_mvp * vec4(a_pos, 1.0);
       v_color = a_color;
       v_alpha = u_alphaOverride > 0.0 ? u_alphaOverride : a_alpha;
@@ -3103,10 +3130,14 @@ class GcodeViewer3D {
 
   static FS = `#version 300 es
     precision mediump float;
+    uniform vec4 u_clipPlane;
     in vec3 v_color;
     in float v_alpha;
+    in vec3 v_worldPos;
     out vec4 fragColor;
     void main() {
+      if (dot(u_clipPlane.xyz, u_clipPlane.xyz) > 0.0 &&
+          dot(u_clipPlane.xyz, v_worldPos) + u_clipPlane.w > 0.0) discard;
       fragColor = vec4(v_color, v_alpha);
     }
   `;
@@ -3117,7 +3148,9 @@ class GcodeViewer3D {
     in vec3 a_pos;
     in vec4 a_color;
     out vec4 v_color;
+    out vec3 v_worldPos;
     void main() {
+      v_worldPos = a_pos;
       gl_Position = u_mvp * vec4(a_pos, 1.0);
       v_color = a_color;
     }
@@ -3125,9 +3158,13 @@ class GcodeViewer3D {
 
   static LINE_FS = `#version 300 es
     precision mediump float;
+    uniform vec4 u_clipPlane;
     in vec4 v_color;
+    in vec3 v_worldPos;
     out vec4 fragColor;
     void main() {
+      if (dot(u_clipPlane.xyz, u_clipPlane.xyz) > 0.0 &&
+          dot(u_clipPlane.xyz, v_worldPos) + u_clipPlane.w > 0.0) discard;
       fragColor = v_color;
     }
   `;
@@ -3452,6 +3489,7 @@ class GcodeViewer3D {
     this.u_mvp = gl.getUniformLocation(this.prog, 'u_mvp');
     // u_alphaOverride: set > 0 to override per-vertex alpha, set <= 0 to use vertex alpha
     this.u_alphaOverride = gl.getUniformLocation(this.prog, 'u_alphaOverride');
+    this.u_clipPlane = gl.getUniformLocation(this.prog, 'u_clipPlane');
     this.a_pos = gl.getAttribLocation(this.prog, 'a_pos');
     this.a_color = gl.getAttribLocation(this.prog, 'a_color');
     this.a_alpha = gl.getAttribLocation(this.prog, 'a_alpha');
@@ -3465,6 +3503,7 @@ class GcodeViewer3D {
     this.line_u_mvp = gl.getUniformLocation(this.lineProg, 'u_mvp');
     this.line_a_pos = gl.getAttribLocation(this.lineProg, 'a_pos');
     this.line_a_color = gl.getAttribLocation(this.lineProg, 'a_color');
+    this.line_u_clipPlane = gl.getUniformLocation(this.lineProg, 'u_clipPlane');
 
     // Enable blending for transparency
     gl.enable(gl.BLEND);
@@ -3513,6 +3552,7 @@ class GcodeViewer3D {
 
     gl.useProgram(this.lineProg);
     gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+    gl.uniform4fv(this.line_u_clipPlane, [0, 0, 0, 0]);
     gl.enableVertexAttribArray(this.line_a_pos);
     gl.vertexAttribPointer(this.line_a_pos, 3, gl.FLOAT, false, stride, 0);
     gl.enableVertexAttribArray(this.line_a_color);
@@ -3540,6 +3580,7 @@ class GcodeViewer3D {
     // Draw layers 0..maxVisibleLayer
     gl.useProgram(this.prog);
     gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+    gl.uniform4fv(this.u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
 
     for (let ln = 0; ln <= this.maxVisibleLayer; ln++) {
       const buf = this._buildLayerGeometry(ln);
@@ -3586,6 +3627,7 @@ class GcodeViewer3D {
         if (buf.travelVao && buf.travelCount > 0 && offsets) {
           gl.useProgram(this.lineProg);
           gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+          gl.uniform4fv(this.line_u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
           gl.bindVertexArray(buf.travelVao);
 
           const si = Math.max(0, Math.min(this.simMoveIndex, offsets.length - 1));
@@ -3603,6 +3645,7 @@ class GcodeViewer3D {
           gl.bindVertexArray(null);
           gl.useProgram(this.prog);
           gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+          gl.uniform4fv(this.u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
         }
 
         // Draw leading highlight on the active move
@@ -3615,6 +3658,7 @@ class GcodeViewer3D {
             // Re-enable ribbon shader after highlight draw
             gl.useProgram(this.prog);
             gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+            gl.uniform4fv(this.u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
           }
         }
 
@@ -3633,11 +3677,13 @@ class GcodeViewer3D {
         if (isCurrent && buf.travelVao && buf.travelCount > 0) {
           gl.useProgram(this.lineProg);
           gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+          gl.uniform4fv(this.line_u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
           gl.bindVertexArray(buf.travelVao);
           gl.drawArrays(gl.LINES, 0, buf.travelCount);
           gl.bindVertexArray(null);
           gl.useProgram(this.prog);
           gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+          gl.uniform4fv(this.u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
         }
       }
     }
@@ -3649,6 +3695,7 @@ class GcodeViewer3D {
     this._drawPauseSelectOverlays(mvp);
     this._drawEditOverlays(mvp);
     this._drawEditPreview(mvp);
+    this._drawClipPlaneQuad(mvp);
   }
 
   _drawModMarkers(mvp) {
@@ -3694,6 +3741,7 @@ class GcodeViewer3D {
 
     gl.useProgram(this.lineProg);
     gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+    gl.uniform4fv(this.line_u_clipPlane, [0, 0, 0, 0]);
 
     const vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
@@ -3762,6 +3810,7 @@ class GcodeViewer3D {
 
     gl.useProgram(this.lineProg);
     gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+    gl.uniform4fv(this.line_u_clipPlane, [0, 0, 0, 0]);
 
     const vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
@@ -3865,6 +3914,7 @@ class GcodeViewer3D {
     const stride = 7 * 4;
     gl.useProgram(this.lineProg);
     gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+    gl.uniform4fv(this.line_u_clipPlane, [0, 0, 0, 0]);
     const vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
     gl.bufferData(gl.ARRAY_BUFFER, data, gl.STREAM_DRAW);
@@ -3912,6 +3962,7 @@ class GcodeViewer3D {
     const stride = 7 * 4;
     gl.useProgram(this.lineProg);
     gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
+    gl.uniform4fv(this.line_u_clipPlane, [0, 0, 0, 0]);
     const vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
     gl.bufferData(gl.ARRAY_BUFFER, data, gl.STREAM_DRAW);
@@ -3993,6 +4044,88 @@ class GcodeViewer3D {
     const target = move.lineIndex;
     const matches = moves.filter(m => m.lineIndex === target);
     return matches.length > 0 ? matches : [move];
+  }
+
+  _drawClipPlaneQuad(mvp) {
+    if (!this.clipPlane) return;
+    const gl = this.gl;
+    const [nx, ny, nz, d] = this.clipPlane;
+
+    // Compute a point on the plane: P = -d * N (closest point to origin on the plane)
+    const pOnPlane = [-nx * d, -ny * d, -nz * d];
+
+    // Compute first tangent vector perpendicular to normal
+    let tx, ty, tz;
+    if (Math.abs(nz) < 0.9) {
+      // Cross normal with Z-up to get tangent
+      tx = -ny; ty = nx; tz = 0;
+    } else {
+      // Normal is near-vertical, cross with X-right instead
+      tx = 0; ty = nz; tz = -ny;
+    }
+    const tLen = Math.sqrt(tx * tx + ty * ty + tz * tz);
+    tx /= tLen; ty /= tLen; tz /= tLen;
+
+    // Second tangent: cross(normal, t1)
+    const bx = ny * tz - nz * ty;
+    const by = nz * tx - nx * tz;
+    const bz = nx * ty - ny * tx;
+
+    // Size the quad to cover the print bounds
+    const b = parser.bounds;
+    const maxLayer = parser.layers[parser.layers.length - 1];
+    const maxZ = maxLayer ? (maxLayer.zHeight || 0) : 0;
+    const size = Math.max(b.maxX - b.minX, b.maxY - b.minY, maxZ || 50) * 1.2;
+
+    // Quad center
+    const cx = pOnPlane[0], cy = pOnPlane[1], cz = pOnPlane[2];
+
+    // Two triangles forming a quad (6 vertices)
+    // Vertex format matches ribbon shader: [x, y, z, r, g, b, alpha] (stride 28)
+    const verts = new Float32Array([
+      cx - tx*size - bx*size, cy - ty*size - by*size, cz - tz*size - bz*size, 0.5, 0.7, 1.0, 0.12,
+      cx + tx*size - bx*size, cy + ty*size - by*size, cz + tz*size - bz*size, 0.5, 0.7, 1.0, 0.12,
+      cx + tx*size + bx*size, cy + ty*size + by*size, cz + tz*size + bz*size, 0.5, 0.7, 1.0, 0.12,
+      cx - tx*size - bx*size, cy - ty*size - by*size, cz - tz*size - bz*size, 0.5, 0.7, 1.0, 0.12,
+      cx + tx*size + bx*size, cy + ty*size + by*size, cz + tz*size + bz*size, 0.5, 0.7, 1.0, 0.12,
+      cx - tx*size + bx*size, cy - ty*size + by*size, cz - tz*size + bz*size, 0.5, 0.7, 1.0, 0.12,
+    ]);
+
+    // Use the ribbon shader (it has alpha support via a_alpha)
+    gl.useProgram(this.prog);
+    gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+    gl.uniform1f(this.u_alphaOverride, -1.0);
+    // IMPORTANT: Disable clip plane for the quad itself so it's fully visible
+    gl.uniform4fv(this.u_clipPlane, [0, 0, 0, 0]);
+
+    const vao = gl.createVertexArray();
+    const vbo = gl.createBuffer();
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STREAM_DRAW);
+    gl.enableVertexAttribArray(this.a_pos);
+    gl.vertexAttribPointer(this.a_pos, 3, gl.FLOAT, false, 28, 0);
+    gl.enableVertexAttribArray(this.a_color);
+    gl.vertexAttribPointer(this.a_color, 3, gl.FLOAT, false, 28, 12);
+    gl.enableVertexAttribArray(this.a_alpha);
+    gl.vertexAttribPointer(this.a_alpha, 1, gl.FLOAT, false, 28, 24);
+
+    gl.depthMask(false); // Don't write to depth buffer (transparent overlay)
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.depthMask(true);
+
+    gl.deleteBuffer(vbo);
+    gl.deleteVertexArray(vao);
+  }
+
+  setClipPlane(plane) {
+    this.clipPlane = plane; // [nx, ny, nz, d]
+    this.render(this.currentLayer);
+  }
+
+  clearClipPlane() {
+    this.clipPlane = null;
+    this.render(this.currentLayer);
   }
 
   fitBounds() {
@@ -4279,6 +4412,20 @@ class GcodeViewer3D {
   }
 }
 
+/**
+ * Compute clip plane vec4 from rotation (azimuth), tilt, and sweep distance.
+ * rot=0,tilt=0 → vertical plane facing +X. tilt=90 → horizontal.
+ * Returns [nx, ny, nz, d] where fragment is discarded if dot(n, pos) + d > 0.
+ */
+function computeClipPlane(rotDeg, tiltDeg, sweep) {
+  const rot = rotDeg * Math.PI / 180;
+  const tilt = tiltDeg * Math.PI / 180;
+  const nx = Math.cos(rot) * Math.cos(tilt);
+  const ny = Math.sin(rot) * Math.cos(tilt);
+  const nz = Math.sin(tilt);
+  return [nx, ny, nz, -sweep];
+}
+
 // UI rendering and interaction functions.
 // References globals (parser, modifier, viewer, selectedLayer, etc.) from app.js.
 // In the built single-file output, everything shares one script scope.
@@ -4402,6 +4549,90 @@ function toggleEditMode() {
   hideEditInfoPanel();
 
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+// ===== Cross-section controls =====
+
+function toggleCrossSection() {
+  crossSectionActive = !crossSectionActive;
+  const btn = document.getElementById('crossSectionToggle');
+  const panel = document.getElementById('crossSectionControls');
+  btn.classList.toggle('active', crossSectionActive);
+  panel.classList.toggle('active', crossSectionActive);
+
+  if (crossSectionActive) {
+    updateCrossSectionSweepRange();
+    onCrossSectionChange();
+  } else {
+    viewer.clearClipPlane();
+  }
+}
+
+function onCrossSectionChange() {
+  if (!crossSectionActive) return;
+
+  const rot = +document.getElementById('csRotSlider').value;
+  const tilt = +document.getElementById('csTiltSlider').value;
+  const sweep = +document.getElementById('csSweepSlider').value;
+
+  document.getElementById('csRotValue').textContent = rot;
+  document.getElementById('csTiltValue').textContent = tilt;
+  document.getElementById('csSweepValue').textContent = sweep.toFixed(1);
+
+  const plane = computeClipPlane(rot, tilt, sweep);
+  if (crossSectionFlipped) {
+    plane[0] = -plane[0];
+    plane[1] = -plane[1];
+    plane[2] = -plane[2];
+    plane[3] = -plane[3];
+  }
+  viewer.setClipPlane(plane);
+}
+
+function flipCrossSection() {
+  crossSectionFlipped = !crossSectionFlipped;
+  onCrossSectionChange();
+}
+
+function resetCrossSection() {
+  crossSectionFlipped = false;
+  document.getElementById('csRotSlider').value = 0;
+  document.getElementById('csTiltSlider').value = 0;
+  updateCrossSectionSweepRange();
+  const slider = document.getElementById('csSweepSlider');
+  slider.value = (+slider.min + +slider.max) / 2;
+  onCrossSectionChange();
+}
+
+function updateCrossSectionSweepRange() {
+  const b = parser.bounds;
+  if (!b) return;
+  const maxLayer = parser.layers[parser.layers.length - 1];
+  const maxZ = maxLayer ? (maxLayer.zHeight || 0) : 0;
+
+  const rot = +document.getElementById('csRotSlider').value;
+  const tilt = +document.getElementById('csTiltSlider').value;
+  const [nx, ny, nz] = computeClipPlane(rot, tilt, 0);
+
+  // Project all 8 bounding box corners onto the normal to find sweep range
+  const corners = [
+    [b.minX, b.minY, 0], [b.maxX, b.minY, 0],
+    [b.minX, b.maxY, 0], [b.maxX, b.maxY, 0],
+    [b.minX, b.minY, maxZ], [b.maxX, b.minY, maxZ],
+    [b.minX, b.maxY, maxZ], [b.maxX, b.maxY, maxZ],
+  ];
+  let sMin = Infinity, sMax = -Infinity;
+  for (const [cx, cy, cz] of corners) {
+    const proj = nx * cx + ny * cy + nz * cz;
+    if (proj < sMin) sMin = proj;
+    if (proj > sMax) sMax = proj;
+  }
+
+  const slider = document.getElementById('csSweepSlider');
+  slider.min = sMin.toFixed(1);
+  slider.max = sMax.toFixed(1);
+  slider.value = ((sMin + sMax) / 2).toFixed(1);
+  slider.step = '0.1';
 }
 
 function showEditInfoPanel(move) {
@@ -6866,6 +7097,8 @@ let editHoveredMove = null;
 let editOriginalParams = null;
 let editCurrentParams = null;
 let editPreviewParams = null;
+let crossSectionActive = false;
+let crossSectionFlipped = false;
 let reparsing = false;
 const _storedColor = localStorage.getItem('gcode_highlight_color');
 let highlightColor = /^#[0-9a-fA-F]{6}$/.test(_storedColor) ? _storedColor : '#ff3333';
@@ -7140,6 +7373,9 @@ window.addEventListener('keydown', e => {
 
   // Simulation play/pause
   if (e.key === 'p' && currentView === 'visual') { toggleSimulation(); return; }
+
+  // Cross-section toggle
+  if (e.key === 'x' && currentView === 'visual') { toggleCrossSection(); return; }
 
   // Help overlay
   if (e.key === '?') { toggleShortcutsOverlay(); return; }

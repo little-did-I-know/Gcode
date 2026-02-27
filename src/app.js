@@ -32,6 +32,8 @@ let editHoveredMove = null;
 let editOriginalParams = null;
 let editCurrentParams = null;
 let editPreviewParams = null;
+let crossSectionActive = false;
+let crossSectionFlipped = false;
 let reparsing = false;
 const _storedColor = localStorage.getItem('gcode_highlight_color');
 let highlightColor = /^#[0-9a-fA-F]{6}$/.test(_storedColor) ? _storedColor : '#ff3333';
@@ -306,6 +308,9 @@ window.addEventListener('keydown', e => {
 
   // Simulation play/pause
   if (e.key === 'p' && currentView === 'visual') { toggleSimulation(); return; }
+
+  // Cross-section toggle
+  if (e.key === 'x' && currentView === 'visual') { toggleCrossSection(); return; }
 
   // Help overlay
   if (e.key === '?') { toggleShortcutsOverlay(); return; }

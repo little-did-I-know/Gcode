@@ -123,6 +123,90 @@ function toggleEditMode() {
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
 
+// ===== Cross-section controls =====
+
+function toggleCrossSection() {
+  crossSectionActive = !crossSectionActive;
+  const btn = document.getElementById('crossSectionToggle');
+  const panel = document.getElementById('crossSectionControls');
+  btn.classList.toggle('active', crossSectionActive);
+  panel.classList.toggle('active', crossSectionActive);
+
+  if (crossSectionActive) {
+    updateCrossSectionSweepRange();
+    onCrossSectionChange();
+  } else {
+    viewer.clearClipPlane();
+  }
+}
+
+function onCrossSectionChange() {
+  if (!crossSectionActive) return;
+
+  const rot = +document.getElementById('csRotSlider').value;
+  const tilt = +document.getElementById('csTiltSlider').value;
+  const sweep = +document.getElementById('csSweepSlider').value;
+
+  document.getElementById('csRotValue').textContent = rot;
+  document.getElementById('csTiltValue').textContent = tilt;
+  document.getElementById('csSweepValue').textContent = sweep.toFixed(1);
+
+  const plane = computeClipPlane(rot, tilt, sweep);
+  if (crossSectionFlipped) {
+    plane[0] = -plane[0];
+    plane[1] = -plane[1];
+    plane[2] = -plane[2];
+    plane[3] = -plane[3];
+  }
+  viewer.setClipPlane(plane);
+}
+
+function flipCrossSection() {
+  crossSectionFlipped = !crossSectionFlipped;
+  onCrossSectionChange();
+}
+
+function resetCrossSection() {
+  crossSectionFlipped = false;
+  document.getElementById('csRotSlider').value = 0;
+  document.getElementById('csTiltSlider').value = 0;
+  updateCrossSectionSweepRange();
+  const slider = document.getElementById('csSweepSlider');
+  slider.value = (+slider.min + +slider.max) / 2;
+  onCrossSectionChange();
+}
+
+function updateCrossSectionSweepRange() {
+  const b = parser.bounds;
+  if (!b) return;
+  const maxLayer = parser.layers[parser.layers.length - 1];
+  const maxZ = maxLayer ? (maxLayer.zHeight || 0) : 0;
+
+  const rot = +document.getElementById('csRotSlider').value;
+  const tilt = +document.getElementById('csTiltSlider').value;
+  const [nx, ny, nz] = computeClipPlane(rot, tilt, 0);
+
+  // Project all 8 bounding box corners onto the normal to find sweep range
+  const corners = [
+    [b.minX, b.minY, 0], [b.maxX, b.minY, 0],
+    [b.minX, b.maxY, 0], [b.maxX, b.maxY, 0],
+    [b.minX, b.minY, maxZ], [b.maxX, b.minY, maxZ],
+    [b.minX, b.maxY, maxZ], [b.maxX, b.maxY, maxZ],
+  ];
+  let sMin = Infinity, sMax = -Infinity;
+  for (const [cx, cy, cz] of corners) {
+    const proj = nx * cx + ny * cy + nz * cz;
+    if (proj < sMin) sMin = proj;
+    if (proj > sMax) sMax = proj;
+  }
+
+  const slider = document.getElementById('csSweepSlider');
+  slider.min = sMin.toFixed(1);
+  slider.max = sMax.toFixed(1);
+  slider.value = ((sMin + sMax) / 2).toFixed(1);
+  slider.step = '0.1';
+}
+
 function showEditInfoPanel(move) {
   const panel = document.getElementById('editInfoPanel');
   const lineText = document.getElementById('editLineText');

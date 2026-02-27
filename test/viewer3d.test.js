@@ -78,3 +78,48 @@ describe('findNearestMove', () => {
     assert.strictEqual(result, null);
   });
 });
+
+function computeClipPlane(rotDeg, tiltDeg, sweep) {
+  const rot = rotDeg * Math.PI / 180;
+  const tilt = tiltDeg * Math.PI / 180;
+  const nx = Math.cos(rot) * Math.cos(tilt);
+  const ny = Math.sin(rot) * Math.cos(tilt);
+  const nz = Math.sin(tilt);
+  return [nx, ny, nz, -sweep];
+}
+
+describe('computeClipPlane', () => {
+  it('default vertical plane facing X at rot=0 tilt=0', () => {
+    const [nx, ny, nz, d] = computeClipPlane(0, 0, 100);
+    assert.ok(Math.abs(nx - 1) < 0.001);
+    assert.ok(Math.abs(ny) < 0.001);
+    assert.ok(Math.abs(nz) < 0.001);
+    assert.ok(Math.abs(d - (-100)) < 0.001);
+  });
+
+  it('vertical plane facing Y at rot=90 tilt=0', () => {
+    const [nx, ny, nz] = computeClipPlane(90, 0, 0);
+    assert.ok(Math.abs(nx) < 0.001);
+    assert.ok(Math.abs(ny - 1) < 0.001);
+    assert.ok(Math.abs(nz) < 0.001);
+  });
+
+  it('horizontal plane at tilt=90', () => {
+    const [nx, ny, nz] = computeClipPlane(0, 90, 0);
+    assert.ok(Math.abs(nx) < 0.001);
+    assert.ok(Math.abs(ny) < 0.001);
+    assert.ok(Math.abs(nz - 1) < 0.001);
+  });
+
+  it('45-degree diagonal', () => {
+    const [nx, ny, nz] = computeClipPlane(45, 0, 0);
+    assert.ok(Math.abs(nx - Math.SQRT1_2) < 0.001);
+    assert.ok(Math.abs(ny - Math.SQRT1_2) < 0.001);
+    assert.ok(Math.abs(nz) < 0.001);
+  });
+
+  it('sweep offset becomes negative d', () => {
+    const [, , , d] = computeClipPlane(0, 0, 50);
+    assert.ok(Math.abs(d - (-50)) < 0.001);
+  });
+});
