@@ -56,3 +56,42 @@ describe('MotionAnalyzer', () => {
     assert.strictEqual(analyzer.profile.gantryType, 'cartesian');
   });
 });
+
+describe('MotionAnalyzer.inferProfile', () => {
+  it('extracts acceleration from M204 command', () => {
+    const lines = [
+      'M204 P1000 T1500',
+      ';LAYER:0',
+      'G1 X10 Y10 Z0.2 E1',
+    ];
+    const profile = MotionAnalyzer.inferProfile(lines);
+    assert.strictEqual(profile.acceleration, 1000);
+    assert.strictEqual(profile.travelAccel, 1500);
+  });
+
+  it('extracts jerk from M205 command', () => {
+    const lines = [
+      'M205 X10 Y10',
+      ';LAYER:0',
+      'G1 X10 Y10 Z0.2 E1',
+    ];
+    const profile = MotionAnalyzer.inferProfile(lines);
+    assert.strictEqual(profile.jerk, 10);
+  });
+
+  it('detects Klipper firmware from SET_VELOCITY_LIMIT', () => {
+    const lines = [
+      'SET_VELOCITY_LIMIT ACCEL=3000',
+      ';LAYER:0',
+    ];
+    const profile = MotionAnalyzer.inferProfile(lines);
+    assert.strictEqual(profile.firmwareType, 'klipper');
+    assert.strictEqual(profile.acceleration, 3000);
+  });
+
+  it('returns defaults when no commands found', () => {
+    const lines = [';LAYER:0', 'G1 X10 Y10'];
+    const profile = MotionAnalyzer.inferProfile(lines);
+    assert.strictEqual(profile.acceleration, 500);
+  });
+});
