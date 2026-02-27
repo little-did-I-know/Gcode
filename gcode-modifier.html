@@ -273,8 +273,8 @@ main { display: flex; flex: 1; overflow: hidden; }
 .panel-right-resize { position: absolute; top: 0; left: -4px; width: 8px; height: 100%; cursor: col-resize; z-index: 10; }
 .panel-right-resize::after { content: ''; position: absolute; top: 50%; left: 3px; width: 2px; height: 32px; transform: translateY(-50%); border-radius: 1px; background: var(--border); transition: background .2s; }
 .panel-right-resize:hover::after, .panel-right-resize.dragging::after { background: var(--accent); }
-.tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.tab { flex: 1; padding: 10px 6px; text-align: center; font-size: 12px; font-weight: 600; color: var(--text-dim); border: none; background: none; border-bottom: 2px solid transparent; transition: all .2s; }
+.tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tab { padding: 10px 8px; text-align: center; font-size: 12px; font-weight: 600; color: var(--text-dim); border: none; background: none; border-bottom: 2px solid transparent; transition: all .2s; white-space: nowrap; }
 .tab:hover { color: var(--text); }
 .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .tab-content { display: none; padding: 14px; overflow-y: auto; flex: 1; }
@@ -443,6 +443,38 @@ main { display: flex; flex: 1; overflow: hidden; }
 .ref-card-insert { font-size: 11px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; float: right; }
 .ref-card-insert:hover { background: var(--accent); color: #fff; }
 .ref-no-results { text-align: center; color: var(--text-secondary); padding: 20px 0; font-size: 13px; }
+
+/* PRINTER PROFILE PANEL */
+#printerProfilePanel {
+  position: absolute; bottom: 12px; right: 12px; z-index: 5;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  min-width: 200px; max-width: 280px; pointer-events: auto; font-size: 12px;
+  color: var(--text);
+}
+#printerProfilePanel .panel-header {
+  display: flex; align-items: center; justify-content: space-between; padding: 8px 12px;
+  border-bottom: 1px solid var(--border); cursor: pointer; user-select: none;
+  font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim);
+}
+#printerProfilePanel .panel-header:hover { background: var(--surface2); }
+#printerProfilePanel .toggle-icon { font-size: 10px; transition: transform 0.2s; }
+#printerProfilePanel.collapsed .toggle-icon { transform: rotate(-90deg); }
+#printerProfilePanel.collapsed .panel-content { display: none; }
+#printerProfilePanel .panel-content { padding: 10px 12px; }
+#printerProfilePanel .field-row { margin-bottom: 10px; }
+#printerProfilePanel .field-row label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+#printerProfilePanel .field-row input,
+#printerProfilePanel .field-row select {
+  width: 100%; padding: 6px 8px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text); font-size: 12px;
+}
+#printerProfilePanel .field-row input:focus,
+#printerProfilePanel .field-row select:focus { border-color: var(--accent); outline: none; }
+#printerProfilePanel button {
+  width: 100%; padding: 6px 10px; margin-top: 6px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+}
+#printerProfilePanel button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -547,6 +579,32 @@ main { display: flex; flex: 1; overflow: hidden; }
           <div class="cs-buttons">
             <button onclick="flipCrossSection()" title="Flip clipped side">Flip</button>
             <button onclick="resetCrossSection()" title="Reset to default">Reset</button>
+          </div>
+        </div>
+        <div id="printerProfilePanel" class="panel collapsed">
+          <div class="panel-header" onclick="togglePrinterProfile()">
+            <span>Printer Profile</span>
+            <span class="toggle-icon">&#9660;</span>
+          </div>
+          <div class="panel-content">
+            <div class="field-row">
+              <label>Acceleration (mm/s²)</label>
+              <input type="number" id="profileAccel" value="500" min="100" max="10000" step="100">
+            </div>
+            <div class="field-row">
+              <label>Jerk (mm/s)</label>
+              <input type="number" id="profileJerk" value="8" min="1" max="30" step="1">
+            </div>
+            <div class="field-row">
+              <label>Firmware</label>
+              <select id="profileFirmware">
+                <option value="marlin">Marlin</option>
+                <option value="klipper">Klipper</option>
+                <option value="rrf">RepRapFirmware</option>
+              </select>
+            </div>
+            <button onclick="applyPrinterProfile()">Apply &amp; Re-analyze</button>
+            <button onclick="resetPrinterProfile()">Reset to Inferred</button>
           </div>
         </div>
         </div>
@@ -3062,6 +3120,285 @@ function decodeLine(text) {
   };
 }
 
+// ===== MOTION ANALYZER =====
+class MotionAnalyzer {
+  constructor(profile = {}) {
+    this.profile = {
+      acceleration: profile.acceleration ?? 500,      // mm/s² (M204 P)
+      travelAccel: profile.travelAccel ?? 1000,       // mm/s² (M204 T)
+      jerk: profile.jerk ?? 8,                        // mm/s^3 (M205 X/Y)
+      junctionDeviation: profile.junctionDeviation ?? null,
+      maxVelocity: profile.maxVelocity ?? 500,        // mm/s
+      firmwareType: profile.firmwareType ?? 'marlin',
+      headMass: profile.headMass ?? null,
+      gantryType: profile.gantryType ?? 'cartesian',
+    };
+    this.results = new Map();
+  }
+
+  static inferProfile(lines) {
+    const profile = {
+      acceleration: 500,
+      travelAccel: 1000,
+      jerk: 8,
+      junctionDeviation: null,
+      maxVelocity: 500,
+      firmwareType: 'marlin',
+    };
+
+    const scanLimit = Math.min(200, lines.length);
+
+    for (let i = 0; i < scanLimit; i++) {
+      const line = lines[i].trim();
+
+      // M204 - Set acceleration (Marlin/RRF)
+      if (/^M204\s/.test(line)) {
+        const pMatch = line.match(/P([\d.]+)/i);
+        const tMatch = line.match(/T([\d.]+)/i);
+        const sMatch = line.match(/S([\d.]+)/i);
+        if (pMatch) profile.acceleration = parseFloat(pMatch[1]);
+        if (tMatch) profile.travelAccel = parseFloat(tMatch[1]);
+        if (sMatch) {
+          profile.acceleration = parseFloat(sMatch[1]);
+          profile.travelAccel = parseFloat(sMatch[1]);
+        }
+      }
+
+      // M205 - Set jerk (Marlin)
+      if (/^M205\s/.test(line)) {
+        const xMatch = line.match(/X([\d.]+)/i);
+        const yMatch = line.match(/Y([\d.]+)/i);
+        if (xMatch) profile.jerk = parseFloat(xMatch[1]);
+        else if (yMatch) profile.jerk = parseFloat(yMatch[1]);
+
+        const jMatch = line.match(/J([\d.]+)/i);
+        if (jMatch) profile.junctionDeviation = parseFloat(jMatch[1]);
+      }
+
+      // M203 - Set max feedrate
+      if (/^M203\s/.test(line)) {
+        const xMatch = line.match(/X([\d.]+)/i);
+        if (xMatch) profile.maxVelocity = parseFloat(xMatch[1]);
+      }
+
+      // Klipper: SET_VELOCITY_LIMIT
+      if (/^SET_VELOCITY_LIMIT\s/i.test(line)) {
+        profile.firmwareType = 'klipper';
+        const accelMatch = line.match(/ACCEL=([\d.]+)/i);
+        if (accelMatch) {
+          profile.acceleration = parseFloat(accelMatch[1]);
+          profile.travelAccel = parseFloat(accelMatch[1]);
+        }
+        const sqCornerMatch = line.match(/SQUARE_CORNER_VELOCITY=([\d.]+)/i);
+        if (sqCornerMatch) {
+          const scv = parseFloat(sqCornerMatch[1]);
+          profile.junctionDeviation = (scv * scv) / (2 * profile.acceleration);
+        }
+      }
+    }
+
+    return profile;
+  }
+
+  /**
+   * Calculate maximum achievable velocity for a segment.
+   * Uses kinematic equation: v² = v₀² + 2ad
+   * @param {number} distance - Segment length in mm
+   * @param {number} entryVelocity - Starting velocity in mm/s
+   * @param {number} requestedVelocity - Target velocity in mm/s
+   * @returns {number} Maximum achievable velocity in mm/s
+   */
+  calcMaxVelocity(distance, entryVelocity, requestedVelocity) {
+    if (distance <= 0) return entryVelocity;
+
+    const accel = this.profile.acceleration;
+    // v² = v₀² + 2ad
+    const maxFromAccel = Math.sqrt(entryVelocity * entryVelocity + 2 * accel * distance);
+
+    // Cap at requested velocity and max velocity
+    return Math.min(maxFromAccel, requestedVelocity, this.profile.maxVelocity);
+  }
+
+  /**
+   * Calculate maximum junction velocity between two moves.
+   * Based on the angle between moves and jerk/junction deviation setting.
+   * @param {Object} move1 - First move {x1, y1, x2, y2}
+   * @param {Object} move2 - Second move {x1, y1, x2, y2}
+   * @param {number} requestedVelocity - Current velocity in mm/s
+   * @returns {number} Maximum junction velocity in mm/s
+   */
+  calcJunctionVelocity(move1, move2, requestedVelocity) {
+    const dx1 = move1.x2 - move1.x1;
+    const dy1 = move1.y2 - move1.y1;
+    const dx2 = move2.x2 - move2.x1;
+    const dy2 = move2.y2 - move2.y1;
+
+    const len1 = Math.hypot(dx1, dy1);
+    const len2 = Math.hypot(dx2, dy2);
+
+    if (len1 < 0.001 || len2 < 0.001) return 0;
+
+    const ux1 = dx1 / len1, uy1 = dy1 / len1;
+    const ux2 = dx2 / len2, uy2 = dy2 / len2;
+
+    const dot = ux1 * ux2 + uy1 * uy2;
+    const cosAngle = Math.max(-1, Math.min(1, dot));
+
+    if (cosAngle > 0.999) return requestedVelocity;
+
+    const deltaV = Math.hypot(ux2 - ux1, uy2 - uy1);
+
+    if (this.profile.junctionDeviation !== null) {
+      const halfAngle = Math.acos(cosAngle) / 2;
+      const sinHalf = Math.sin(halfAngle);
+      if (sinHalf > 0.999) return 0;
+      const jv = Math.sqrt(
+        this.profile.junctionDeviation * this.profile.acceleration * sinHalf / (1 - sinHalf)
+      );
+      return Math.min(jv, requestedVelocity);
+    } else {
+      if (deltaV < 0.001) return requestedVelocity;
+      const jv = this.profile.jerk / deltaV;
+      return Math.min(jv, requestedVelocity);
+    }
+  }
+
+  /**
+   * Analyze an array of moves and compute actual motion profiles.
+   * @param {Array} moves - Array of move objects from parser
+   * @returns {Array} Array of result objects with actual velocities
+   */
+  analyze(moves) {
+    if (!moves || moves.length === 0) return [];
+
+    const results = [];
+
+    // First pass: Calculate requested speeds and segment lengths
+    for (const move of moves) {
+      const dx = move.x2 - move.x1;
+      const dy = move.y2 - move.y1;
+      const distance = Math.hypot(dx, dy);
+      const requestedSpeed = (move.feedRate || 1500) / 60;
+
+      results.push({
+        move,
+        distance,
+        requestedSpeed,
+        maxPeakSpeed: requestedSpeed,
+        entrySpeed: 0,
+        exitSpeed: 0,
+        actualPeakSpeed: 0,
+        timeAccel: 0,
+        timeCruise: 0,
+        timeDecel: 0,
+      });
+    }
+
+    // Calculate junction velocities
+    for (let i = 0; i < results.length - 1; i++) {
+      const jv = this.calcJunctionVelocity(moves[i], moves[i + 1], results[i].requestedSpeed);
+      results[i].maxExitSpeed = jv;
+      results[i + 1].maxEntrySpeed = jv;
+    }
+    results[0].maxEntrySpeed = 0;
+    results[results.length - 1].maxExitSpeed = 0;
+
+    // Backward pass: Propagate deceleration constraints
+    for (let i = results.length - 1; i >= 0; i--) {
+      const r = results[i];
+      const nextExitSpeed = r.maxExitSpeed ?? 0;
+      const maxEntryFromDecel = Math.sqrt(nextExitSpeed * nextExitSpeed + 2 * this.profile.acceleration * r.distance);
+
+      if (r.maxEntrySpeed !== undefined) {
+        r.entrySpeed = Math.min(r.maxEntrySpeed, maxEntryFromDecel, r.requestedSpeed);
+      } else {
+        r.entrySpeed = Math.min(maxEntryFromDecel, r.requestedSpeed);
+      }
+
+      if (i > 0 && results[i - 1].maxExitSpeed !== undefined) {
+        results[i - 1].exitSpeed = Math.min(results[i - 1].maxExitSpeed, r.entrySpeed);
+      }
+    }
+
+    // Forward pass: Calculate actual velocities
+    let currentSpeed = 0;
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      r.entrySpeed = Math.min(currentSpeed, r.entrySpeed, r.maxEntrySpeed ?? Infinity);
+
+      const peakFromEntry = this.calcMaxVelocity(r.distance / 2, r.entrySpeed, r.requestedSpeed);
+      const targetExit = r.exitSpeed || r.maxExitSpeed || 0;
+      const peakFromExit = this.calcMaxVelocity(r.distance / 2, targetExit, r.requestedSpeed);
+
+      r.actualPeakSpeed = Math.min(peakFromEntry, peakFromExit, r.requestedSpeed);
+
+      r.exitSpeed = Math.min(
+        Math.sqrt(Math.max(0, r.actualPeakSpeed * r.actualPeakSpeed - 2 * this.profile.acceleration * (r.distance / 2))),
+        r.maxExitSpeed ?? r.requestedSpeed
+      );
+      if (isNaN(r.exitSpeed) || r.exitSpeed < 0) r.exitSpeed = 0;
+
+      this._calcPhasesTimes(r);
+      currentSpeed = r.exitSpeed;
+    }
+
+    return results;
+  }
+
+  _calcPhasesTimes(r) {
+    const a = this.profile.acceleration;
+    const d = r.distance;
+    const v0 = r.entrySpeed;
+    const v1 = r.actualPeakSpeed;
+    const v2 = r.exitSpeed;
+
+    if (d <= 0) {
+      r.timeAccel = r.timeCruise = r.timeDecel = 0;
+      return;
+    }
+
+    const dAccel = (v1 * v1 - v0 * v0) / (2 * a);
+    const tAccel = (v1 - v0) / a;
+
+    const dDecel = (v1 * v1 - v2 * v2) / (2 * a);
+    const tDecel = (v1 - v2) / a;
+
+    const dCruise = Math.max(0, d - dAccel - dDecel);
+    const tCruise = v1 > 0 ? dCruise / v1 : 0;
+
+    r.timeAccel = Math.max(0, tAccel) || 0;
+    r.timeCruise = Math.max(0, tCruise) || 0;
+    r.timeDecel = Math.max(0, tDecel) || 0;
+  }
+
+  /**
+   * Analyze all layers from parser and store results.
+   * @param {Object} layerMoves - Parser's layerMoves object
+   * @returns {Map} Map of layerNum -> results array
+   */
+  analyzeAllLayers(layerMoves) {
+    this.results.clear();
+    for (const [layerNum, moves] of Object.entries(layerMoves)) {
+      if (moves && moves.length > 0) {
+        this.results.set(parseInt(layerNum), this.analyze(moves));
+      }
+    }
+    return this.results;
+  }
+
+  /**
+   * Get analysis result for a specific move.
+   * @param {number} layerNum - Layer number
+   * @param {number} moveIndex - Move index within layer
+   * @returns {Object|null} Analysis result or null
+   */
+  getResult(layerNum, moveIndex) {
+    const layerResults = this.results.get(layerNum);
+    if (!layerResults || moveIndex >= layerResults.length) return null;
+    return layerResults[moveIndex];
+  }
+}
+
 // ===== GCODE VIEWER (old Canvas 2D removed — now using GcodeViewer3D) =====
 
 class GcodeViewer3D {
@@ -3352,7 +3689,8 @@ class GcodeViewer3D {
     const isHeatmap = colorMode !== 'motion-type';
     const heatStats = isHeatmap ? getHeatmapLayerStats(layerNum) : null;
 
-    for (const move of moves) {
+    for (let moveIndex = 0; moveIndex < moves.length; moveIndex++) {
+      const move = moves[moveIndex];
       // Skip hidden motion types (in motion-type mode) or non-extrusions (in heatmap mode)
       const moveTypeUpper = move.extrude ? move.type.toUpperCase() : 'TRAVEL';
       const normalizedMoveType = MOTION_TYPE_ALIASES[moveTypeUpper] || moveTypeUpper;
@@ -3366,7 +3704,7 @@ class GcodeViewer3D {
 
       if (move.extrude) {
         const color = isHeatmap
-          ? this._getHeatmapColor(getHeatmapValue(move), heatStats.min, heatStats.max)
+          ? this._getHeatmapColor(getHeatmapValue(move, layerNum, moveIndex), heatStats.min, heatStats.max)
           : this._getTypeColor(move.type);
         const dx = move.x2 - move.x1;
         const dy = move.y2 - move.y1;
@@ -4248,9 +4586,29 @@ class GcodeViewer3D {
         if (!pt) { heatmapTip.classList.remove('visible'); return; }
         const move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
         if (!move) { heatmapTip.classList.remove('visible'); return; }
-        const val = getHeatmapValue(move);
-        const unit = colorMode === 'speed' ? 'mm/s' : colorMode === 'acceleration' ? 'mm/s\u00B2' : 'mm\u00B3/s';
-        heatmapTip.textContent = `${val.toFixed(1)} ${unit}`;
+        const moves = parser.layerMoves[this.currentLayer];
+        const moveIndex = moves ? moves.indexOf(move) : -1;
+        if (colorMode === 'actual-speed' || colorMode === 'speed-delta') {
+          const result = motionAnalyzer.getResult(this.currentLayer, moveIndex);
+          if (result) {
+            if (colorMode === 'actual-speed') {
+              heatmapTip.textContent = `${result.actualPeakSpeed.toFixed(1)} mm/s (requested: ${result.requestedSpeed.toFixed(1)})`;
+            } else {
+              const delta = ((result.requestedSpeed - result.actualPeakSpeed) / result.requestedSpeed * 100);
+              heatmapTip.textContent = `${delta.toFixed(0)}% slower than requested`;
+            }
+          } else {
+            heatmapTip.classList.remove('visible');
+            return;
+          }
+        } else {
+          const val = getHeatmapValue(move, this.currentLayer, moveIndex);
+          let unit = 'mm\u00B3/s';
+          if (colorMode === 'speed') unit = 'mm/s';
+          else if (colorMode === 'acceleration') unit = 'mm/s\u00B2';
+          const displayVal = val.toFixed(1);
+          heatmapTip.textContent = `${displayVal} ${unit}`;
+        }
         heatmapTip.style.left = (mx + 14) + 'px';
         heatmapTip.style.top = (my - 10) + 'px';
         heatmapTip.classList.add('visible');
@@ -4633,6 +4991,40 @@ function updateCrossSectionSweepRange() {
   slider.max = sMax.toFixed(1);
   slider.value = ((sMin + sMax) / 2).toFixed(1);
   slider.step = '0.1';
+}
+
+// ===== Printer Profile Panel =====
+
+function togglePrinterProfile() {
+  const panel = document.getElementById('printerProfilePanel');
+  panel.classList.toggle('collapsed');
+}
+
+function applyPrinterProfile() {
+  motionAnalyzer.profile.acceleration = parseFloat(document.getElementById('profileAccel').value);
+  motionAnalyzer.profile.jerk = parseFloat(document.getElementById('profileJerk').value);
+  motionAnalyzer.profile.firmwareType = document.getElementById('profileFirmware').value;
+
+  motionAnalyzer.analyzeAllLayers(parser.layerMoves);
+  heatmapLayerStats = {};
+  viewer.clearBuffers();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+  showToast('Profile applied, motion re-analyzed', 'success');
+}
+
+function resetPrinterProfile() {
+  const inferred = MotionAnalyzer.inferProfile(parser.lines);
+  Object.assign(motionAnalyzer.profile, inferred);
+
+  document.getElementById('profileAccel').value = motionAnalyzer.profile.acceleration;
+  document.getElementById('profileJerk').value = motionAnalyzer.profile.jerk;
+  document.getElementById('profileFirmware').value = motionAnalyzer.profile.firmwareType;
+
+  motionAnalyzer.analyzeAllLayers(parser.layerMoves);
+  heatmapLayerStats = {};
+  viewer.clearBuffers();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+  showToast('Profile reset to inferred values', 'success');
 }
 
 function showEditInfoPanel(move) {
@@ -5043,6 +5435,8 @@ function renderMotionLegend() {
     ['speed', 'Speed (mm/s)'],
     ['acceleration', 'Acceleration (mm/s\u00B2)'],
     ['flow', 'Flow Rate (mm\u00B3/s)'],
+    ['actual-speed', 'Actual Speed'],
+    ['speed-delta', 'Speed Delta'],
   ];
   const modeSelect = modeOptions.map(([val, label]) =>
     `<option value="${val}"${colorMode === val ? ' selected' : ''}>${label}</option>`
@@ -5060,20 +5454,24 @@ function renderMotionLegend() {
     // Gradient bar + per-layer stats
     const layerNum = selectedLayer !== null ? selectedLayer : (viewer.currentLayer || 0);
     const stats = getHeatmapLayerStats(layerNum);
-    const unitLabel = colorMode === 'speed' ? 'mm/s' : colorMode === 'acceleration' ? 'mm/s\u00B2' : 'mm\u00B3/s';
+    let unitLabel = 'mm\u00B3/s';
+    if (colorMode === 'speed' || colorMode === 'actual-speed') unitLabel = 'mm/s';
+    else if (colorMode === 'acceleration') unitLabel = 'mm/s\u00B2';
+    else if (colorMode === 'speed-delta') unitLabel = '%';
 
+    const mult = colorMode === 'speed-delta' ? 100 : 1;
     html += `<div class="heatmap-gradient">
       <div class="heatmap-bar"></div>
       <div class="heatmap-labels">
-        <span>${stats.min.toFixed(1)}</span>
+        <span>${(stats.min * mult).toFixed(1)}</span>
         <span>${unitLabel}</span>
-        <span>${stats.max.toFixed(1)}</span>
+        <span>${(stats.max * mult).toFixed(1)}</span>
       </div>
     </div>`;
     html += `<div class="heatmap-stats">
-      <div>Min: <strong>${stats.min.toFixed(1)}</strong> ${unitLabel}</div>
-      <div>Avg: <strong>${stats.avg.toFixed(1)}</strong> ${unitLabel}</div>
-      <div>Max: <strong>${stats.max.toFixed(1)}</strong> ${unitLabel}</div>
+      <div>Min: <strong>${(stats.min * mult).toFixed(1)}</strong> ${unitLabel}</div>
+      <div>Avg: <strong>${(stats.avg * mult).toFixed(1)}</strong> ${unitLabel}</div>
+      <div>Max: <strong>${(stats.max * mult).toFixed(1)}</strong> ${unitLabel}</div>
     </div>`;
   } else {
     // Motion type rows
@@ -5237,6 +5635,14 @@ function loadFile(file) {
     updateSlider();
     buildSections();
     initMotionTypeState();
+    // Analyze motion (infer profile from parsed lines, then analyze)
+    const inferredProfile = MotionAnalyzer.inferProfile(parser.lines);
+    Object.assign(motionAnalyzer.profile, inferredProfile);
+    motionAnalyzer.analyzeAllLayers(parser.layerMoves);
+    // Populate printer profile panel with inferred values
+    document.getElementById('profileAccel').value = motionAnalyzer.profile.acceleration;
+    document.getElementById('profileJerk').value = motionAnalyzer.profile.jerk;
+    document.getElementById('profileFirmware').value = motionAnalyzer.profile.firmwareType;
     renderMotionLegend();
     if (parser.layers.length > 0) selectLayer(parser.layers[0].number);
     else renderFullPreview();
@@ -7075,6 +7481,7 @@ function initDecodeTooltip() {
 
 
 
+
 let currentFirmware = 'bambu';
 
 // ===== APP STATE =====
@@ -7083,6 +7490,7 @@ const modifier = new GcodeModifier();
 const holeDetector = new HoleDetector();
 const insertManager = new InsertManager();
 const undoStack = new UndoStack();
+const motionAnalyzer = new MotionAnalyzer();
 const editUndoStack = { entries: [], index: -1, maxSize: 50 };
 let selectedLayer = null;
 let holeDetectMode = false;
@@ -7247,16 +7655,26 @@ function setColorMode(mode) {
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
 
-function getHeatmapValue(move) {
-  if (colorMode === 'speed') return (move.feedRate || 0) / 60; // mm/min → mm/s
+function getHeatmapValue(move, layerNum, moveIndex) {
+  if (colorMode === 'speed') return (move.feedRate || 0) / 60;
   if (colorMode === 'acceleration') return move.accel || 0;
   if (colorMode === 'flow') {
-    // Approximate volumetric flow: (eLength / moveLength) * speed
     const dx = move.x2 - move.x1, dy = move.y2 - move.y1;
     const moveLen = Math.hypot(dx, dy);
     if (moveLen < 0.001 || !move.eLength) return 0;
     const speed = (move.feedRate || 0) / 60;
     return (move.eLength / moveLen) * speed;
+  }
+  if (colorMode === 'actual-speed') {
+    const result = motionAnalyzer.getResult(layerNum, moveIndex);
+    return result ? result.actualPeakSpeed : (move.feedRate || 0) / 60;
+  }
+  if (colorMode === 'speed-delta') {
+    const result = motionAnalyzer.getResult(layerNum, moveIndex);
+    if (!result) return 0;
+    const requested = result.requestedSpeed;
+    if (requested <= 0) return 0;
+    return (requested - result.actualPeakSpeed) / requested;
   }
   return 0;
 }
@@ -7266,9 +7684,10 @@ function getHeatmapLayerStats(layerNum) {
   const moves = parser.layerMoves[layerNum];
   if (!moves || moves.length === 0) return { min: 0, max: 1, avg: 0 };
   let min = Infinity, max = -Infinity, sum = 0, count = 0;
-  for (const move of moves) {
+  for (let moveIndex = 0; moveIndex < moves.length; moveIndex++) {
+    const move = moves[moveIndex];
     if (!move.extrude) continue;
-    const v = getHeatmapValue(move);
+    const v = getHeatmapValue(move, layerNum, moveIndex);
     if (v <= 0) continue;
     if (v < min) min = v;
     if (v > max) max = v;

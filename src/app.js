@@ -9,6 +9,7 @@ import { HoleDetector } from './hole-detector.js';
 import { GcodeParser } from './parser.js';
 import { GcodeModifier } from './modifier.js';
 import { GcodeViewer3D } from './viewer3d.js';
+import { MotionAnalyzer } from './motion-analyzer.js';
 
 let currentFirmware = 'bambu';
 
@@ -18,6 +19,7 @@ const modifier = new GcodeModifier();
 const holeDetector = new HoleDetector();
 const insertManager = new InsertManager();
 const undoStack = new UndoStack();
+const motionAnalyzer = new MotionAnalyzer();
 const editUndoStack = { entries: [], index: -1, maxSize: 50 };
 let selectedLayer = null;
 let holeDetectMode = false;
@@ -182,16 +184,26 @@ function setColorMode(mode) {
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
 
-function getHeatmapValue(move) {
-  if (colorMode === 'speed') return (move.feedRate || 0) / 60; // mm/min → mm/s
+function getHeatmapValue(move, layerNum, moveIndex) {
+  if (colorMode === 'speed') return (move.feedRate || 0) / 60;
   if (colorMode === 'acceleration') return move.accel || 0;
   if (colorMode === 'flow') {
-    // Approximate volumetric flow: (eLength / moveLength) * speed
     const dx = move.x2 - move.x1, dy = move.y2 - move.y1;
     const moveLen = Math.hypot(dx, dy);
     if (moveLen < 0.001 || !move.eLength) return 0;
     const speed = (move.feedRate || 0) / 60;
     return (move.eLength / moveLen) * speed;
+  }
+  if (colorMode === 'actual-speed') {
+    const result = motionAnalyzer.getResult(layerNum, moveIndex);
+    return result ? result.actualPeakSpeed : (move.feedRate || 0) / 60;
+  }
+  if (colorMode === 'speed-delta') {
+    const result = motionAnalyzer.getResult(layerNum, moveIndex);
+    if (!result) return 0;
+    const requested = result.requestedSpeed;
+    if (requested <= 0) return 0;
+    return (requested - result.actualPeakSpeed) / requested;
   }
   return 0;
 }
@@ -201,9 +213,10 @@ function getHeatmapLayerStats(layerNum) {
   const moves = parser.layerMoves[layerNum];
   if (!moves || moves.length === 0) return { min: 0, max: 1, avg: 0 };
   let min = Infinity, max = -Infinity, sum = 0, count = 0;
-  for (const move of moves) {
+  for (let moveIndex = 0; moveIndex < moves.length; moveIndex++) {
+    const move = moves[moveIndex];
     if (!move.extrude) continue;
-    const v = getHeatmapValue(move);
+    const v = getHeatmapValue(move, layerNum, moveIndex);
     if (v <= 0) continue;
     if (v < min) min = v;
     if (v > max) max = v;

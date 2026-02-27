@@ -288,7 +288,8 @@ export class GcodeViewer3D {
     const isHeatmap = colorMode !== 'motion-type';
     const heatStats = isHeatmap ? getHeatmapLayerStats(layerNum) : null;
 
-    for (const move of moves) {
+    for (let moveIndex = 0; moveIndex < moves.length; moveIndex++) {
+      const move = moves[moveIndex];
       // Skip hidden motion types (in motion-type mode) or non-extrusions (in heatmap mode)
       const moveTypeUpper = move.extrude ? move.type.toUpperCase() : 'TRAVEL';
       const normalizedMoveType = MOTION_TYPE_ALIASES[moveTypeUpper] || moveTypeUpper;
@@ -302,7 +303,7 @@ export class GcodeViewer3D {
 
       if (move.extrude) {
         const color = isHeatmap
-          ? this._getHeatmapColor(getHeatmapValue(move), heatStats.min, heatStats.max)
+          ? this._getHeatmapColor(getHeatmapValue(move, layerNum, moveIndex), heatStats.min, heatStats.max)
           : this._getTypeColor(move.type);
         const dx = move.x2 - move.x1;
         const dy = move.y2 - move.y1;
@@ -1184,9 +1185,29 @@ export class GcodeViewer3D {
         if (!pt) { heatmapTip.classList.remove('visible'); return; }
         const move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
         if (!move) { heatmapTip.classList.remove('visible'); return; }
-        const val = getHeatmapValue(move);
-        const unit = colorMode === 'speed' ? 'mm/s' : colorMode === 'acceleration' ? 'mm/s\u00B2' : 'mm\u00B3/s';
-        heatmapTip.textContent = `${val.toFixed(1)} ${unit}`;
+        const moves = parser.layerMoves[this.currentLayer];
+        const moveIndex = moves ? moves.indexOf(move) : -1;
+        if (colorMode === 'actual-speed' || colorMode === 'speed-delta') {
+          const result = motionAnalyzer.getResult(this.currentLayer, moveIndex);
+          if (result) {
+            if (colorMode === 'actual-speed') {
+              heatmapTip.textContent = `${result.actualPeakSpeed.toFixed(1)} mm/s (requested: ${result.requestedSpeed.toFixed(1)})`;
+            } else {
+              const delta = ((result.requestedSpeed - result.actualPeakSpeed) / result.requestedSpeed * 100);
+              heatmapTip.textContent = `${delta.toFixed(0)}% slower than requested`;
+            }
+          } else {
+            heatmapTip.classList.remove('visible');
+            return;
+          }
+        } else {
+          const val = getHeatmapValue(move, this.currentLayer, moveIndex);
+          let unit = 'mm\u00B3/s';
+          if (colorMode === 'speed') unit = 'mm/s';
+          else if (colorMode === 'acceleration') unit = 'mm/s\u00B2';
+          const displayVal = val.toFixed(1);
+          heatmapTip.textContent = `${displayVal} ${unit}`;
+        }
         heatmapTip.style.left = (mx + 14) + 'px';
         heatmapTip.style.top = (my - 10) + 'px';
         heatmapTip.classList.add('visible');

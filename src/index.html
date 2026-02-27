@@ -273,8 +273,8 @@ main { display: flex; flex: 1; overflow: hidden; }
 .panel-right-resize { position: absolute; top: 0; left: -4px; width: 8px; height: 100%; cursor: col-resize; z-index: 10; }
 .panel-right-resize::after { content: ''; position: absolute; top: 50%; left: 3px; width: 2px; height: 32px; transform: translateY(-50%); border-radius: 1px; background: var(--border); transition: background .2s; }
 .panel-right-resize:hover::after, .panel-right-resize.dragging::after { background: var(--accent); }
-.tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.tab { flex: 1; padding: 10px 6px; text-align: center; font-size: 12px; font-weight: 600; color: var(--text-dim); border: none; background: none; border-bottom: 2px solid transparent; transition: all .2s; }
+.tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tab { padding: 10px 8px; text-align: center; font-size: 12px; font-weight: 600; color: var(--text-dim); border: none; background: none; border-bottom: 2px solid transparent; transition: all .2s; white-space: nowrap; }
 .tab:hover { color: var(--text); }
 .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .tab-content { display: none; padding: 14px; overflow-y: auto; flex: 1; }
@@ -443,6 +443,38 @@ main { display: flex; flex: 1; overflow: hidden; }
 .ref-card-insert { font-size: 11px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; float: right; }
 .ref-card-insert:hover { background: var(--accent); color: #fff; }
 .ref-no-results { text-align: center; color: var(--text-secondary); padding: 20px 0; font-size: 13px; }
+
+/* PRINTER PROFILE PANEL */
+#printerProfilePanel {
+  position: absolute; bottom: 12px; right: 12px; z-index: 5;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  min-width: 200px; max-width: 280px; pointer-events: auto; font-size: 12px;
+  color: var(--text);
+}
+#printerProfilePanel .panel-header {
+  display: flex; align-items: center; justify-content: space-between; padding: 8px 12px;
+  border-bottom: 1px solid var(--border); cursor: pointer; user-select: none;
+  font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim);
+}
+#printerProfilePanel .panel-header:hover { background: var(--surface2); }
+#printerProfilePanel .toggle-icon { font-size: 10px; transition: transform 0.2s; }
+#printerProfilePanel.collapsed .toggle-icon { transform: rotate(-90deg); }
+#printerProfilePanel.collapsed .panel-content { display: none; }
+#printerProfilePanel .panel-content { padding: 10px 12px; }
+#printerProfilePanel .field-row { margin-bottom: 10px; }
+#printerProfilePanel .field-row label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+#printerProfilePanel .field-row input,
+#printerProfilePanel .field-row select {
+  width: 100%; padding: 6px 8px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text); font-size: 12px;
+}
+#printerProfilePanel .field-row input:focus,
+#printerProfilePanel .field-row select:focus { border-color: var(--accent); outline: none; }
+#printerProfilePanel button {
+  width: 100%; padding: 6px 10px; margin-top: 6px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+}
+#printerProfilePanel button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -547,6 +579,32 @@ main { display: flex; flex: 1; overflow: hidden; }
           <div class="cs-buttons">
             <button onclick="flipCrossSection()" title="Flip clipped side">Flip</button>
             <button onclick="resetCrossSection()" title="Reset to default">Reset</button>
+          </div>
+        </div>
+        <div id="printerProfilePanel" class="panel collapsed">
+          <div class="panel-header" onclick="togglePrinterProfile()">
+            <span>Printer Profile</span>
+            <span class="toggle-icon">&#9660;</span>
+          </div>
+          <div class="panel-content">
+            <div class="field-row">
+              <label>Acceleration (mm/s²)</label>
+              <input type="number" id="profileAccel" value="500" min="100" max="10000" step="100">
+            </div>
+            <div class="field-row">
+              <label>Jerk (mm/s)</label>
+              <input type="number" id="profileJerk" value="8" min="1" max="30" step="1">
+            </div>
+            <div class="field-row">
+              <label>Firmware</label>
+              <select id="profileFirmware">
+                <option value="marlin">Marlin</option>
+                <option value="klipper">Klipper</option>
+                <option value="rrf">RepRapFirmware</option>
+              </select>
+            </div>
+            <button onclick="applyPrinterProfile()">Apply &amp; Re-analyze</button>
+            <button onclick="resetPrinterProfile()">Reset to Inferred</button>
           </div>
         </div>
         </div>
