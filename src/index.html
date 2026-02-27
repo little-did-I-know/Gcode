@@ -177,10 +177,11 @@ main { display: flex; flex: 1; overflow: hidden; }
 .sim-pause-flash { display: none; align-items: center; gap: 6px; padding: 3px 10px; background: rgba(250,204,21,0.15); border: 1px solid rgba(250,204,21,0.4); border-radius: 4px; color: var(--yellow, #facc15); font-size: 11px; font-weight: 600; white-space: nowrap; animation: sim-flash-pulse 0.6s ease-in-out; }
 .sim-pause-flash.visible { display: flex; }
 @keyframes sim-flash-pulse { 0% { opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
-.cross-section-controls { display: none; align-items: center; gap: 8px; padding: 6px 12px; background: var(--bg-panel); border-top: 1px solid var(--border); font-size: 12px; color: var(--text-dim); flex-wrap: wrap; }
+.cross-section-controls { display: none; flex-direction: column; gap: 6px; position: absolute; top: 8px; right: 8px; padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: var(--text-dim); z-index: 20; min-width: 200px; max-width: 240px; pointer-events: auto; box-shadow: 0 2px 12px rgba(0,0,0,0.3); }
 .cross-section-controls.active { display: flex; }
-.cross-section-controls label { font-size: 11px; color: var(--text-dim); min-width: 80px; }
-.cross-section-controls input[type="range"] { flex: 1; min-width: 80px; max-width: 160px; }
+.cross-section-controls label { font-size: 11px; color: var(--text-dim); display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.cross-section-controls input[type="range"] { flex: 1; min-width: 100px; }
+.cross-section-controls .cs-buttons { display: flex; gap: 4px; justify-content: flex-end; }
 .cross-section-controls button { padding: 2px 10px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-panel); color: var(--text); cursor: pointer; }
 .cross-section-controls button:hover { background: var(--accent); color: #fff; }
 #crossSectionToggle.active { background: var(--accent); color: #fff; }
@@ -536,6 +537,18 @@ main { display: flex; flex: 1; overflow: hidden; }
             <button class="edit-cancel" onclick="cancelEditSelection()">Cancel</button>
           </div>
         </div>
+        <div class="cross-section-controls" id="crossSectionControls">
+          <label>Rotation <span id="csRotValue">0</span>&deg;</label>
+          <input type="range" id="csRotSlider" min="0" max="360" value="0" step="1" oninput="onCrossSectionChange()">
+          <label>Tilt <span id="csTiltValue">0</span>&deg;</label>
+          <input type="range" id="csTiltSlider" min="0" max="90" value="0" step="1" oninput="onCrossSectionChange()">
+          <label>Sweep <span id="csSweepValue">0</span>mm</label>
+          <input type="range" id="csSweepSlider" min="0" max="100" value="50" step="0.1" oninput="onCrossSectionChange()">
+          <div class="cs-buttons">
+            <button onclick="flipCrossSection()" title="Flip clipped side">Flip</button>
+            <button onclick="resetCrossSection()" title="Reset to default">Reset</button>
+          </div>
+        </div>
         </div>
         <div class="layer-slider-wrap">
           <label id="sliderLabel">Layer 0</label>
@@ -553,16 +566,6 @@ main { display: flex; flex: 1; overflow: hidden; }
           <span class="sim-pause-flash" id="simPauseFlash">&#9208; PAUSE</span>
           <label style="font-size:11px;color:var(--text-dim)">Speed</label>
           <input type="range" id="simSpeed" min="0" max="100" value="50" oninput="onSimSpeedChange(+this.value)">
-        </div>
-        <div class="cross-section-controls" id="crossSectionControls">
-          <label>Rotation <span id="csRotValue">0</span>&deg;</label>
-          <input type="range" id="csRotSlider" min="0" max="360" value="0" step="1" oninput="onCrossSectionChange()">
-          <label>Tilt <span id="csTiltValue">0</span>&deg;</label>
-          <input type="range" id="csTiltSlider" min="0" max="90" value="0" step="1" oninput="onCrossSectionChange()">
-          <label>Sweep <span id="csSweepValue">0</span>mm</label>
-          <input type="range" id="csSweepSlider" min="0" max="100" value="50" step="0.1" oninput="onCrossSectionChange()">
-          <button onclick="flipCrossSection()" title="Flip clipped side">Flip</button>
-          <button onclick="resetCrossSection()" title="Reset to default">Reset</button>
         </div>
       </div>
     </div>
