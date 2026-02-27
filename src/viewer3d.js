@@ -631,6 +631,7 @@ export class GcodeViewer3D {
     this._drawPauseSelectOverlays(mvp);
     this._drawEditOverlays(mvp);
     this._drawEditPreview(mvp);
+    this._drawClipPlaneQuad(mvp);
   }
 
   _drawModMarkers(mvp) {
@@ -979,6 +980,78 @@ export class GcodeViewer3D {
     const target = move.lineIndex;
     const matches = moves.filter(m => m.lineIndex === target);
     return matches.length > 0 ? matches : [move];
+  }
+
+  _drawClipPlaneQuad(mvp) {
+    if (!this.clipPlane) return;
+    const gl = this.gl;
+    const [nx, ny, nz, d] = this.clipPlane;
+
+    // Compute a point on the plane: P = -d * N (closest point to origin on the plane)
+    const pOnPlane = [-nx * d, -ny * d, -nz * d];
+
+    // Compute first tangent vector perpendicular to normal
+    let tx, ty, tz;
+    if (Math.abs(nz) < 0.9) {
+      // Cross normal with Z-up to get tangent
+      tx = -ny; ty = nx; tz = 0;
+    } else {
+      // Normal is near-vertical, cross with X-right instead
+      tx = 0; ty = nz; tz = -ny;
+    }
+    const tLen = Math.sqrt(tx * tx + ty * ty + tz * tz);
+    tx /= tLen; ty /= tLen; tz /= tLen;
+
+    // Second tangent: cross(normal, t1)
+    const bx = ny * tz - nz * ty;
+    const by = nz * tx - nx * tz;
+    const bz = nx * ty - ny * tx;
+
+    // Size the quad to cover the print bounds
+    const b = parser.bounds;
+    const maxLayer = parser.layers[parser.layers.length - 1];
+    const maxZ = maxLayer ? (maxLayer.zHeight || 0) : 0;
+    const size = Math.max(b.maxX - b.minX, b.maxY - b.minY, maxZ || 50) * 1.2;
+
+    // Quad center
+    const cx = pOnPlane[0], cy = pOnPlane[1], cz = pOnPlane[2];
+
+    // Two triangles forming a quad (6 vertices)
+    // Vertex format matches ribbon shader: [x, y, z, r, g, b, alpha] (stride 28)
+    const verts = new Float32Array([
+      cx - tx*size - bx*size, cy - ty*size - by*size, cz - tz*size - bz*size, 0.5, 0.7, 1.0, 0.12,
+      cx + tx*size - bx*size, cy + ty*size - by*size, cz + tz*size - bz*size, 0.5, 0.7, 1.0, 0.12,
+      cx + tx*size + bx*size, cy + ty*size + by*size, cz + tz*size + bz*size, 0.5, 0.7, 1.0, 0.12,
+      cx - tx*size - bx*size, cy - ty*size - by*size, cz - tz*size - bz*size, 0.5, 0.7, 1.0, 0.12,
+      cx + tx*size + bx*size, cy + ty*size + by*size, cz + tz*size + bz*size, 0.5, 0.7, 1.0, 0.12,
+      cx - tx*size + bx*size, cy - ty*size + by*size, cz - tz*size + bz*size, 0.5, 0.7, 1.0, 0.12,
+    ]);
+
+    // Use the ribbon shader (it has alpha support via a_alpha)
+    gl.useProgram(this.prog);
+    gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+    gl.uniform1f(this.u_alphaOverride, -1.0);
+    // IMPORTANT: Disable clip plane for the quad itself so it's fully visible
+    gl.uniform4fv(this.u_clipPlane, [0, 0, 0, 0]);
+
+    const vao = gl.createVertexArray();
+    const vbo = gl.createBuffer();
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STREAM_DRAW);
+    gl.enableVertexAttribArray(this.a_pos);
+    gl.vertexAttribPointer(this.a_pos, 3, gl.FLOAT, false, 28, 0);
+    gl.enableVertexAttribArray(this.a_color);
+    gl.vertexAttribPointer(this.a_color, 3, gl.FLOAT, false, 28, 12);
+    gl.enableVertexAttribArray(this.a_alpha);
+    gl.vertexAttribPointer(this.a_alpha, 1, gl.FLOAT, false, 28, 24);
+
+    gl.depthMask(false); // Don't write to depth buffer (transparent overlay)
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.depthMask(true);
+
+    gl.deleteBuffer(vbo);
+    gl.deleteVertexArray(vao);
   }
 
   setClipPlane(plane) {

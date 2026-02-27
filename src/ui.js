@@ -201,15 +201,9 @@ function updateCrossSectionSweepRange() {
   }
 
   const slider = document.getElementById('csSweepSlider');
-  const oldVal = +slider.value;
   slider.min = sMin.toFixed(1);
   slider.max = sMax.toFixed(1);
-  // Keep current value if still in range, otherwise center
-  if (oldVal >= sMin && oldVal <= sMax) {
-    slider.value = oldVal;
-  } else {
-    slider.value = ((sMin + sMax) / 2).toFixed(1);
-  }
+  slider.value = ((sMin + sMax) / 2).toFixed(1);
   slider.step = '0.1';
 }
 
