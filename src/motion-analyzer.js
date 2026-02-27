@@ -77,4 +77,23 @@ export class MotionAnalyzer {
 
     return profile;
   }
+
+  /**
+   * Calculate maximum achievable velocity for a segment.
+   * Uses kinematic equation: v² = v₀² + 2ad
+   * @param {number} distance - Segment length in mm
+   * @param {number} entryVelocity - Starting velocity in mm/s
+   * @param {number} requestedVelocity - Target velocity in mm/s
+   * @returns {number} Maximum achievable velocity in mm/s
+   */
+  calcMaxVelocity(distance, entryVelocity, requestedVelocity) {
+    if (distance <= 0) return entryVelocity;
+
+    const accel = this.profile.acceleration;
+    // v² = v₀² + 2ad
+    const maxFromAccel = Math.sqrt(entryVelocity * entryVelocity + 2 * accel * distance);
+
+    // Cap at requested velocity and max velocity
+    return Math.min(maxFromAccel, requestedVelocity, this.profile.maxVelocity);
+  }
 }

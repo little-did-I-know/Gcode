@@ -95,3 +95,27 @@ describe('MotionAnalyzer.inferProfile', () => {
     assert.strictEqual(profile.acceleration, 500);
   });
 });
+
+describe('MotionAnalyzer.calcMaxVelocity', () => {
+  it('calculates max velocity for short segment', () => {
+    const analyzer = new MotionAnalyzer({ acceleration: 1000 });
+    // Short 5mm segment starting at 0, v = sqrt(2 * 1000 * 5) = 100mm/s
+    const result = analyzer.calcMaxVelocity(5, 0, 100);
+    assert.ok(result <= 100);
+    assert.ok(result > 90);
+  });
+
+  it('caps at requested velocity for long segment', () => {
+    const analyzer = new MotionAnalyzer({ acceleration: 1000 });
+    const result = analyzer.calcMaxVelocity(500, 0, 100);
+    assert.strictEqual(result, 100);
+  });
+
+  it('accounts for entry velocity', () => {
+    const analyzer = new MotionAnalyzer({ acceleration: 1000 });
+    // Starting at 50mm/s, 5mm segment: v = sqrt(50² + 2*1000*5) ≈ 111.8mm/s
+    const result = analyzer.calcMaxVelocity(5, 50, 200);
+    assert.ok(result > 100);
+    assert.ok(result < 120);
+  });
+});
