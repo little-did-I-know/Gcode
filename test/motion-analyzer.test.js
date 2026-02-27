@@ -119,3 +119,30 @@ describe('MotionAnalyzer.calcMaxVelocity', () => {
     assert.ok(result < 120);
   });
 });
+
+describe('MotionAnalyzer.calcJunctionVelocity', () => {
+  it('returns full velocity for straight line (180°)', () => {
+    const analyzer = new MotionAnalyzer({ jerk: 10 });
+    const move1 = { x1: 0, y1: 0, x2: 10, y2: 0 };
+    const move2 = { x1: 10, y1: 0, x2: 20, y2: 0 };
+    const result = analyzer.calcJunctionVelocity(move1, move2, 100);
+    assert.strictEqual(result, 100);
+  });
+
+  it('returns near-zero for sharp 90° corner', () => {
+    const analyzer = new MotionAnalyzer({ jerk: 8 });
+    const move1 = { x1: 0, y1: 0, x2: 10, y2: 0 };
+    const move2 = { x1: 10, y1: 0, x2: 10, y2: 10 };
+    const result = analyzer.calcJunctionVelocity(move1, move2, 100);
+    assert.ok(result < 20, `Expected <20 but got ${result}`);
+    assert.ok(result > 0);
+  });
+
+  it('returns zero for 180° reversal', () => {
+    const analyzer = new MotionAnalyzer({ jerk: 8 });
+    const move1 = { x1: 0, y1: 0, x2: 10, y2: 0 };
+    const move2 = { x1: 10, y1: 0, x2: 0, y2: 0 };
+    const result = analyzer.calcJunctionVelocity(move1, move2, 100);
+    assert.ok(result < 5, `Expected near-zero but got ${result}`);
+  });
+});

@@ -96,4 +96,48 @@ export class MotionAnalyzer {
     // Cap at requested velocity and max velocity
     return Math.min(maxFromAccel, requestedVelocity, this.profile.maxVelocity);
   }
+
+  /**
+   * Calculate maximum junction velocity between two moves.
+   * Based on the angle between moves and jerk/junction deviation setting.
+   * @param {Object} move1 - First move {x1, y1, x2, y2}
+   * @param {Object} move2 - Second move {x1, y1, x2, y2}
+   * @param {number} requestedVelocity - Current velocity in mm/s
+   * @returns {number} Maximum junction velocity in mm/s
+   */
+  calcJunctionVelocity(move1, move2, requestedVelocity) {
+    const dx1 = move1.x2 - move1.x1;
+    const dy1 = move1.y2 - move1.y1;
+    const dx2 = move2.x2 - move2.x1;
+    const dy2 = move2.y2 - move2.y1;
+
+    const len1 = Math.hypot(dx1, dy1);
+    const len2 = Math.hypot(dx2, dy2);
+
+    if (len1 < 0.001 || len2 < 0.001) return 0;
+
+    const ux1 = dx1 / len1, uy1 = dy1 / len1;
+    const ux2 = dx2 / len2, uy2 = dy2 / len2;
+
+    const dot = ux1 * ux2 + uy1 * uy2;
+    const cosAngle = Math.max(-1, Math.min(1, dot));
+
+    if (cosAngle > 0.999) return requestedVelocity;
+
+    const deltaV = Math.hypot(ux2 - ux1, uy2 - uy1);
+
+    if (this.profile.junctionDeviation !== null) {
+      const halfAngle = Math.acos(cosAngle) / 2;
+      const sinHalf = Math.sin(halfAngle);
+      if (sinHalf > 0.999) return 0;
+      const jv = Math.sqrt(
+        this.profile.junctionDeviation * this.profile.acceleration * sinHalf / (1 - sinHalf)
+      );
+      return Math.min(jv, requestedVelocity);
+    } else {
+      if (deltaV < 0.001) return requestedVelocity;
+      const jv = this.profile.jerk / deltaV;
+      return Math.min(jv, requestedVelocity);
+    }
+  }
 }
