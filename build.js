@@ -16,6 +16,7 @@ const FILES = [
   'parser.js',
   'modifier.js',
   'gcode-dictionary.js',
+  'motion-analyzer.js',
   'viewer3d.js',
   'ui.js',
   'app.js',

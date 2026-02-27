@@ -207,6 +207,40 @@ function updateCrossSectionSweepRange() {
   slider.step = '0.1';
 }
 
+// ===== Printer Profile Panel =====
+
+function togglePrinterProfile() {
+  const panel = document.getElementById('printerProfilePanel');
+  panel.classList.toggle('collapsed');
+}
+
+function applyPrinterProfile() {
+  motionAnalyzer.profile.acceleration = parseFloat(document.getElementById('profileAccel').value);
+  motionAnalyzer.profile.jerk = parseFloat(document.getElementById('profileJerk').value);
+  motionAnalyzer.profile.firmwareType = document.getElementById('profileFirmware').value;
+
+  motionAnalyzer.analyzeAllLayers(parser.layerMoves);
+  heatmapLayerStats = {};
+  viewer.clearBuffers();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+  showToast('Profile applied, motion re-analyzed', 'success');
+}
+
+function resetPrinterProfile() {
+  const inferred = MotionAnalyzer.inferProfile(parser.lines);
+  Object.assign(motionAnalyzer.profile, inferred);
+
+  document.getElementById('profileAccel').value = motionAnalyzer.profile.acceleration;
+  document.getElementById('profileJerk').value = motionAnalyzer.profile.jerk;
+  document.getElementById('profileFirmware').value = motionAnalyzer.profile.firmwareType;
+
+  motionAnalyzer.analyzeAllLayers(parser.layerMoves);
+  heatmapLayerStats = {};
+  viewer.clearBuffers();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+  showToast('Profile reset to inferred values', 'success');
+}
+
 function showEditInfoPanel(move) {
   const panel = document.getElementById('editInfoPanel');
   const lineText = document.getElementById('editLineText');
@@ -615,6 +649,8 @@ function renderMotionLegend() {
     ['speed', 'Speed (mm/s)'],
     ['acceleration', 'Acceleration (mm/s\u00B2)'],
     ['flow', 'Flow Rate (mm\u00B3/s)'],
+    ['actual-speed', 'Actual Speed'],
+    ['speed-delta', 'Speed Delta'],
   ];
   const modeSelect = modeOptions.map(([val, label]) =>
     `<option value="${val}"${colorMode === val ? ' selected' : ''}>${label}</option>`
@@ -632,20 +668,24 @@ function renderMotionLegend() {
     // Gradient bar + per-layer stats
     const layerNum = selectedLayer !== null ? selectedLayer : (viewer.currentLayer || 0);
     const stats = getHeatmapLayerStats(layerNum);
-    const unitLabel = colorMode === 'speed' ? 'mm/s' : colorMode === 'acceleration' ? 'mm/s\u00B2' : 'mm\u00B3/s';
+    let unitLabel = 'mm\u00B3/s';
+    if (colorMode === 'speed' || colorMode === 'actual-speed') unitLabel = 'mm/s';
+    else if (colorMode === 'acceleration') unitLabel = 'mm/s\u00B2';
+    else if (colorMode === 'speed-delta') unitLabel = '%';
 
+    const mult = colorMode === 'speed-delta' ? 100 : 1;
     html += `<div class="heatmap-gradient">
       <div class="heatmap-bar"></div>
       <div class="heatmap-labels">
-        <span>${stats.min.toFixed(1)}</span>
+        <span>${(stats.min * mult).toFixed(1)}</span>
         <span>${unitLabel}</span>
-        <span>${stats.max.toFixed(1)}</span>
+        <span>${(stats.max * mult).toFixed(1)}</span>
       </div>
     </div>`;
     html += `<div class="heatmap-stats">
-      <div>Min: <strong>${stats.min.toFixed(1)}</strong> ${unitLabel}</div>
-      <div>Avg: <strong>${stats.avg.toFixed(1)}</strong> ${unitLabel}</div>
-      <div>Max: <strong>${stats.max.toFixed(1)}</strong> ${unitLabel}</div>
+      <div>Min: <strong>${(stats.min * mult).toFixed(1)}</strong> ${unitLabel}</div>
+      <div>Avg: <strong>${(stats.avg * mult).toFixed(1)}</strong> ${unitLabel}</div>
+      <div>Max: <strong>${(stats.max * mult).toFixed(1)}</strong> ${unitLabel}</div>
     </div>`;
   } else {
     // Motion type rows
@@ -813,6 +853,10 @@ function loadFile(file) {
     const inferredProfile = MotionAnalyzer.inferProfile(parser.lines);
     Object.assign(motionAnalyzer.profile, inferredProfile);
     motionAnalyzer.analyzeAllLayers(parser.layerMoves);
+    // Populate printer profile panel with inferred values
+    document.getElementById('profileAccel').value = motionAnalyzer.profile.acceleration;
+    document.getElementById('profileJerk').value = motionAnalyzer.profile.jerk;
+    document.getElementById('profileFirmware').value = motionAnalyzer.profile.firmwareType;
     renderMotionLegend();
     if (parser.layers.length > 0) selectLayer(parser.layers[0].number);
     else renderFullPreview();
