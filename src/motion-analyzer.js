@@ -1,3 +1,4 @@
+// ===== MOTION ANALYZER =====
 export class MotionAnalyzer {
   constructor(profile = {}) {
     this.profile = {

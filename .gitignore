@@ -7,3 +7,4 @@ node_modules
 .venv
 gcode_files
 docs/plans
+.DS_Store
