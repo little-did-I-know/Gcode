@@ -190,7 +190,7 @@ main { display: flex; flex: 1; overflow: hidden; }
 .view-toggle button.active { background: var(--accent-dim); color: var(--accent); }
 .view-toggle button:hover:not(.active) { color: var(--text); }
 .viewer-overlay { position: absolute; top: 12px; left: 12px; right: 12px; pointer-events: none; }
-.viewer-info { display: inline-block; padding: 4px 10px; background: rgba(0,0,0,.7); border-radius: 4px; font-size: 12px; color: var(--text); font-family: var(--mono); }
+.viewer-info { display: inline-block; padding: 6px 12px; background: rgba(0,0,0,.8); border-radius: 6px; font-size: 14px; color: #fff; font-family: var(--mono); letter-spacing: .02em; }
 .viewer-mod-banner { margin-top: 8px; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; pointer-events: none; }
 .viewer-mod-banner.pause { background: rgba(250,204,21,.2); color: var(--yellow); border: 1px solid rgba(250,204,21,.3); }
 .viewer-mod-banner.filament { background: rgba(167,139,250,.2); color: var(--purple); border: 1px solid rgba(167,139,250,.3); }
@@ -206,6 +206,7 @@ main { display: flex; flex: 1; overflow: hidden; }
   max-height: calc(100% - 80px); display: flex; flex-direction: column;
   color: var(--text);
 }
+.warp-controls { display: none; }
 .legend-header {
   display: flex; align-items: center; gap: 6px; padding: 6px 10px;
   border-bottom: 1px solid var(--border); cursor: pointer; user-select: none;
@@ -564,6 +565,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div class="view-toggle">
           <button class="active" onclick="setView('code')" id="viewCodeBtn">Code</button>
           <button onclick="setView('visual')" id="viewVisualBtn">Visual</button>
+          <button onclick="setView('warp')" id="viewWarpBtn">Warp</button>
         </div>
         <span>Go to layer:</span>
         <input type="number" class="jump-input" id="jumpLayer" min="0" placeholder="#" onchange="jumpToLayer(+this.value)">
@@ -593,6 +595,10 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div class="viewer-overlay" id="viewerOverlay"></div>
         <div class="edit-mode-banner" id="editModeBanner">Edit Mode — Experimental</div>
         <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
+        <div id="warpControls" class="warp-controls hidden">
+          <label>Deformation: <span id="deformLabel">0x</span></label>
+          <input type="range" id="deformSlider" min="0" max="50" value="0" step="1">
+        </div>
         <div id="editInfoPanel">
           <div class="edit-line" id="editLineText"></div>
           <div class="edit-meta" id="editLineMeta"></div>
@@ -921,6 +927,19 @@ main { display: flex; flex: 1; overflow: hidden; }
           <div class="field-row" style="margin-top:6px">
             <label>Custom JSON</label>
             <input type="file" id="materialProfileFile" accept=".json" onchange="loadMaterialProfileFile(this)" style="font-size:10px;flex:1">
+          </div>
+          <div class="field-row" style="margin-top:8px">
+            <label>Analysis Depth</label>
+            <input type="range" id="analysisDepthSlider" min="0" max="100" value="50" style="flex:1" onchange="onAnalysisDepthChange(this.value)">
+            <span id="analysisDepthLabel" style="font-size:10px;min-width:55px;text-align:right">Balanced</span>
+          </div>
+          <div class="field-row" style="margin-top:4px">
+            <label>Environment</label>
+            <select id="analysisChamberType" onchange="onChamberTypeChange(this.value)" style="flex:1;font-size:11px">
+              <option value="open">Open (no enclosure)</option>
+              <option value="enclosed">Enclosed</option>
+              <option value="heated">Heated Chamber</option>
+            </select>
           </div>
           <button onclick="runAnalysis()" style="margin-top:8px;width:100%;padding:6px;font-size:12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Run Analysis</button>
         </div>
@@ -3229,6 +3248,9 @@ const MATERIAL_PROFILES = {
     waterAbsorption: 0.43,       // % saturated
     needsDrying: false,
     needsEnclosure: false,
+    thermalConductivity: 0.13,   // W/mK
+    specificHeatCapacity: 1800,  // J/kgK
+    cte: 68e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 26.6,      // kJ/m²
     impactStrengthZ: 13.8,       // kJ/m² — layer adhesion
     bendingStrength: 76,         // MPa
@@ -3248,6 +3270,9 @@ const MATERIAL_PROFILES = {
     waterAbsorption: 0.40,
     needsDrying: true,
     needsEnclosure: false,
+    thermalConductivity: 0.19,   // W/mK
+    specificHeatCapacity: 1200,  // J/kgK
+    cte: 60e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 31.5,
     impactStrengthZ: 10.6,
     bendingStrength: 64,
@@ -3267,6 +3292,9 @@ const MATERIAL_PROFILES = {
     waterAbsorption: 0.65,
     needsDrying: false,
     needsEnclosure: true,
+    thermalConductivity: 0.17,   // W/mK
+    specificHeatCapacity: 1400,  // J/kgK
+    cte: 90e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 39.3,
     impactStrengthZ: 7.4,
     bendingStrength: 62,
@@ -3286,6 +3314,9 @@ const MATERIAL_PROFILES = {
     waterAbsorption: 0.45,
     needsDrying: false,
     needsEnclosure: true,
+    thermalConductivity: 0.18,   // W/mK
+    specificHeatCapacity: 1300,  // J/kgK
+    cte: 95e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 41.0,
     impactStrengthZ: 4.9,
     bendingStrength: 65,
@@ -3305,6 +3336,9 @@ const MATERIAL_PROFILES = {
     waterAbsorption: 1.08,
     needsDrying: true,
     needsEnclosure: false,
+    thermalConductivity: 0.19,   // W/mK
+    specificHeatCapacity: 1500,  // J/kgK
+    cte: 150e-6,                 // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 123.2,
     impactStrengthZ: 86.3,
     bendingStrength: null,
@@ -3324,6 +3358,9 @@ const MATERIAL_PROFILES = {
     waterAbsorption: 0.25,
     needsDrying: true,
     needsEnclosure: true,
+    thermalConductivity: 0.20,   // W/mK
+    specificHeatCapacity: 1200,  // J/kgK
+    cte: 65e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 34.8,
     impactStrengthZ: 9.0,
     bendingStrength: 108,
@@ -3346,6 +3383,9 @@ const MATERIAL_PROFILES = {
     needsDrying: false,
     needsEnclosure: false,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.13,   // W/mK — same as PLA base
+    specificHeatCapacity: 1800,  // J/kgK
+    cte: 30e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 23.2,
     impactStrengthZ: 7.8,
     bendingStrength: 89,
@@ -3366,6 +3406,9 @@ const MATERIAL_PROFILES = {
     needsDrying: false,
     needsEnclosure: false,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.19,   // W/mK — same as PETG base
+    specificHeatCapacity: 1200,  // J/kgK
+    cte: 25e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 41.2,
     impactStrengthZ: 10.7,
     bendingStrength: 70,
@@ -3386,6 +3429,9 @@ const MATERIAL_PROFILES = {
     needsDrying: false,
     needsEnclosure: true,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.17,   // W/mK — same as ABS base
+    specificHeatCapacity: 1400,  // J/kgK
+    cte: 45e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 14.5,
     impactStrengthZ: 5.3,
     bendingStrength: 68,
@@ -3406,6 +3452,9 @@ const MATERIAL_PROFILES = {
     needsDrying: false,
     needsEnclosure: true,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.18,   // W/mK — same as ASA base
+    specificHeatCapacity: 1300,  // J/kgK
+    cte: 40e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 14.0,
     impactStrengthZ: 9.4,
     bendingStrength: 72,
@@ -3425,6 +3474,9 @@ const MATERIAL_PROFILES = {
     waterAbsorption: 0.12,
     needsDrying: true,
     needsEnclosure: true,
+    thermalConductivity: 0.20,   // W/mK — same as PC base
+    specificHeatCapacity: 1200,  // J/kgK
+    cte: 55e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 55.0,
     impactStrengthZ: 8.0,
     bendingStrength: 90,
@@ -3447,6 +3499,9 @@ const MATERIAL_PROFILES = {
     needsDrying: true,
     needsEnclosure: false,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.25,   // W/mK
+    specificHeatCapacity: 1400,  // J/kgK
+    cte: 22e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 36.0,
     impactStrengthZ: 4.5,
     bendingStrength: 131,
@@ -3467,6 +3522,9 @@ const MATERIAL_PROFILES = {
     needsDrying: true,
     needsEnclosure: true,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.25,   // W/mK
+    specificHeatCapacity: 1700,  // J/kgK
+    cte: 20e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 57.5,
     impactStrengthZ: 13.3,
     bendingStrength: 125,
@@ -3487,6 +3545,9 @@ const MATERIAL_PROFILES = {
     needsDrying: true,
     needsEnclosure: true,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.25,   // W/mK
+    specificHeatCapacity: 1700,  // J/kgK
+    cte: 18e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 40.3,
     impactStrengthZ: 15.5,
     bendingStrength: 151,
@@ -3507,6 +3568,9 @@ const MATERIAL_PROFILES = {
     needsDrying: true,
     needsEnclosure: true,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.25,   // W/mK
+    specificHeatCapacity: 1700,  // J/kgK
+    cte: 35e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 27.2,
     impactStrengthZ: 4.1,
     bendingStrength: 120,
@@ -3527,6 +3591,9 @@ const MATERIAL_PROFILES = {
     needsDrying: true,
     needsEnclosure: true,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.25,   // W/mK
+    specificHeatCapacity: 1400,  // J/kgK
+    cte: 15e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 41.7,
     impactStrengthZ: 4.3,
     bendingStrength: 208,
@@ -3547,6 +3614,9 @@ const MATERIAL_PROFILES = {
     needsDrying: true,
     needsEnclosure: true,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.25,   // W/mK
+    specificHeatCapacity: 1400,  // J/kgK
+    cte: 28e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 27.8,
     impactStrengthZ: 2.8,
     bendingStrength: 142,
@@ -3568,6 +3638,9 @@ const MATERIAL_PROFILES = {
     waterAbsorption: 2.35,
     needsDrying: true,
     needsEnclosure: true,
+    thermalConductivity: 0.25,   // W/mK
+    specificHeatCapacity: 1700,  // J/kgK
+    cte: 80e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 40.0,
     impactStrengthZ: 13.0,
     bendingStrength: 125,
@@ -3581,7 +3654,31 @@ const DEFAULT_THRESHOLDS = {
   'wall-seam-alignment':     { warning: 3.0 },
   'wall-gap-size':           { critical: 1.5,  warning: 0.8 },
   'extrusion-consistency':   { warning: 0.35 },
+  'warp-tolerance':          { critical: 0.8, warning: 0.4 },
 };
+
+function matchFilamentName(fc) {
+  // Check specific variants before base types
+  if (fc.includes('PPS-CF') || fc.includes('PPS')) return 'PPS-CF';
+  if (fc.includes('PPA-CF') || fc.includes('PPA')) return 'PPA-CF';
+  if (fc.includes('PA6-GF')) return 'PA6-GF';
+  if (fc.includes('PA6-CF')) return 'PA6-CF';
+  if (fc.includes('PAHT-CF') || fc.includes('PA-CF')) return 'PA-CF';
+  if (fc.includes('PET-CF')) return 'PET-CF';
+  if (fc.includes('PETG-CF')) return 'PETG-CF';
+  if (fc.includes('PLA-CF')) return 'PLA-CF';
+  if (fc.includes('ABS-GF')) return 'ABS-GF';
+  if (fc.includes('ASA-CF')) return 'ASA-CF';
+  if (fc.includes('PC-FR') || fc.includes('PC FR')) return 'PC-FR';
+  if (fc.includes('TPU')) return 'TPU';
+  if (fc.includes('PETG')) return 'PETG';
+  if (fc.includes('PLA')) return 'PLA';
+  if (fc.includes('ASA')) return 'ASA';
+  if (fc.includes('ABS')) return 'ABS';
+  if (fc.includes('PC')) return 'PC';
+  if (fc.includes('NYLON') || fc.includes('PA')) return 'Nylon';
+  return null;
+}
 
 function inferMaterial(lines) {
   const scanLimit = Math.min(200, lines.length);
@@ -3614,51 +3711,18 @@ function inferMaterial(lines) {
 
   // Try comment-based detection first
   if (filamentComment) {
-    const fc = filamentComment.toUpperCase();
-    // Check specific variants before base types
-    if (fc.includes('PPS-CF') || fc.includes('PPS')) return 'PPS-CF';
-    if (fc.includes('PPA-CF') || fc.includes('PPA')) return 'PPA-CF';
-    if (fc.includes('PA6-GF')) return 'PA6-GF';
-    if (fc.includes('PA6-CF')) return 'PA6-CF';
-    if (fc.includes('PAHT-CF') || fc.includes('PA-CF')) return 'PA-CF';
-    if (fc.includes('PET-CF')) return 'PET-CF';
-    if (fc.includes('PETG-CF')) return 'PETG-CF';
-    if (fc.includes('PLA-CF')) return 'PLA-CF';
-    if (fc.includes('ABS-GF')) return 'ABS-GF';
-    if (fc.includes('ASA-CF')) return 'ASA-CF';
-    if (fc.includes('PC-FR') || fc.includes('PC FR')) return 'PC-FR';
-    if (fc.includes('TPU')) return 'TPU';
-    if (fc.includes('PETG')) return 'PETG';
-    if (fc.includes('PLA')) return 'PLA';
-    if (fc.includes('ASA')) return 'ASA';
-    if (fc.includes('ABS')) return 'ABS';
-    if (fc.includes('PC')) return 'PC';
-    if (fc.includes('NYLON') || fc.includes('PA')) return 'Nylon';
+    // Multi-material printers list all slots separated by semicolons
+    // (e.g. "PLA;PETG;PETG;TPU"). Use the first slot (active filament).
+    const fc = filamentComment.split(';')[0].trim().toUpperCase();
+    const matched = matchFilamentName(fc);
+    if (matched) return matched;
   }
 
-  // Fall back to temperature-based inference
+  // Fall back to temperature-based PLA vs PETG (the two most common materials).
+  // Exotic materials require a filament_type comment for reliable detection.
   if (hotendTemp !== null) {
-    // Use bed temp to distinguish within overlapping nozzle ranges
-    if (hotendTemp >= 310) return 'PPS-CF';
-    if (hotendTemp >= 280) {
-      if (bedTemp && bedTemp >= 100) return 'PA-CF';
-      return 'PC';
-    }
-    if (hotendTemp >= 260) {
-      if (bedTemp && bedTemp >= 100) return 'PA-CF';
-      return 'PC';
-    }
-    if (hotendTemp >= 250) {
-      if (bedTemp && bedTemp >= 90) return 'ABS';
-      return 'PETG';
-    }
-    if (hotendTemp >= 240) {
-      if (bedTemp && bedTemp >= 90) return 'ABS';
-      return 'PETG';
-    }
     if (hotendTemp >= 230) return 'PETG';
-    if (hotendTemp >= 220) return 'TPU';
-    if (hotendTemp >= 180) return 'PLA';
+    return 'PLA';
   }
 
   return 'PLA';
@@ -4577,7 +4641,7 @@ class StructuralAnalyzer {
 
   getSupportedOverlays() {
     return [
-      { id: 'layer-bond', label: 'Layer Bond Strength', unit: 'score' },
+      { id: 'layer-bond', label: 'Layer Bond Strength', unit: '%' },
     ];
   }
 
@@ -4595,6 +4659,1018 @@ class StructuralAnalyzer {
   clear() {
     this._bondResults.clear();
     this._findings = [];
+  }
+}
+
+
+
+const EXPOSURE_FACTORS = {
+  'WALL-OUTER': 1.0, 'OUTER WALL': 1.0,
+  'WALL-INNER': 0.7, 'INNER WALL': 0.7,
+  'SOLID': 0.5, 'SOLID INFILL': 0.5,
+  'FILL': 0.3, 'SPARSE': 0.3,
+  'TOP': 0.8, 'BRIDGE': 1.0, 'OVERHANG': 0.9,
+  'SUPPORT': 0.8, 'SKIRT': 1.0, 'BRIM': 1.0,
+};
+
+function getExposure(type) {
+  if (!type) return 0.5;
+  const upper = type.toUpperCase();
+  if (EXPOSURE_FACTORS[upper] !== undefined) return EXPOSURE_FACTORS[upper];
+  for (const [key, val] of Object.entries(EXPOSURE_FACTORS)) {
+    if (upper.includes(key)) return val;
+  }
+  return 0.5;
+}
+
+class ThermalAnalyzer {
+  constructor() {
+    this.name = 'thermal';
+    this._overlayData = new Map(); // "layerNum:moveIndex" -> { coolingTime, heatAccum, coolingEff, temperature, warpRisk }
+    this._findings = [];
+    this._gridData = null;
+    this._warpGrids = new Map(); // layerNum -> { warpRisk, extrusionCount, gridW, gridH, minX, minY, gridRes }
+  }
+
+  // --- Engine Interface ---
+
+  getSupportedOverlays() {
+    return [
+      { id: 'cooling-time', label: 'Cooling Time', unit: 's', invert: true },
+      { id: 'heat-accumulation', label: 'Heat Accumulation', unit: '%' },
+      { id: 'cooling-effectiveness', label: 'Cooling Effectiveness', unit: '%', invert: true },
+      { id: 'temperature', label: 'Temperature', unit: '°C' },
+      { id: 'warping-risk', label: 'Warping Risk', unit: 'mm' },
+    ];
+  }
+
+  getOverlayData(overlayId, layerNum, moveIndex) {
+    const key = `${layerNum}:${moveIndex}`;
+    const data = this._overlayData.get(key);
+    if (!data) return 0;
+    switch (overlayId) {
+      case 'cooling-time': return data.coolingTime ?? 0;
+      case 'heat-accumulation': return data.heatAccum ?? 0;
+      case 'cooling-effectiveness': return data.coolingEff ?? 0;
+      case 'temperature': return data.temperature ?? 0;
+      case 'warping-risk': return data.warpRisk ?? 0;
+      default: return 0;
+    }
+  }
+
+  getFindings() {
+    return this._findings;
+  }
+
+  clear() {
+    this._overlayData.clear();
+    this._findings = [];
+    this._gridData = null;
+    this._warpGrids.clear();
+  }
+
+  getWarpGrid(layerNum) {
+    return this._warpGrids.get(layerNum) || null;
+  }
+
+  // --- Grid Helpers ---
+
+  _cellKey(x, y, cellSize) {
+    const cx = Math.floor(x / cellSize);
+    const cy = Math.floor(y / cellSize);
+    return `${cx},${cy}`;
+  }
+
+  _rasterizeLine(x1, y1, x2, y2, cellSize) {
+    const cells = new Set();
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.001) {
+      cells.add(this._cellKey(x1, y1, cellSize));
+      return cells;
+    }
+    const steps = Math.max(1, Math.ceil(len / (cellSize * 0.5)));
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps;
+      cells.add(this._cellKey(x1 + dx * t, y1 + dy * t, cellSize));
+    }
+    return cells;
+  }
+
+  _distanceTransform(extrusionCount, gridW, gridH, gridRes) {
+    const totalCells = gridW * gridH;
+    const dist = new Float32Array(totalCells);
+    dist.fill(-1); // -1 = unvisited
+
+    // BFS queue: start from boundary cells (printed cells with a non-printed neighbor)
+    const queue = [];
+    for (let idx = 0; idx < totalCells; idx++) {
+      if (extrusionCount[idx] === 0) continue; // skip non-printed
+      const gy = Math.floor(idx / gridW);
+      const gx = idx % gridW;
+      const neighbors = [
+        gx > 0 ? idx - 1 : -1,
+        gx < gridW - 1 ? idx + 1 : -1,
+        gy > 0 ? idx - gridW : -1,
+        gy < gridH - 1 ? idx + gridW : -1,
+      ];
+      let isBoundary = false;
+      for (const nIdx of neighbors) {
+        if (nIdx < 0 || extrusionCount[nIdx] === 0) {
+          isBoundary = true;
+          break;
+        }
+      }
+      if (isBoundary) {
+        dist[idx] = 0;
+        queue.push(idx);
+      }
+    }
+
+    // BFS flood fill inward
+    let head = 0;
+    while (head < queue.length) {
+      const idx = queue[head++];
+      const gy = Math.floor(idx / gridW);
+      const gx = idx % gridW;
+      const nextDist = dist[idx] + 1;
+      const neighbors = [
+        gx > 0 ? idx - 1 : -1,
+        gx < gridW - 1 ? idx + 1 : -1,
+        gy > 0 ? idx - gridW : -1,
+        gy < gridH - 1 ? idx + gridW : -1,
+      ];
+      for (const nIdx of neighbors) {
+        if (nIdx < 0) continue;
+        if (extrusionCount[nIdx] === 0) continue; // skip non-printed
+        if (dist[nIdx] >= 0) continue; // already visited
+        dist[nIdx] = nextDist;
+        queue.push(nIdx);
+      }
+    }
+
+    // Convert grid steps to mm
+    for (let idx = 0; idx < totalCells; idx++) {
+      dist[idx] = Math.max(0, dist[idx]) * gridRes;
+    }
+    return dist;
+  }
+
+  // --- Fan State Tracking ---
+
+  _parseFanStates(lines) {
+    const states = {};
+    let currentLayer = -1;
+    let currentSpeed = 0;
+    let hasFanCommand = false;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const layerMatch = trimmed.match(/^;LAYER:(\d+)/);
+      if (layerMatch) {
+        currentLayer = parseInt(layerMatch[1], 10);
+        if (hasFanCommand) {
+          states[currentLayer] = currentSpeed;
+        }
+        continue;
+      }
+      const m106 = trimmed.match(/^M106\s+S([\d.]+)/i);
+      if (m106) {
+        currentSpeed = parseFloat(m106[1]) / 255;
+        hasFanCommand = true;
+        if (currentLayer >= 0) {
+          states[currentLayer] = currentSpeed;
+        }
+        continue;
+      }
+      if (trimmed.match(/^M107/i)) {
+        currentSpeed = 0;
+        hasFanCommand = true;
+        if (currentLayer >= 0) {
+          states[currentLayer] = 0;
+        }
+      }
+    }
+    return states;
+  }
+
+  // --- Ambient Temperature Inference ---
+
+  _inferAmbient(lines, environment, zHeight) {
+    // Priority 1: environment.chamberTemp
+    if (environment && environment.chamberTemp != null) {
+      return environment.chamberTemp;
+    }
+
+    // Priority 2: M141 S<val> from G-code
+    let m141Temp = null;
+    let bedTemp = null;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const m141Match = trimmed.match(/^M141\s+S([\d.]+)/i);
+      if (m141Match && m141Temp === null) {
+        m141Temp = parseFloat(m141Match[1]);
+      }
+      const bedMatch = trimmed.match(/^M1[49]0\s.*S([\d.]+)/i);
+      if (bedMatch && bedTemp === null) {
+        bedTemp = parseFloat(bedMatch[1]);
+      }
+    }
+
+    if (m141Temp !== null) return m141Temp;
+
+    // Priority 3: bed temp proxy
+    if (bedTemp !== null) {
+      return bedTemp * 0.3 * Math.exp(-zHeight / 50);
+    }
+
+    // Priority 4: environment.ambientTemp or 22°C
+    if (environment && environment.ambientTemp != null) {
+      return environment.ambientTemp;
+    }
+    return 22;
+  }
+
+  // --- Main Analysis ---
+
+  analyze(layerMoves, profile) {
+    this.clear();
+
+    const materialType = profile.material?.type || 'PLA';
+    const material = getMaterialProfile(materialType, profile.material || {});
+
+    // Depth settings
+    const depth = profile.thermal?.depth ?? 50;
+    let gridRes, timeBudget, enableBackward;
+    if (depth <= 33) {
+      gridRes = 4; timeBudget = 1500; enableBackward = false;
+    } else if (depth <= 66) {
+      gridRes = 2; timeBudget = 4000; enableBackward = true;
+    } else {
+      gridRes = 1; timeBudget = 10000; enableBackward = true;
+    }
+
+    // Environment
+    const chamberType = profile.environment?.chamberType || 'open';
+    const chamberFactor = chamberType === 'heated' ? 0.2 : chamberType === 'enclosed' ? 0.5 : 1.0;
+
+    // Parse fan states if raw lines available
+    let fanStates = {};
+    if (profile._parsedLines) {
+      fanStates = this._parseFanStates(profile._parsedLines);
+    }
+
+    // Infer ambient temp
+    const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
+    const maxLayerZ = layerNums.length * 0.2; // rough Z estimate
+    const ambientTemp = this._inferAmbient(
+      profile._parsedLines || [],
+      profile.environment || {},
+      maxLayerZ / 2
+    );
+
+    // Compute grid bounds from all extrusion moves
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let hasExtrusion = false;
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves) continue;
+      for (const m of moves) {
+        if (!m.extrude) continue;
+        hasExtrusion = true;
+        minX = Math.min(minX, m.x1, m.x2);
+        minY = Math.min(minY, m.y1, m.y2);
+        maxX = Math.max(maxX, m.x1, m.x2);
+        maxY = Math.max(maxY, m.y1, m.y2);
+      }
+    }
+
+    if (!hasExtrusion) return;
+
+    // Add padding
+    const pad = gridRes * 2;
+    minX -= pad; minY -= pad;
+    maxX += pad; maxY += pad;
+
+    const gridW = Math.ceil((maxX - minX) / gridRes) + 1;
+    const gridH = Math.ceil((maxY - minY) / gridRes) + 1;
+    const totalCells = gridW * gridH;
+
+    // Build parallel typed arrays for the grid
+    const temperature = new Float32Array(totalCells);
+    const lastExtrusionTime = new Float32Array(totalCells);
+    const extrusionCount = new Uint16Array(totalCells);
+    const exposureFactor = new Float32Array(totalCells);
+
+    // Init temperature to ambient, exposure to 1.0
+    temperature.fill(ambientTemp);
+    exposureFactor.fill(1.0);
+
+    // Deposition temperature: filament surface cools during deposition,
+    // so the effective cell temperature is below nozzle melt temp.
+    const depositionTemp = material.meltTemp * 0.7;
+
+    // Helper: cell key string -> grid index
+    const cellToIndex = (cellKey) => {
+      const parts = cellKey.split(',');
+      const cx = parseInt(parts[0], 10);
+      const cy = parseInt(parts[1], 10);
+      // Convert cell coords to grid-relative
+      const gx = cx - Math.floor(minX / gridRes);
+      const gy = cy - Math.floor(minY / gridRes);
+      if (gx < 0 || gx >= gridW || gy < 0 || gy >= gridH) return -1;
+      return gy * gridW + gx;
+    };
+
+    // Helper: grid index -> cell grid-relative coords
+    const indexToGxGy = (idx) => {
+      const gy = Math.floor(idx / gridW);
+      const gx = idx % gridW;
+      return [gx, gy];
+    };
+
+    const coolingConst = (material.thermalConductivity || 0.13) * 0.01 * chamberFactor;
+
+    // Forward pass data collection for backward pass
+    const layerCoolingTimes = []; // per layer: estimated layer time
+    const perMoveOverlays = []; // per [layerNum, moveIndex] overlay values stored in _overlayData
+
+    const startTime = Date.now();
+    let globalTime = 0;
+    let budgetExceeded = false;
+
+    // Forward pass
+    for (let li = 0; li < layerNums.length; li++) {
+      const layerNum = layerNums[li];
+      const moves = layerMoves[layerNum];
+      if (!moves || moves.length === 0) continue;
+
+      // Check time budget
+      if (Date.now() - startTime > timeBudget) {
+        budgetExceeded = true;
+      }
+
+      // Compute layer time
+      let layerTime = 0;
+      for (const move of moves) {
+        const len = Math.hypot(move.x2 - move.x1, move.y2 - move.y1);
+        const speed = (move.feedRate || 1500) / 60;
+        layerTime += speed > 0 ? len / speed : 0;
+      }
+      layerCoolingTimes.push({ layerNum, layerTime });
+
+      const fanSpeed = fanStates[layerNum] ?? 0;
+      const fanBoost = 1 + fanSpeed * (material.coolingSensitivity || 0.5);
+
+      // Snapshot temperature at layer start (after between-layer cooling).
+      // This prevents within-layer heat injection from contaminating overlay
+      // readings — all moves on this layer see the same post-cooling state.
+      const layerTemp = new Float32Array(temperature);
+
+      const materialCTE = material.cte || 68e-6;
+
+      // Per-cell contraction strain for neighbor stress calculation.
+      // strain = CTE × max(0, T - Tg). Cells below Tg have solidified (strain 0).
+      const gt_warp = material.glassTransition || 60;
+      const cellStrain = new Float32Array(totalCells);
+
+      // Compute centroid of printed area for part radius calculation.
+      let centroidX = 0, centroidY = 0, printedCount = 0;
+      for (let idx = 0; idx < totalCells; idx++) {
+        const dT = layerTemp[idx] - gt_warp;
+        cellStrain[idx] = dT > 0 ? materialCTE * dT : 0;
+        if (extrusionCount[idx] > 0) {
+          const gy = Math.floor(idx / gridW);
+          const gx = idx % gridW;
+          centroidX += (minX + gx * gridRes);
+          centroidY += (minY + gy * gridRes);
+          printedCount++;
+        }
+      }
+      if (printedCount > 0) {
+        centroidX /= printedCount;
+        centroidY /= printedCount;
+      }
+
+      // Part radius and per-cell effective distance. Pure distFromCentroid
+      // makes the center appear zero-risk (wrong — internal stress is real).
+      // A constant makes corners = center (wrong — stress concentrates at
+      // free edges). Blend: effectiveDist = partRadius × (0.4 + 0.6 × d/R).
+      // Center gets 40% of corner risk — corners are higher but center isn't zero.
+      let partRadius = 1;
+      for (let idx = 0; idx < totalCells; idx++) {
+        if (extrusionCount[idx] > 0) {
+          const gy = Math.floor(idx / gridW), gx = idx % gridW;
+          const d = Math.hypot(minX + gx * gridRes - centroidX, minY + gy * gridRes - centroidY);
+          if (d > partRadius) partRadius = d;
+        }
+      }
+      const effectiveDist = new Float32Array(totalCells);
+      for (let idx = 0; idx < totalCells; idx++) {
+        if (extrusionCount[idx] === 0) continue;
+        const gy = Math.floor(idx / gridW), gx = idx % gridW;
+        const d = Math.hypot(minX + gx * gridRes - centroidX, minY + gy * gridRes - centroidY);
+        effectiveDist[idx] = partRadius * (0.4 + 0.6 * d / partRadius);
+      }
+
+      // Precompute local fill fraction for each cell.
+      // In a lattice/grid structure, contraction forces don't accumulate across
+      // gaps the way they do in a solid plate. The fill fraction scales the
+      // part radius term so sparse structures warp proportionally less.
+      // Uses a summed area table (integral image) for O(1) per-cell queries.
+      const fillRadius = Math.max(2, Math.round(10 / gridRes));
+      const satW = gridW + 1, satH = gridH + 1;
+      const sat = new Float32Array(satW * satH);
+      for (let y = 1; y <= gridH; y++) {
+        for (let x = 1; x <= gridW; x++) {
+          sat[y * satW + x] = (extrusionCount[(y - 1) * gridW + (x - 1)] > 0 ? 1 : 0)
+            + sat[(y - 1) * satW + x] + sat[y * satW + (x - 1)] - sat[(y - 1) * satW + (x - 1)];
+        }
+      }
+      const fillFraction = new Float32Array(totalCells);
+      for (let idx = 0; idx < totalCells; idx++) {
+        const gy = Math.floor(idx / gridW), gx = idx % gridW;
+        const x0 = Math.max(0, gx - fillRadius), y0 = Math.max(0, gy - fillRadius);
+        const x1 = Math.min(gridW - 1, gx + fillRadius), y1 = Math.min(gridH - 1, gy + fillRadius);
+        const sum = sat[(y1 + 1) * satW + (x1 + 1)] - sat[y0 * satW + (x1 + 1)]
+          - sat[(y1 + 1) * satW + x0] + sat[y0 * satW + x0];
+        const area = (x1 - x0 + 1) * (y1 - y0 + 1);
+        fillFraction[idx] = sum / area;
+      }
+
+      // Process each move
+      for (let mi = 0; mi < moves.length; mi++) {
+        const move = moves[mi];
+        if (!move.extrude) {
+          this._overlayData.set(`${layerNum}:${mi}`, {
+            coolingTime: layerTime,
+            heatAccum: 0,
+            coolingEff: 0,
+            temperature: 0,
+            warpRisk: 0,
+          });
+          continue;
+        }
+
+        const len = Math.hypot(move.x2 - move.x1, move.y2 - move.y1);
+        if (len < 0.001) {
+          this._overlayData.set(`${layerNum}:${mi}`, {
+            coolingTime: layerTime,
+            heatAccum: 0,
+            coolingEff: 0,
+            temperature: 0,
+            warpRisk: 0,
+          });
+          continue;
+        }
+
+        const exposure = getExposure(move.type);
+        const cells = this._rasterizeLine(move.x1, move.y1, move.x2, move.y2, gridRes);
+        const cellLen = len / Math.max(1, cells.size);
+
+        // Sample from layer snapshot — immune to within-layer heat injection
+        const midX = (move.x1 + move.x2) / 2;
+        const midY = (move.y1 + move.y2) / 2;
+        const midKey = this._cellKey(midX, midY, gridRes);
+        const midIdx = cellToIndex(midKey);
+
+        let heatScore = 0;
+        let temperature_val = 0;
+        let coolingEff = 0;
+        let warpRisk = 0;
+
+        if (midIdx >= 0 && midIdx < totalCells) {
+          const preTemp = layerTemp[midIdx]; // post-cooling, pre-injection
+
+          // Heat accumulation: how hot was the cell before this layer started?
+          // High score = cell hadn't cooled from previous layer (heat building up).
+          const gt = material.glassTransition || 60;
+          const hdt = material.hdt || (gt + 20);
+          if (preTemp > gt) {
+            heatScore = Math.min(1.0, (preTemp - gt) / Math.max(1, hdt - gt));
+          }
+
+          // Temperature: actual cell temp from layer snapshot (°C)
+          temperature_val = preTemp;
+
+          // Cooling effectiveness: how well did this cell cool between layers?
+          // 1.0 = fully cooled to ambient (excellent), 0.0 = no cooling at all.
+          // Only meaningful after first extrusion (extrusionCount > 0).
+          if (extrusionCount[midIdx] > 0) {
+            coolingEff = Math.min(1.0, (depositionTemp - preTemp) / Math.max(1, depositionTemp - ambientTemp));
+          } else {
+            coolingEff = 1.0; // first extrusion at this cell, no prior heat
+          }
+
+          // Warping risk: (selfContraction + neighborStress) × partRadius × fillFraction
+          // selfContraction = CTE × ΔT (how much this cell wants to shrink)
+          // neighborStress = max strain difference with extruded neighbors
+          // partRadius = constant scale factor (mm) — larger parts warp more
+          // fillFraction = local material density — sparse structures warp less
+          const selfContraction = cellStrain[midIdx];
+          let neighborStress = 0;
+          const gy = Math.floor(midIdx / gridW);
+          const gx = midIdx % gridW;
+          const warpNeighbors = [
+            gx > 0 ? midIdx - 1 : -1,
+            gx < gridW - 1 ? midIdx + 1 : -1,
+            gy > 0 ? midIdx - gridW : -1,
+            gy < gridH - 1 ? midIdx + gridW : -1,
+          ];
+          for (const nIdx of warpNeighbors) {
+            if (nIdx < 0 || nIdx >= totalCells || extrusionCount[nIdx] === 0) continue;
+            const diff = Math.abs(cellStrain[midIdx] - cellStrain[nIdx]);
+            if (diff > neighborStress) neighborStress = diff;
+          }
+
+          warpRisk = (selfContraction + neighborStress) * effectiveDist[midIdx] * fillFraction[midIdx];
+        }
+
+        // Heat injection: fresh filament arrives near melt temp.
+        for (const cellKey of cells) {
+          const idx = cellToIndex(cellKey);
+          if (idx < 0 || idx >= totalCells) continue;
+          temperature[idx] = Math.max(temperature[idx], depositionTemp);
+          lastExtrusionTime[idx] = globalTime;
+          extrusionCount[idx]++;
+          exposureFactor[idx] = Math.min(exposureFactor[idx], exposure);
+        }
+
+        // Advance time per-move (before storing, so timestamp is at move start)
+        const speed = (move.feedRate || 1500) / 60;
+        const moveDuration = speed > 0 ? len / speed : 0;
+
+        // Default cooling time = layer time (approximate inter-layer interval).
+        // Backward pass refines this with actual per-cell re-extrusion times.
+        this._overlayData.set(`${layerNum}:${mi}`, {
+          coolingTime: layerTime,
+          heatAccum: heatScore,
+          coolingEff,
+          temperature: temperature_val,
+          warpRisk,
+          _timestamp: globalTime,
+        });
+
+        globalTime += moveDuration;
+      }
+
+      // Store per-layer warp grid for mesh visualization.
+      // Always store even when printedCount is 0 (e.g. layer 0 before any prior
+      // extrusions) — the extrusionCount footprint is needed for cumulative warp
+      // display in the viewer, and warp values will naturally be zero when
+      // cellStrain is zero (temperature below glass transition).
+      const warpGrid = new Float32Array(totalCells);
+      if (printedCount > 0) {
+        for (let idx = 0; idx < totalCells; idx++) {
+          if (extrusionCount[idx] === 0) continue;
+          const strain = cellStrain[idx];
+          const gy = Math.floor(idx / gridW), gx = idx % gridW;
+          let nStress = 0;
+          const neighbors = [
+            gx > 0 ? idx - 1 : -1,
+            gx < gridW - 1 ? idx + 1 : -1,
+            gy > 0 ? idx - gridW : -1,
+            gy < gridH - 1 ? idx + gridW : -1,
+          ];
+          for (const nIdx of neighbors) {
+            if (nIdx >= 0 && nIdx < totalCells && extrusionCount[nIdx] > 0) nStress = Math.max(nStress, Math.abs(strain - cellStrain[nIdx]));
+          }
+          warpGrid[idx] = (strain + nStress) * effectiveDist[idx] * fillFraction[idx];
+        }
+      }
+      this._warpGrids.set(layerNum, {
+        warpRisk: warpGrid,
+        extrusionCount: new Uint16Array(extrusionCount),
+        gridW, gridH, minX, minY, gridRes,
+      });
+
+      // Between layers: cool all cells (Newton's Law)
+      for (let idx = 0; idx < totalCells; idx++) {
+        if (temperature[idx] > ambientTemp) {
+          const exp = exposureFactor[idx];
+          const cooling = (temperature[idx] - ambientTemp) * coolingConst * layerTime * fanBoost * exp;
+          temperature[idx] = Math.max(ambientTemp, temperature[idx] - cooling);
+        }
+      }
+
+      // Lateral heat diffusion: cells exchange heat with neighbors.
+      // Edge cells lose heat to ambient-temperature padding, creating
+      // the center-to-edge gradient that drives warping and stress.
+      const diffusionRate = 0.15;
+      const diffIters = budgetExceeded ? 1 : 3;
+      const tempBuf = new Float32Array(temperature);
+      for (let iter = 0; iter < diffIters; iter++) {
+        for (let idx = 0; idx < totalCells; idx++) {
+          if (tempBuf[idx] <= ambientTemp) continue;
+          const gy = Math.floor(idx / gridW);
+          const gx = idx % gridW;
+          let sum = 0, count = 0;
+          if (gx > 0)          { sum += tempBuf[idx - 1];     count++; }
+          if (gx < gridW - 1)  { sum += tempBuf[idx + 1];     count++; }
+          if (gy > 0)          { sum += tempBuf[idx - gridW];  count++; }
+          if (gy < gridH - 1)  { sum += tempBuf[idx + gridW];  count++; }
+          if (count > 0) {
+            const avg = sum / count;
+            temperature[idx] = tempBuf[idx] + diffusionRate * (avg - tempBuf[idx]);
+          }
+        }
+        tempBuf.set(temperature);
+      }
+    }
+
+    // Backward pass: compute per-cell cooling time (time until cell is
+    // next extruded). Uses per-move timestamps stored during forward pass.
+    if (enableBackward && !budgetExceeded) {
+      // nextExtrusionTime[cell] tracks the earliest future extrusion timestamp
+      // for each grid cell, updated as we walk backward.
+      const nextExtrTime = new Float32Array(totalCells);
+      nextExtrTime.fill(globalTime); // init: nothing after the last layer
+      let maxCoolingTime = 0;
+
+      // Walk layers in reverse. Two phases per layer to prevent same-layer
+      // moves from polluting each other's cooling time via shared grid cells.
+      for (let li = layerNums.length - 1; li >= 0; li--) {
+        const layerNum = layerNums[li];
+        const moves = layerMoves[layerNum];
+        if (!moves) continue;
+
+        // Phase 1: Read cooling times for all moves in this layer.
+        // nextExtrTime only contains timestamps from later layers at this point.
+        for (let mi = moves.length - 1; mi >= 0; mi--) {
+          const move = moves[mi];
+          if (!move.extrude) continue;
+
+          const overlayKey = `${layerNum}:${mi}`;
+          const existing = this._overlayData.get(overlayKey);
+          if (!existing || existing._timestamp === undefined) continue;
+          const moveTime = existing._timestamp;
+
+          const midX = (move.x1 + move.x2) / 2;
+          const midY = (move.y1 + move.y2) / 2;
+          const midKey = this._cellKey(midX, midY, gridRes);
+          const midIdx = cellToIndex(midKey);
+          if (midIdx >= 0 && midIdx < totalCells) {
+            const coolingTime = nextExtrTime[midIdx] - moveTime;
+            if (coolingTime > 0) {
+              existing.coolingTime = coolingTime;
+              maxCoolingTime = Math.max(maxCoolingTime, coolingTime);
+            }
+          }
+        }
+
+        // Phase 2: Update nextExtrTime with this layer's timestamps so
+        // earlier layers see this layer as the "next extrusion".
+        for (let mi = moves.length - 1; mi >= 0; mi--) {
+          const move = moves[mi];
+          if (!move.extrude) continue;
+
+          const overlayKey = `${layerNum}:${mi}`;
+          const existing = this._overlayData.get(overlayKey);
+          if (!existing || existing._timestamp === undefined) continue;
+          const moveTime = existing._timestamp;
+
+          const cells = this._rasterizeLine(move.x1, move.y1, move.x2, move.y2, gridRes);
+          for (const cellKey of cells) {
+            const idx = cellToIndex(cellKey);
+            if (idx >= 0 && idx < totalCells) {
+              nextExtrTime[idx] = moveTime;
+            }
+          }
+        }
+      }
+
+    }
+
+    // Generate findings
+    this._generateFindings(layerMoves, layerNums, material, layerCoolingTimes, chamberFactor, chamberType);
+
+    // Store grid data for potential future use
+    this._gridData = { temperature, gridW, gridH, minX, minY, gridRes };
+  }
+
+  // --- Finding Generation ---
+
+  _generateFindings(layerMoves, layerNums, material, layerCoolingTimes, chamberFactor, chamberType) {
+    const minLayerTime = material.minLayerTime || 8;
+
+    // Cooling time findings
+    for (const { layerNum, layerTime } of layerCoolingTimes) {
+      const moves = layerMoves[layerNum];
+      if (!moves) continue;
+      const refMove = moves.find(m => m.extrude) || moves[0];
+      if (!refMove) continue;
+
+      if (layerTime < minLayerTime * 0.5) {
+        this._addFinding('critical', 'cooling-time', layerNum, 0, refMove,
+          'Very short cooling time',
+          `Layer ${layerNum} completes in ${layerTime.toFixed(1)}s (minimum: ${minLayerTime}s).`,
+          'Increase minimum layer time or enable "slow down for small layers" in slicer.',
+          { layerTime, minLayerTime });
+      } else if (layerTime < minLayerTime) {
+        this._addFinding('warning', 'cooling-time', layerNum, 0, refMove,
+          'Insufficient cooling time',
+          `Layer ${layerNum} completes in ${layerTime.toFixed(1)}s (recommended: ${minLayerTime}s).`,
+          'Consider increasing minimum layer time.',
+          { layerTime, minLayerTime });
+      }
+    }
+
+    // Heat accumulation findings
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves) continue;
+      let worstHeat = 0;
+      let worstMove = null;
+      let worstMoveIdx = 0;
+
+      for (let mi = 0; mi < moves.length; mi++) {
+        const data = this._overlayData.get(`${layerNum}:${mi}`);
+        if (!data) continue;
+        if (data.heatAccum > worstHeat) {
+          worstHeat = data.heatAccum;
+          worstMove = moves[mi];
+          worstMoveIdx = mi;
+        }
+      }
+
+      if (worstHeat > 0.8 && worstMove) {
+        this._addFinding('critical', 'heat-accumulation', layerNum, worstMoveIdx, worstMove,
+          'Small feature exceeds heat deflection temperature',
+          `Layer ${layerNum}: heat accumulation score ${worstHeat.toFixed(2)} — risk of deformation.`,
+          'Increase cooling, reduce speed for small features, or print multiple objects.',
+          { heatScore: worstHeat });
+      } else if (worstHeat > 0.5 && worstMove) {
+        this._addFinding('warning', 'heat-accumulation', layerNum, worstMoveIdx, worstMove,
+          'Heat buildup detected',
+          `Layer ${layerNum}: heat accumulation score ${worstHeat.toFixed(2)}.`,
+          'Consider enabling minimum layer time or printing a sacrificial tower.',
+          { heatScore: worstHeat });
+      }
+    }
+
+    // Cooling effectiveness findings
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves) continue;
+      let consecutivePoor = 0;
+      let longestRun = 0;
+      let runStart = null;
+
+      for (let mi = 0; mi < moves.length; mi++) {
+        const data = this._overlayData.get(`${layerNum}:${mi}`);
+        if (!data) continue;
+        if (data.coolingEff > 0.7 && moves[mi].extrude) {
+          if (consecutivePoor === 0) runStart = moves[mi];
+          consecutivePoor++;
+          longestRun = Math.max(longestRun, consecutivePoor);
+        } else {
+          consecutivePoor = 0;
+        }
+      }
+
+      if (longestRun > 10 && (material.coolingSensitivity || 0) > 0.6 && runStart) {
+        this._addFinding('warning', 'cooling-effectiveness', layerNum, 0, runStart,
+          'Limited cooling airflow',
+          `Layer ${layerNum}: ${longestRun} consecutive moves with poor cooling effectiveness.`,
+          'Increase fan speed or reorient part for better airflow.',
+          { consecutivePoorMoves: longestRun });
+      }
+    }
+
+    // Warp failure prediction (grid-based aggregate analysis)
+    this._analyzeWarpFailure(layerMoves, layerNums, material, chamberType);
+
+    // Merge consecutive findings for each category
+    this._mergeConsecutiveFindings('cooling-time');
+    this._mergeConsecutiveFindings('heat-accumulation');
+    this._mergeConsecutiveFindings('cooling-effectiveness');
+  }
+
+  _analyzeWarpFailure(layerMoves, layerNums, material, chamberType) {
+    if (this._warpGrids.size === 0) return;
+
+    // Step A: Compute cumulative averaged warp across all layers
+    // Find the grid dimensions from the first available grid
+    const firstGrid = this._warpGrids.values().next().value;
+    const { gridW, gridH, minX, minY, gridRes } = firstGrid;
+    const totalCells = gridW * gridH;
+
+    const warpSum = new Float32Array(totalCells);
+    const warpCount = new Uint16Array(totalCells);
+    let worstLayerNum = 0;
+    let worstLayerPeak = 0;
+
+    // Running cumulative average — track which layer produces the worst peak
+    for (const layerNum of layerNums) {
+      const grid = this._warpGrids.get(layerNum);
+      if (!grid) continue;
+
+      for (let idx = 0; idx < totalCells; idx++) {
+        const risk = grid.warpRisk[idx] || 0;
+        if (risk > 0 || grid.extrusionCount[idx] > 0) {
+          warpSum[idx] += risk;
+          warpCount[idx]++;
+        }
+      }
+
+      // Check running peak after this layer
+      for (let idx = 0; idx < totalCells; idx++) {
+        if (warpCount[idx] > 0) {
+          const avg = warpSum[idx] / warpCount[idx];
+          if (avg > worstLayerPeak) {
+            worstLayerPeak = avg;
+            worstLayerNum = layerNum;
+          }
+        }
+      }
+    }
+
+    // Step B: Compute aggregate metrics
+    let peakWarp = 0;
+    let peakCellIdx = 0;
+    let printedCells = 0;
+    let warnCells = 0;
+
+    // Material-adjusted thresholds (Step C — compute early for coverage calc)
+    const adhesion = material.adhesionCoefficient || 0.7;
+    const chamberScale = chamberType === 'heated' ? 2.0 : chamberType === 'enclosed' ? 1.5 : 1.0;
+    const warnThreshold = 0.4 * adhesion * chamberScale;
+    const critThreshold = 0.8 * adhesion * chamberScale;
+
+    for (let idx = 0; idx < totalCells; idx++) {
+      if (warpCount[idx] === 0) continue;
+      printedCells++;
+      const avg = warpSum[idx] / warpCount[idx];
+      if (avg > peakWarp) {
+        peakWarp = avg;
+        peakCellIdx = idx;
+      }
+      if (avg > warnThreshold) warnCells++;
+    }
+
+    if (printedCells === 0) return;
+
+    const warpCoverage = warnCells / printedCells;
+
+    // Convert peak cell to XY coordinates
+    const peakGy = Math.floor(peakCellIdx / gridW);
+    const peakGx = peakCellIdx % gridW;
+    const peakX = minX + peakGx * gridRes;
+    const peakY = minY + peakGy * gridRes;
+
+    // Find nearest extrusion move on worst layer for finding location
+    const worstMoves = layerMoves[worstLayerNum];
+    let refMove = null;
+    let refMoveIdx = 0;
+    if (worstMoves) {
+      let bestDist = Infinity;
+      for (let mi = 0; mi < worstMoves.length; mi++) {
+        const m = worstMoves[mi];
+        if (!m.extrude) continue;
+        const mx = (m.x1 + m.x2) / 2, my = (m.y1 + m.y2) / 2;
+        const d = Math.hypot(mx - peakX, my - peakY);
+        if (d < bestDist) { bestDist = d; refMove = m; refMoveIdx = mi; }
+      }
+    }
+    if (!refMove) {
+      // Fallback: use first extrusion move on any layer
+      for (const ln of layerNums) {
+        const moves = layerMoves[ln];
+        if (!moves) continue;
+        refMove = moves.find(m => m.extrude) || moves[0];
+        if (refMove) { worstLayerNum = ln; break; }
+      }
+      if (!refMove) return;
+    }
+
+    const materialName = material.type || 'unknown';
+    const layerHeight = 0.2; // default layer height
+
+    // Step D: Generate findings (at most 3)
+    const suggestions = this._warpSuggestion(material, chamberType, peakWarp);
+
+    // 1. Bed adhesion failure
+    if (peakWarp > critThreshold) {
+      this._addFinding('critical', 'warp-failure', worstLayerNum, refMoveIdx, refMove,
+        'Print likely to fail — warp exceeds bed adhesion capacity',
+        `Peak averaged warp ${peakWarp.toFixed(2)}mm (threshold ${critThreshold.toFixed(2)}mm for ${materialName}). ` +
+        `${(warpCoverage * 100).toFixed(0)}% of footprint affected.`,
+        suggestions,
+        { failureMode: 'bed-adhesion', peakWarp, warpCoverage, material: materialName });
+    } else if (peakWarp > warnThreshold) {
+      this._addFinding('warning', 'warp-failure', worstLayerNum, refMoveIdx, refMove,
+        'Warping risk — possible bed adhesion issues',
+        `Peak averaged warp ${peakWarp.toFixed(2)}mm (threshold ${warnThreshold.toFixed(2)}mm for ${materialName}). ` +
+        `${(warpCoverage * 100).toFixed(0)}% of footprint affected.`,
+        suggestions,
+        { failureMode: 'bed-adhesion', peakWarp, warpCoverage, material: materialName });
+    }
+
+    // 2. Nozzle collision — peakWarp > 1.5× layer height
+    if (peakWarp > 1.5 * layerHeight) {
+      this._addFinding('critical', 'warp-failure', worstLayerNum, refMoveIdx, refMove,
+        'Warp may cause nozzle collision — warped edge exceeds layer height',
+        `Peak warp ${peakWarp.toFixed(2)}mm exceeds ${(1.5 * layerHeight).toFixed(2)}mm (1.5× layer height ${layerHeight}mm).`,
+        suggestions,
+        { failureMode: 'nozzle-collision', peakWarp, layerHeight, material: materialName });
+    }
+
+    // 3. Dimensional failure — coverage above threshold
+    if (warpCoverage > 0.5) {
+      this._addFinding('critical', 'warp-failure', worstLayerNum, refMoveIdx, refMove,
+        `${(warpCoverage * 100).toFixed(0)}% of print footprint shows significant warping`,
+        `More than half of the printed area exceeds the warp warning threshold (${warnThreshold.toFixed(2)}mm).`,
+        suggestions,
+        { failureMode: 'dimensional', warpCoverage, peakWarp, material: materialName });
+    } else if (warpCoverage > 0.3) {
+      this._addFinding('warning', 'warp-failure', worstLayerNum, refMoveIdx, refMove,
+        `${(warpCoverage * 100).toFixed(0)}% of print footprint shows significant warping`,
+        `A substantial portion of the printed area exceeds the warp warning threshold (${warnThreshold.toFixed(2)}mm).`,
+        suggestions,
+        { failureMode: 'dimensional', warpCoverage, peakWarp, material: materialName });
+    }
+
+    // Safe result — if no warp-failure findings were generated
+    const warpFindings = this._findings.filter(f => f.category === 'warp-failure');
+    if (warpFindings.length === 0) {
+      this._addFinding('info', 'warp-failure', worstLayerNum, refMoveIdx, refMove,
+        `Warping within safe limits for ${materialName}`,
+        `Peak averaged warp ${peakWarp.toFixed(2)}mm is below warning threshold (${warnThreshold.toFixed(2)}mm).`,
+        'No action needed.',
+        { failureMode: 'none', peakWarp, warpCoverage, material: materialName });
+    }
+  }
+
+  _warpSuggestion(material, chamberType, peakWarp) {
+    const tips = ['Add a brim (10-15mm)'];
+    if (chamberType === 'open') tips.push('Use an enclosed or heated chamber');
+    if ((material.cte || 0) > 70e-6) tips.push('Consider a lower-CTE variant (e.g. PLA-CF)');
+    if (peakWarp > 1.0) tips.push('Reduce part size or split into smaller pieces');
+    return tips.join('. ') + '.';
+  }
+
+  _addFinding(severity, category, layerNum, moveIndex, move, title, description, suggestion, metadata) {
+    const id = `th-${category}-${this._findings.length}`;
+    const midX = (move.x1 + move.x2) / 2;
+    const midY = (move.y1 + move.y2) / 2;
+    this._findings.push({
+      id, engine: 'thermal', severity, category, title, description, suggestion,
+      location: {
+        layer: layerNum,
+        lineStart: move.lineIndex,
+        lineEnd: move.lineIndex,
+        xyz: { x: midX, y: midY, z: 0 },
+      },
+      metadata: metadata || {},
+    });
+  }
+
+  _mergeConsecutiveFindings(category) {
+    const catFindings = this._findings.filter(f => f.category === category);
+    if (catFindings.length <= 3) return;
+
+    const other = this._findings.filter(f => f.category !== category);
+
+    catFindings.sort((a, b) => a.location.layer - b.location.layer);
+
+    const groups = [];
+    let group = [catFindings[0]];
+    for (let i = 1; i < catFindings.length; i++) {
+      const prevLayer = catFindings[i - 1].location.layer;
+      const currLayer = catFindings[i].location.layer;
+      if (currLayer - prevLayer <= 2) {
+        group.push(catFindings[i]);
+      } else {
+        groups.push(group);
+        group = [catFindings[i]];
+      }
+    }
+    groups.push(group);
+
+    const merged = [];
+    for (const g of groups) {
+      if (g.length === 1) {
+        merged.push(g[0]);
+        continue;
+      }
+      const worst = g.reduce((w, f) => {
+        if (f.severity === 'critical') return f;
+        if (f.severity === 'warning' && w.severity !== 'critical') return f;
+        return w;
+      }, g[0]);
+      const startLayer = g[0].location.layer;
+      const endLayer = g[g.length - 1].location.layer;
+      merged.push({
+        ...worst,
+        id: `th-${category}-merged-${merged.length}`,
+        title: worst.title,
+        description: `Layers ${startLayer}\u2013${endLayer}: ${worst.description.replace(/^Layer \d+: /, '')}`,
+        location: { ...worst.location, layer: startLayer },
+        metadata: { ...worst.metadata, layerRange: [startLayer, endLayer], mergedCount: g.length },
+      });
+    }
+
+    this._findings = [...other, ...merged];
   }
 }
 
@@ -4622,6 +5698,12 @@ class GcodeViewer3D {
 
     // Cross-section clipping plane state
     this.clipPlane = null; // [nx, ny, nz, d] or null when inactive
+
+    // Warp mesh view state
+    this._warpViewActive = false;
+    this._warpDeformScale = 0;
+    this._warpMeshBuf = null; // { vao, vbo, count, key }
+    this._warpMeshRange = null; // { min, max } for legend
 
     // Camera state
     this.cam = {
@@ -4843,9 +5925,10 @@ class GcodeViewer3D {
   }
 
   // Blue → Cyan → Green → Yellow → Red gradient
-  _getHeatmapColor(value, min, max) {
+  _getHeatmapColor(value, min, max, invert) {
     let t = max > min ? (value - min) / (max - min) : 0;
     t = Math.max(0, Math.min(1, t));
+    if (invert) t = 1 - t;
     // 5-stop gradient: blue(0) → cyan(0.25) → green(0.5) → yellow(0.75) → red(1)
     let r, g, b;
     if (t < 0.25) {
@@ -4887,6 +5970,10 @@ class GcodeViewer3D {
     const offsets = [];
     const isHeatmap = colorMode !== 'motion-type';
     const heatStats = isHeatmap ? getHeatmapLayerStats(layerNum) : null;
+    const overlayDef = isHeatmap && typeof analysisManager !== 'undefined'
+      ? analysisManager.getSupportedOverlays().find(o => o.id === colorMode)
+      : null;
+    const invertColor = overlayDef?.invert || false;
 
     for (let moveIndex = 0; moveIndex < moves.length; moveIndex++) {
       const move = moves[moveIndex];
@@ -4903,7 +5990,7 @@ class GcodeViewer3D {
 
       if (move.extrude) {
         const color = isHeatmap
-          ? this._getHeatmapColor(getHeatmapValue(move, layerNum, moveIndex), heatStats.min, heatStats.max)
+          ? this._getHeatmapColor(getHeatmapValue(move, layerNum, moveIndex), heatStats.min, heatStats.max, invertColor)
           : this._getTypeColor(move.type);
         const dx = move.x2 - move.x1;
         const dy = move.y2 - move.y1;
@@ -5013,6 +6100,225 @@ class GcodeViewer3D {
     }
     this.layerBuffers.clear();
     this.moveOffsets.clear();
+    this._clearWarpMesh();
+  }
+
+  _clearWarpMesh() {
+    if (this._warpMeshBuf) {
+      const gl = this.gl;
+      if (this._warpMeshBuf.vao) gl.deleteVertexArray(this._warpMeshBuf.vao);
+      if (this._warpMeshBuf.vbo) gl.deleteBuffer(this._warpMeshBuf.vbo);
+      this._warpMeshBuf = null;
+    }
+    this._warpMeshRange = null;
+  }
+
+  _buildWarpMesh(layerNum, deformScale) {
+    const key = `${layerNum}:${deformScale}`;
+    if (this._warpMeshBuf && this._warpMeshBuf.key === key) return this._warpMeshBuf;
+
+    this._clearWarpMesh();
+
+    // Find thermal engine via analysisManager
+    const thermalEngine = analysisManager.engines.find(e => e.name === 'thermal');
+    if (!thermalEngine) return null;
+
+    // Get grid dimensions from any available warp grid (dimensions are identical
+    // across all layers since the grid is computed from global extrusion bounds).
+    const layerNums = Object.keys(parser.layerMoves).map(Number).sort((a, b) => a - b);
+    let refGrid = thermalEngine.getWarpGrid(layerNum);
+    if (!refGrid) {
+      for (const ln of layerNums) {
+        refGrid = thermalEngine.getWarpGrid(ln);
+        if (refGrid) break;
+      }
+    }
+    if (!refGrid) return null;
+    const { gridW, gridH, minX, minY, gridRes } = refGrid;
+    const totalCells = gridW * gridH;
+    const vW = gridW + 1, vH = gridH + 1;
+
+    // Collect layers up to selected
+    const validLayers = layerNums.filter(ln => ln <= layerNum);
+    if (validLayers.length === 0) return null;
+
+    // First pass: compute FINAL average warp for global min/max color scale.
+    // Per-layer warpRisk = (strain + neighborStress) × partRadius × fillFraction,
+    // which has distance units (mm). Naive summation blows up linearly with
+    // layer count (e.g. 50 layers × ~2mm = 100mm — unrealistic). Physically,
+    // more layers add force but also stiffness, so total warp is roughly
+    // independent of layer count. We use per-cell averaging to keep values in a
+    // realistic range while still capturing spatial variation.
+    const finalCumWarp = new Float32Array(totalCells);
+    const finalCumCount = new Uint16Array(totalCells);
+    const finalCumExtrusion = new Uint8Array(totalCells);
+    for (const ln of validLayers) {
+      const grid = thermalEngine.getWarpGrid(ln);
+      if (!grid) continue;
+      for (let i = 0; i < totalCells; i++) {
+        if (grid.extrusionCount[i] > 0) {
+          finalCumWarp[i] += grid.warpRisk[i];
+          finalCumCount[i]++;
+          finalCumExtrusion[i] = 1;
+        }
+      }
+    }
+    // Normalize: average per cell
+    for (let i = 0; i < totalCells; i++) {
+      if (finalCumCount[i] > 0) finalCumWarp[i] /= finalCumCount[i];
+    }
+    let minWarp = Infinity, maxWarp = -Infinity;
+    for (let i = 0; i < totalCells; i++) {
+      if (!finalCumExtrusion[i]) continue;
+      if (finalCumWarp[i] < minWarp) minWarp = finalCumWarp[i];
+      if (finalCumWarp[i] > maxWarp) maxWarp = finalCumWarp[i];
+    }
+    if (minWarp === Infinity) return null;
+    this._warpMeshRange = { min: minWarp, max: maxWarp };
+
+    // Compute centroid and max distance for Z-deformation weighting.
+    // Warp risk values are now uniform (no distance bias) — the viewer
+    // applies distance-from-centroid only to Z-offset so edges visually
+    // lift while the color map reflects actual thermal stress.
+    let centX = 0, centY = 0, centCount = 0;
+    for (let i = 0; i < totalCells; i++) {
+      if (finalCumExtrusion[i]) {
+        const gy = Math.floor(i / gridW), gx = i % gridW;
+        centX += minX + gx * gridRes;
+        centY += minY + gy * gridRes;
+        centCount++;
+      }
+    }
+    if (centCount > 0) { centX /= centCount; centY /= centCount; }
+    let maxDistFromCent = 1;
+    for (let i = 0; i < totalCells; i++) {
+      if (finalCumExtrusion[i]) {
+        const gy = Math.floor(i / gridW), gx = i % gridW;
+        const d = Math.hypot(minX + gx * gridRes - centX, minY + gy * gridRes - centY);
+        if (d > maxDistFromCent) maxDistFromCent = d;
+      }
+    }
+
+    // Determine which layers get mesh surfaces (sample evenly if too many)
+    const maxMeshLayers = 60;
+    let meshLayerSet;
+    if (validLayers.length <= maxMeshLayers) {
+      meshLayerSet = new Set(validLayers);
+    } else {
+      meshLayerSet = new Set();
+      const step = (validLayers.length - 1) / (maxMeshLayers - 1);
+      for (let i = 0; i < maxMeshLayers; i++) {
+        meshLayerSet.add(validLayers[Math.round(i * step)]);
+      }
+      meshLayerSet.add(validLayers[0]);
+      meshLayerSet.add(validLayers[validLayers.length - 1]);
+    }
+
+    // Second pass: incrementally accumulate warp, emit mesh at sampled layers.
+    // Each layer's mesh uses averaged cumulative warp up to that layer for
+    // coloring, but the GLOBAL min/max for consistent color scale.
+    const cumWarpSum = new Float32Array(totalCells);
+    const cumCount = new Uint16Array(totalCells);
+    const cumExtrusion = new Uint8Array(totalCells);
+    const verts = [];
+
+    for (const ln of validLayers) {
+      const grid = thermalEngine.getWarpGrid(ln);
+      if (grid) {
+        for (let i = 0; i < totalCells; i++) {
+          if (grid.extrusionCount[i] > 0) {
+            cumWarpSum[i] += grid.warpRisk[i];
+            cumCount[i]++;
+            cumExtrusion[i] = 1;
+          }
+        }
+      }
+      if (!meshLayerSet.has(ln)) continue;
+
+      // Check if any cells have been printed up to this point
+      let hasExtrusion = false;
+      for (let i = 0; i < totalCells; i++) {
+        if (cumExtrusion[i]) { hasExtrusion = true; break; }
+      }
+      if (!hasExtrusion) continue;
+
+      // Compute per-cell averaged warp for this layer's mesh
+      const avgWarp = new Float32Array(totalCells);
+      for (let i = 0; i < totalCells; i++) {
+        if (cumCount[i] > 0) avgWarp[i] = cumWarpSum[i] / cumCount[i];
+      }
+
+      const layerInfo = parser.layers.find(l => l.number === ln);
+      const z = layerInfo ? (layerInfo.zHeight || 0) : 0;
+
+      // Build vertex grid: each corner averages warp from up to 4 surrounding cells
+      const vertexWarp = new Float32Array(vW * vH);
+      for (let vy = 0; vy < vH; vy++) {
+        for (let vx = 0; vx < vW; vx++) {
+          let sum = 0, count = 0;
+          for (const [cx, cy] of [[vx-1,vy-1],[vx,vy-1],[vx-1,vy],[vx,vy]]) {
+            if (cx >= 0 && cx < gridW && cy >= 0 && cy < gridH) {
+              const idx = cy * gridW + cx;
+              if (cumExtrusion[idx]) { sum += avgWarp[idx]; count++; }
+            }
+          }
+          vertexWarp[vy * vW + vx] = count > 0 ? sum / count : 0;
+        }
+      }
+
+      // Emit triangles with per-vertex colors and Z deformation
+      for (let gy = 0; gy < gridH; gy++) {
+        for (let gx = 0; gx < gridW; gx++) {
+          if (!cumExtrusion[gy * gridW + gx]) continue;
+          const corners = [[gx,gy],[gx+1,gy],[gx+1,gy+1],[gx,gy+1]];
+          const cv = corners.map(([vx, vy]) => {
+            const w = vertexWarp[vy * vW + vx];
+            const [r, g, b] = this._getHeatmapColor(w, minWarp, maxWarp, false);
+            // Z-deformation: scale by distance from centroid so edges lift
+            // while center stays flat — mimics real plate bending behavior.
+            const wx = minX + vx * gridRes, wy = minY + vy * gridRes;
+            const distFactor = Math.hypot(wx - centX, wy - centY) / maxDistFromCent;
+            return {
+              x: wx,
+              y: wy,
+              z: z + w * distFactor * deformScale,
+              r, g, b,
+            };
+          });
+          // Triangle 1: BL, BR, TR
+          for (const v of [cv[0], cv[1], cv[2]]) {
+            verts.push(v.x, v.y, v.z, v.r, v.g, v.b, 1.0);
+          }
+          // Triangle 2: BL, TR, TL
+          for (const v of [cv[0], cv[2], cv[3]]) {
+            verts.push(v.x, v.y, v.z, v.r, v.g, v.b, 1.0);
+          }
+        }
+      }
+    }
+
+    if (verts.length === 0) return null;
+
+    // Upload to GPU — same VAO/VBO pattern as existing layer buffers
+    const gl = this.gl;
+    const data = new Float32Array(verts);
+    const stride = 7 * 4; // 7 floats × 4 bytes
+
+    const vao = gl.createVertexArray();
+    const vbo = gl.createBuffer();
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(this.a_pos);
+    gl.vertexAttribPointer(this.a_pos, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(this.a_color);
+    gl.vertexAttribPointer(this.a_color, 3, gl.FLOAT, false, stride, 12);
+    gl.enableVertexAttribArray(this.a_alpha);
+    gl.vertexAttribPointer(this.a_alpha, 1, gl.FLOAT, false, stride, 24);
+    gl.bindVertexArray(null);
+
+    this._warpMeshBuf = { vao, vbo, count: verts.length / 7, key };
+    return this._warpMeshBuf;
   }
 
   _initShaders() {
@@ -5113,6 +6419,21 @@ class GcodeViewer3D {
 
     // Draw bed grid
     this._drawGrid(mvp);
+
+    // Warp mesh view: draw surface mesh instead of toolpath lines
+    if (this._warpViewActive) {
+      const mesh = this._buildWarpMesh(layerNum, this._warpDeformScale);
+      if (mesh) {
+        gl.useProgram(this.prog);
+        gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+        gl.uniform4fv(this.u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
+        gl.uniform1f(this.u_alphaOverride, -1.0);
+        gl.bindVertexArray(mesh.vao);
+        gl.drawArrays(gl.TRIANGLES, 0, mesh.count);
+        gl.bindVertexArray(null);
+      }
+      return;
+    }
 
     // Draw layers 0..maxVisibleLayer
     gl.useProgram(this.prog);
@@ -5822,9 +7143,17 @@ class GcodeViewer3D {
         } else {
           const val = getHeatmapValue(move, this.currentLayer, moveIndex);
           let unit = 'mm\u00B3/s';
+          let tipMult = 1;
           if (colorMode === 'speed') unit = 'mm/s';
           else if (colorMode === 'acceleration') unit = 'mm/s\u00B2';
-          const displayVal = val.toFixed(1);
+          else if (typeof analysisManager !== 'undefined') {
+            const oDef = analysisManager.getSupportedOverlays().find(o => o.id === colorMode);
+            if (oDef) {
+              unit = oDef.unit || '';
+              if (unit === '%') tipMult = 100;
+            }
+          }
+          const displayVal = (val * tipMult).toFixed(1);
           heatmapTip.textContent = `${displayVal} ${unit}`;
         }
         heatmapTip.style.left = (mx + 14) + 'px';
@@ -5983,7 +7312,7 @@ class GcodeViewer3D {
 
     // Resize observer
     new ResizeObserver(() => {
-      if (currentView === 'visual') { this.resize(); this.render(this.currentLayer); }
+      if (currentView === 'visual' || currentView === 'warp') { this.resize(); this.render(this.currentLayer); }
     }).observe(c.parentElement);
   }
 }
@@ -6683,13 +8012,18 @@ function renderMotionLegend() {
       if (overlay) unitLabel = overlay.unit || '';
     }
 
-    const mult = colorMode === 'speed-delta' ? 100 : 1;
+    const overlayDef = analysisManager.getSupportedOverlays().find(o => o.id === colorMode);
+    const isInverted = overlayDef?.invert || false;
+    const mult = (colorMode === 'speed-delta' || unitLabel === '%') ? 100 : 1;
+    const barStyle = isInverted ? ' style="background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff)"' : '';
+    const leftLabel = (stats.min * mult).toFixed(1);
+    const rightLabel = (stats.max * mult).toFixed(1);
     html += `<div class="heatmap-gradient">
-      <div class="heatmap-bar"></div>
+      <div class="heatmap-bar"${barStyle}></div>
       <div class="heatmap-labels">
-        <span>${(stats.min * mult).toFixed(1)}</span>
+        <span>${leftLabel}</span>
         <span>${unitLabel}</span>
-        <span>${(stats.max * mult).toFixed(1)}</span>
+        <span>${rightLabel}</span>
       </div>
     </div>`;
     html += `<div class="heatmap-stats">
@@ -6963,6 +8297,12 @@ function selectLayer(num) {
     viewer.render(num);
     updateViewerOverlay(num);
     showSimControls();
+  } else if (currentView === 'warp') {
+    viewer.maxVisibleLayer = num;
+    viewer._clearWarpMesh(); // Invalidate cached mesh for new layer
+    viewer.render(num);
+    updateViewerOverlay(num);
+    updateWarpLegend();
   }
 
   // Fill layer number into active tab's layer input
@@ -7691,7 +9031,13 @@ function updateThreshold(key, level, value) {
 }
 
 function onMaterialChange(type) {
-  analysisProfile.material = getMaterialProfile(type);
+  const stored = JSON.parse(localStorage.getItem('gcode_custom_materials') || '[]');
+  const custom = stored.find(m => m.name === type);
+  if (custom) {
+    analysisProfile.material = custom;
+  } else {
+    analysisProfile.material = getMaterialProfile(type);
+  }
   analysisProfile._manualMaterial = true;
   const inferred = document.getElementById('analysisMaterialInferred');
   if (inferred) inferred.textContent = '(manual)';
@@ -7704,14 +9050,78 @@ function loadMaterialProfileFile(input) {
   reader.onload = function(e) {
     try {
       const custom = JSON.parse(e.target.result);
-      analysisProfile.material = { ...analysisProfile.material, ...custom };
+      if (!custom.name) {
+        showToast('Custom profile must have a "name" field', 0, 'error');
+        return;
+      }
+      // Inherit from base material if specified
+      let base = {};
+      if (custom.base && MATERIAL_PROFILES[custom.base]) {
+        base = { ...MATERIAL_PROFILES[custom.base] };
+      }
+      const merged = { ...base, ...custom, type: custom.name };
+
+      // Warn on out-of-range thermal values
+      if (merged.thermalConductivity && (merged.thermalConductivity < 0.01 || merged.thermalConductivity > 1.0)) {
+        showToast('Warning: thermalConductivity seems unusual (expected 0.01-1.0)', 5000, 'error');
+      }
+      if (merged.specificHeatCapacity && (merged.specificHeatCapacity < 500 || merged.specificHeatCapacity > 3000)) {
+        showToast('Warning: specificHeatCapacity seems unusual (expected 500-3000)', 5000, 'error');
+      }
+
+      // Store in localStorage
+      const stored = JSON.parse(localStorage.getItem('gcode_custom_materials') || '[]');
+      const existingIdx = stored.findIndex(m => m.name === custom.name);
+      if (existingIdx >= 0) stored[existingIdx] = merged;
+      else stored.push(merged);
+      localStorage.setItem('gcode_custom_materials', JSON.stringify(stored));
+
+      analysisProfile.material = merged;
       analysisProfile._manualMaterial = true;
-      showToast('Material profile loaded');
+      showToast('Material profile "' + custom.name + '" loaded');
+      renderCustomMaterials();
     } catch (err) {
       showToast('Invalid JSON profile: ' + err.message, 0, 'error');
     }
   };
   reader.readAsText(file);
+}
+
+function renderCustomMaterials() {
+  const select = document.getElementById('analysisMaterialType');
+  if (!select) return;
+  // Remove existing custom group
+  const existingGroup = select.querySelector('optgroup[label="Custom"]');
+  if (existingGroup) existingGroup.remove();
+  // Add custom materials from localStorage
+  const stored = JSON.parse(localStorage.getItem('gcode_custom_materials') || '[]');
+  if (stored.length === 0) return;
+  const group = document.createElement('optgroup');
+  group.label = 'Custom';
+  for (const mat of stored) {
+    const opt = document.createElement('option');
+    opt.value = mat.name;
+    opt.textContent = mat.name;
+    group.appendChild(opt);
+  }
+  select.appendChild(group);
+}
+
+function onAnalysisDepthChange(value) {
+  const v = parseInt(value, 10);
+  if (!analysisProfile.thermal) analysisProfile.thermal = {};
+  analysisProfile.thermal.depth = v;
+  const label = document.getElementById('analysisDepthLabel');
+  if (label) {
+    if (v <= 33) label.textContent = 'Fast';
+    else if (v <= 66) label.textContent = 'Balanced';
+    else label.textContent = 'Thorough';
+  }
+}
+
+function onChamberTypeChange(value) {
+  if (!analysisProfile.environment) analysisProfile.environment = {};
+  analysisProfile.environment.chamberType = value;
 }
 
 function navigateToFinding(findingId) {
@@ -7741,6 +9151,7 @@ function switchTab(tabName) {
   }
   if (tabName === 'analysis') {
     renderAnalysisPanel();
+    renderCustomMaterials();
   }
 }
 
@@ -8110,21 +9521,89 @@ function onModDragEnd() {
 // ===== VIEW TOGGLE =====
 function setView(view) {
   currentView = view;
+  const isViewer = view === 'visual' || view === 'warp';
   document.getElementById('viewCodeBtn').classList.toggle('active', view === 'code');
   document.getElementById('viewVisualBtn').classList.toggle('active', view === 'visual');
-  document.getElementById('gcodePreview').classList.toggle('hidden', view === 'visual');
-  document.getElementById('viewerWrap').classList.toggle('active', view === 'visual');
-  if (view === 'visual' && selectedLayer !== null) {
+  document.getElementById('viewWarpBtn').classList.toggle('active', view === 'warp');
+  document.getElementById('gcodePreview').classList.toggle('hidden', isViewer);
+  document.getElementById('viewerWrap').classList.toggle('active', isViewer);
+  document.getElementById('warpControls').classList.toggle('hidden', view !== 'warp');
+
+  // Set viewer warp mode
+  viewer._warpViewActive = view === 'warp';
+  if (view !== 'warp') {
+    viewer._clearWarpMesh();
+  }
+
+  if (isViewer && selectedLayer !== null) {
     viewer.resize();
     viewer.fitBounds();
     viewer.maxVisibleLayer = selectedLayer;
     viewer.render(selectedLayer);
     updateViewerOverlay(selectedLayer);
-    showSimControls();
+    if (view === 'visual') {
+      showSimControls();
+      renderMotionLegend();
+    } else {
+      stopSimulation();
+      hideSimControls();
+    }
+    // Show legend with warping-risk colors + deformation slider when in warp view
+    if (view === 'warp') {
+      updateWarpLegend();
+    }
   } else {
     stopSimulation();
     hideSimControls();
   }
+}
+
+function updateWarpLegend() {
+  const legendEl = document.getElementById('viewerLegend');
+  if (!legendEl) return;
+  const range = viewer._warpMeshRange;
+  const minStr = range ? range.min.toFixed(3) : '0.000';
+  const maxStr = range ? range.max.toFixed(3) : '0.000';
+  const scale = viewer._warpDeformScale || 0;
+  legendEl.style.display = '';
+  legendEl.innerHTML = `<div class="legend-header"><span class="legend-title">Warp Risk</span></div>
+    <div style="padding:6px 10px;font-size:11px;">
+      <div style="height:12px;border-radius:3px;background:linear-gradient(to right,#0000ff,#00ffff,#00ff00,#ffff00,#ff0000);margin-bottom:4px;"></div>
+      <div style="display:flex;justify-content:space-between;color:var(--text-dim);">
+        <span>${minStr}mm</span><span>${maxStr}mm</span>
+      </div>
+    </div>
+    <div style="padding:6px 10px;border-top:1px solid var(--border);font-size:11px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="color:var(--text-dim);">Deformation</span>
+        <span id="warpDeformValue" style="font-family:var(--mono);color:var(--text);">${scale}x</span>
+      </div>
+      <input type="range" id="warpDeformSlider" min="0" max="50" value="${scale}" step="1" style="width:100%;">
+    </div>`;
+  const slider = document.getElementById('warpDeformSlider');
+  if (slider) {
+    slider.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value);
+      document.getElementById('warpDeformValue').textContent = val + 'x';
+      viewer._warpDeformScale = val;
+      viewer._clearWarpMesh();
+      if (currentView === 'warp' && selectedLayer !== null) {
+        viewer.render(selectedLayer);
+        // Update only the range labels (not the whole legend, to preserve slider state)
+        if (viewer._warpMeshRange) {
+          const spans = legendEl.querySelectorAll('.legend-header ~ div:first-of-type span');
+          if (spans.length >= 2) {
+            spans[0].textContent = viewer._warpMeshRange.min.toFixed(3) + 'mm';
+            spans[1].textContent = viewer._warpMeshRange.max.toFixed(3) + 'mm';
+          }
+        }
+      }
+    });
+  }
+}
+
+function initWarpControls() {
+  // Warp controls are now integrated into the legend panel via updateWarpLegend()
 }
 
 function onSliderChange(val) {
@@ -8909,6 +10388,7 @@ function initDecodeTooltip() {
 
 
 
+
 let currentFirmware = 'bambu';
 
 // ===== APP STATE =====
@@ -8919,14 +10399,18 @@ const insertManager = new InsertManager();
 const undoStack = new UndoStack();
 const motionAnalyzer = new MotionAnalyzer();
 const structuralAnalyzer = new StructuralAnalyzer();
+const thermalAnalyzer = new ThermalAnalyzer();
 const analysisManager = new AnalysisManager();
 analysisManager.register(motionAnalyzer);
 analysisManager.register(structuralAnalyzer);
+analysisManager.register(thermalAnalyzer);
 
 let analysisProfile = {
   printer: {},
   material: { type: 'PLA' },
   thresholds: { ...DEFAULT_THRESHOLDS },
+  thermal: { depth: 50 },
+  environment: { ambientTemp: 22, chamberTemp: null, chamberType: 'open' },
 };
 const editUndoStack = { entries: [], index: -1, maxSize: 50 };
 let selectedLayer = null;
@@ -9147,6 +10631,7 @@ function runAnalysis() {
     analysisProfile.material = getMaterialProfile(inferredMaterial);
   }
   analysisProfile.printer = { ...motionAnalyzer.profile };
+  analysisProfile._parsedLines = parser.lines;
   analysisManager.analyzeAll(parser.layerMoves, analysisProfile);
   heatmapLayerStats = {};
   if (typeof renderAnalysisPanel === 'function') renderAnalysisPanel();
@@ -9242,8 +10727,12 @@ window.addEventListener('keydown', e => {
   // View toggle
   if (e.key === ' ') { e.preventDefault(); setView(currentView === 'code' ? 'visual' : 'code'); return; }
 
+  // Warp view
+  if (e.key === 'w') { setView(currentView === 'warp' ? 'visual' : 'warp'); return; }
+
   // Reset camera
-  if (e.key === 'f' && currentView === 'visual') { viewer.fitBounds(); viewer.render(viewer.currentLayer); return; }
+  const isViewerView = currentView === 'visual' || currentView === 'warp';
+  if (e.key === 'f' && isViewerView) { viewer.fitBounds(); viewer.render(viewer.currentLayer); return; }
 
   // Simulation play/pause
   if (e.key === 'p' && currentView === 'visual') { toggleSimulation(); return; }
@@ -9256,6 +10745,7 @@ window.addEventListener('keydown', e => {
 });
 
 applyTheme(getPreferredTheme());
+initWarpControls();
 
 </script>
 </body>

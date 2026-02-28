@@ -19,6 +19,9 @@ export const MATERIAL_PROFILES = {
     waterAbsorption: 0.43,       // % saturated
     needsDrying: false,
     needsEnclosure: false,
+    thermalConductivity: 0.13,   // W/mK
+    specificHeatCapacity: 1800,  // J/kgK
+    cte: 68e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 26.6,      // kJ/m²
     impactStrengthZ: 13.8,       // kJ/m² — layer adhesion
     bendingStrength: 76,         // MPa
@@ -38,6 +41,9 @@ export const MATERIAL_PROFILES = {
     waterAbsorption: 0.40,
     needsDrying: true,
     needsEnclosure: false,
+    thermalConductivity: 0.19,   // W/mK
+    specificHeatCapacity: 1200,  // J/kgK
+    cte: 60e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 31.5,
     impactStrengthZ: 10.6,
     bendingStrength: 64,
@@ -57,6 +63,9 @@ export const MATERIAL_PROFILES = {
     waterAbsorption: 0.65,
     needsDrying: false,
     needsEnclosure: true,
+    thermalConductivity: 0.17,   // W/mK
+    specificHeatCapacity: 1400,  // J/kgK
+    cte: 90e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 39.3,
     impactStrengthZ: 7.4,
     bendingStrength: 62,
@@ -76,6 +85,9 @@ export const MATERIAL_PROFILES = {
     waterAbsorption: 0.45,
     needsDrying: false,
     needsEnclosure: true,
+    thermalConductivity: 0.18,   // W/mK
+    specificHeatCapacity: 1300,  // J/kgK
+    cte: 95e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 41.0,
     impactStrengthZ: 4.9,
     bendingStrength: 65,
@@ -95,6 +107,9 @@ export const MATERIAL_PROFILES = {
     waterAbsorption: 1.08,
     needsDrying: true,
     needsEnclosure: false,
+    thermalConductivity: 0.19,   // W/mK
+    specificHeatCapacity: 1500,  // J/kgK
+    cte: 150e-6,                 // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 123.2,
     impactStrengthZ: 86.3,
     bendingStrength: null,
@@ -114,6 +129,9 @@ export const MATERIAL_PROFILES = {
     waterAbsorption: 0.25,
     needsDrying: true,
     needsEnclosure: true,
+    thermalConductivity: 0.20,   // W/mK
+    specificHeatCapacity: 1200,  // J/kgK
+    cte: 65e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 34.8,
     impactStrengthZ: 9.0,
     bendingStrength: 108,
@@ -136,6 +154,9 @@ export const MATERIAL_PROFILES = {
     needsDrying: false,
     needsEnclosure: false,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.13,   // W/mK — same as PLA base
+    specificHeatCapacity: 1800,  // J/kgK
+    cte: 30e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 23.2,
     impactStrengthZ: 7.8,
     bendingStrength: 89,
@@ -156,6 +177,9 @@ export const MATERIAL_PROFILES = {
     needsDrying: false,
     needsEnclosure: false,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.19,   // W/mK — same as PETG base
+    specificHeatCapacity: 1200,  // J/kgK
+    cte: 25e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 41.2,
     impactStrengthZ: 10.7,
     bendingStrength: 70,
@@ -176,6 +200,9 @@ export const MATERIAL_PROFILES = {
     needsDrying: false,
     needsEnclosure: true,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.17,   // W/mK — same as ABS base
+    specificHeatCapacity: 1400,  // J/kgK
+    cte: 45e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 14.5,
     impactStrengthZ: 5.3,
     bendingStrength: 68,
@@ -196,6 +223,9 @@ export const MATERIAL_PROFILES = {
     needsDrying: false,
     needsEnclosure: true,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.18,   // W/mK — same as ASA base
+    specificHeatCapacity: 1300,  // J/kgK
+    cte: 40e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 14.0,
     impactStrengthZ: 9.4,
     bendingStrength: 72,
@@ -215,6 +245,9 @@ export const MATERIAL_PROFILES = {
     waterAbsorption: 0.12,
     needsDrying: true,
     needsEnclosure: true,
+    thermalConductivity: 0.20,   // W/mK — same as PC base
+    specificHeatCapacity: 1200,  // J/kgK
+    cte: 55e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 55.0,
     impactStrengthZ: 8.0,
     bendingStrength: 90,
@@ -237,6 +270,9 @@ export const MATERIAL_PROFILES = {
     needsDrying: true,
     needsEnclosure: false,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.25,   // W/mK
+    specificHeatCapacity: 1400,  // J/kgK
+    cte: 22e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 36.0,
     impactStrengthZ: 4.5,
     bendingStrength: 131,
@@ -257,6 +293,9 @@ export const MATERIAL_PROFILES = {
     needsDrying: true,
     needsEnclosure: true,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.25,   // W/mK
+    specificHeatCapacity: 1700,  // J/kgK
+    cte: 20e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 57.5,
     impactStrengthZ: 13.3,
     bendingStrength: 125,
@@ -277,6 +316,9 @@ export const MATERIAL_PROFILES = {
     needsDrying: true,
     needsEnclosure: true,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.25,   // W/mK
+    specificHeatCapacity: 1700,  // J/kgK
+    cte: 18e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 40.3,
     impactStrengthZ: 15.5,
     bendingStrength: 151,
@@ -297,6 +339,9 @@ export const MATERIAL_PROFILES = {
     needsDrying: true,
     needsEnclosure: true,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.25,   // W/mK
+    specificHeatCapacity: 1700,  // J/kgK
+    cte: 35e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 27.2,
     impactStrengthZ: 4.1,
     bendingStrength: 120,
@@ -317,6 +362,9 @@ export const MATERIAL_PROFILES = {
     needsDrying: true,
     needsEnclosure: true,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.25,   // W/mK
+    specificHeatCapacity: 1400,  // J/kgK
+    cte: 15e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 41.7,
     impactStrengthZ: 4.3,
     bendingStrength: 208,
@@ -337,6 +385,9 @@ export const MATERIAL_PROFILES = {
     needsDrying: true,
     needsEnclosure: true,
     needsHardenedNozzle: true,
+    thermalConductivity: 0.25,   // W/mK
+    specificHeatCapacity: 1400,  // J/kgK
+    cte: 28e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 27.8,
     impactStrengthZ: 2.8,
     bendingStrength: 142,
@@ -358,6 +409,9 @@ export const MATERIAL_PROFILES = {
     waterAbsorption: 2.35,
     needsDrying: true,
     needsEnclosure: true,
+    thermalConductivity: 0.25,   // W/mK
+    specificHeatCapacity: 1700,  // J/kgK
+    cte: 80e-6,                  // 1/°C — coefficient of thermal expansion
     impactStrengthXY: 40.0,
     impactStrengthZ: 13.0,
     bendingStrength: 125,
@@ -371,7 +425,31 @@ export const DEFAULT_THRESHOLDS = {
   'wall-seam-alignment':     { warning: 3.0 },
   'wall-gap-size':           { critical: 1.5,  warning: 0.8 },
   'extrusion-consistency':   { warning: 0.35 },
+  'warp-tolerance':          { critical: 0.8, warning: 0.4 },
 };
+
+function matchFilamentName(fc) {
+  // Check specific variants before base types
+  if (fc.includes('PPS-CF') || fc.includes('PPS')) return 'PPS-CF';
+  if (fc.includes('PPA-CF') || fc.includes('PPA')) return 'PPA-CF';
+  if (fc.includes('PA6-GF')) return 'PA6-GF';
+  if (fc.includes('PA6-CF')) return 'PA6-CF';
+  if (fc.includes('PAHT-CF') || fc.includes('PA-CF')) return 'PA-CF';
+  if (fc.includes('PET-CF')) return 'PET-CF';
+  if (fc.includes('PETG-CF')) return 'PETG-CF';
+  if (fc.includes('PLA-CF')) return 'PLA-CF';
+  if (fc.includes('ABS-GF')) return 'ABS-GF';
+  if (fc.includes('ASA-CF')) return 'ASA-CF';
+  if (fc.includes('PC-FR') || fc.includes('PC FR')) return 'PC-FR';
+  if (fc.includes('TPU')) return 'TPU';
+  if (fc.includes('PETG')) return 'PETG';
+  if (fc.includes('PLA')) return 'PLA';
+  if (fc.includes('ASA')) return 'ASA';
+  if (fc.includes('ABS')) return 'ABS';
+  if (fc.includes('PC')) return 'PC';
+  if (fc.includes('NYLON') || fc.includes('PA')) return 'Nylon';
+  return null;
+}
 
 export function inferMaterial(lines) {
   const scanLimit = Math.min(200, lines.length);
@@ -404,51 +482,18 @@ export function inferMaterial(lines) {
 
   // Try comment-based detection first
   if (filamentComment) {
-    const fc = filamentComment.toUpperCase();
-    // Check specific variants before base types
-    if (fc.includes('PPS-CF') || fc.includes('PPS')) return 'PPS-CF';
-    if (fc.includes('PPA-CF') || fc.includes('PPA')) return 'PPA-CF';
-    if (fc.includes('PA6-GF')) return 'PA6-GF';
-    if (fc.includes('PA6-CF')) return 'PA6-CF';
-    if (fc.includes('PAHT-CF') || fc.includes('PA-CF')) return 'PA-CF';
-    if (fc.includes('PET-CF')) return 'PET-CF';
-    if (fc.includes('PETG-CF')) return 'PETG-CF';
-    if (fc.includes('PLA-CF')) return 'PLA-CF';
-    if (fc.includes('ABS-GF')) return 'ABS-GF';
-    if (fc.includes('ASA-CF')) return 'ASA-CF';
-    if (fc.includes('PC-FR') || fc.includes('PC FR')) return 'PC-FR';
-    if (fc.includes('TPU')) return 'TPU';
-    if (fc.includes('PETG')) return 'PETG';
-    if (fc.includes('PLA')) return 'PLA';
-    if (fc.includes('ASA')) return 'ASA';
-    if (fc.includes('ABS')) return 'ABS';
-    if (fc.includes('PC')) return 'PC';
-    if (fc.includes('NYLON') || fc.includes('PA')) return 'Nylon';
+    // Multi-material printers list all slots separated by semicolons
+    // (e.g. "PLA;PETG;PETG;TPU"). Use the first slot (active filament).
+    const fc = filamentComment.split(';')[0].trim().toUpperCase();
+    const matched = matchFilamentName(fc);
+    if (matched) return matched;
   }
 
-  // Fall back to temperature-based inference
+  // Fall back to temperature-based PLA vs PETG (the two most common materials).
+  // Exotic materials require a filament_type comment for reliable detection.
   if (hotendTemp !== null) {
-    // Use bed temp to distinguish within overlapping nozzle ranges
-    if (hotendTemp >= 310) return 'PPS-CF';
-    if (hotendTemp >= 280) {
-      if (bedTemp && bedTemp >= 100) return 'PA-CF';
-      return 'PC';
-    }
-    if (hotendTemp >= 260) {
-      if (bedTemp && bedTemp >= 100) return 'PA-CF';
-      return 'PC';
-    }
-    if (hotendTemp >= 250) {
-      if (bedTemp && bedTemp >= 90) return 'ABS';
-      return 'PETG';
-    }
-    if (hotendTemp >= 240) {
-      if (bedTemp && bedTemp >= 90) return 'ABS';
-      return 'PETG';
-    }
     if (hotendTemp >= 230) return 'PETG';
-    if (hotendTemp >= 220) return 'TPU';
-    if (hotendTemp >= 180) return 'PLA';
+    return 'PLA';
   }
 
   return 'PLA';

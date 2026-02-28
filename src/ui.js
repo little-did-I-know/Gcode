@@ -679,13 +679,18 @@ function renderMotionLegend() {
       if (overlay) unitLabel = overlay.unit || '';
     }
 
-    const mult = colorMode === 'speed-delta' ? 100 : 1;
+    const overlayDef = analysisManager.getSupportedOverlays().find(o => o.id === colorMode);
+    const isInverted = overlayDef?.invert || false;
+    const mult = (colorMode === 'speed-delta' || unitLabel === '%') ? 100 : 1;
+    const barStyle = isInverted ? ' style="background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff)"' : '';
+    const leftLabel = (stats.min * mult).toFixed(1);
+    const rightLabel = (stats.max * mult).toFixed(1);
     html += `<div class="heatmap-gradient">
-      <div class="heatmap-bar"></div>
+      <div class="heatmap-bar"${barStyle}></div>
       <div class="heatmap-labels">
-        <span>${(stats.min * mult).toFixed(1)}</span>
+        <span>${leftLabel}</span>
         <span>${unitLabel}</span>
-        <span>${(stats.max * mult).toFixed(1)}</span>
+        <span>${rightLabel}</span>
       </div>
     </div>`;
     html += `<div class="heatmap-stats">
@@ -959,6 +964,12 @@ function selectLayer(num) {
     viewer.render(num);
     updateViewerOverlay(num);
     showSimControls();
+  } else if (currentView === 'warp') {
+    viewer.maxVisibleLayer = num;
+    viewer._clearWarpMesh(); // Invalidate cached mesh for new layer
+    viewer.render(num);
+    updateViewerOverlay(num);
+    updateWarpLegend();
   }
 
   // Fill layer number into active tab's layer input
@@ -1687,7 +1698,13 @@ function updateThreshold(key, level, value) {
 }
 
 function onMaterialChange(type) {
-  analysisProfile.material = getMaterialProfile(type);
+  const stored = JSON.parse(localStorage.getItem('gcode_custom_materials') || '[]');
+  const custom = stored.find(m => m.name === type);
+  if (custom) {
+    analysisProfile.material = custom;
+  } else {
+    analysisProfile.material = getMaterialProfile(type);
+  }
   analysisProfile._manualMaterial = true;
   const inferred = document.getElementById('analysisMaterialInferred');
   if (inferred) inferred.textContent = '(manual)';
@@ -1700,14 +1717,78 @@ function loadMaterialProfileFile(input) {
   reader.onload = function(e) {
     try {
       const custom = JSON.parse(e.target.result);
-      analysisProfile.material = { ...analysisProfile.material, ...custom };
+      if (!custom.name) {
+        showToast('Custom profile must have a "name" field', 0, 'error');
+        return;
+      }
+      // Inherit from base material if specified
+      let base = {};
+      if (custom.base && MATERIAL_PROFILES[custom.base]) {
+        base = { ...MATERIAL_PROFILES[custom.base] };
+      }
+      const merged = { ...base, ...custom, type: custom.name };
+
+      // Warn on out-of-range thermal values
+      if (merged.thermalConductivity && (merged.thermalConductivity < 0.01 || merged.thermalConductivity > 1.0)) {
+        showToast('Warning: thermalConductivity seems unusual (expected 0.01-1.0)', 5000, 'error');
+      }
+      if (merged.specificHeatCapacity && (merged.specificHeatCapacity < 500 || merged.specificHeatCapacity > 3000)) {
+        showToast('Warning: specificHeatCapacity seems unusual (expected 500-3000)', 5000, 'error');
+      }
+
+      // Store in localStorage
+      const stored = JSON.parse(localStorage.getItem('gcode_custom_materials') || '[]');
+      const existingIdx = stored.findIndex(m => m.name === custom.name);
+      if (existingIdx >= 0) stored[existingIdx] = merged;
+      else stored.push(merged);
+      localStorage.setItem('gcode_custom_materials', JSON.stringify(stored));
+
+      analysisProfile.material = merged;
       analysisProfile._manualMaterial = true;
-      showToast('Material profile loaded');
+      showToast('Material profile "' + custom.name + '" loaded');
+      renderCustomMaterials();
     } catch (err) {
       showToast('Invalid JSON profile: ' + err.message, 0, 'error');
     }
   };
   reader.readAsText(file);
+}
+
+function renderCustomMaterials() {
+  const select = document.getElementById('analysisMaterialType');
+  if (!select) return;
+  // Remove existing custom group
+  const existingGroup = select.querySelector('optgroup[label="Custom"]');
+  if (existingGroup) existingGroup.remove();
+  // Add custom materials from localStorage
+  const stored = JSON.parse(localStorage.getItem('gcode_custom_materials') || '[]');
+  if (stored.length === 0) return;
+  const group = document.createElement('optgroup');
+  group.label = 'Custom';
+  for (const mat of stored) {
+    const opt = document.createElement('option');
+    opt.value = mat.name;
+    opt.textContent = mat.name;
+    group.appendChild(opt);
+  }
+  select.appendChild(group);
+}
+
+function onAnalysisDepthChange(value) {
+  const v = parseInt(value, 10);
+  if (!analysisProfile.thermal) analysisProfile.thermal = {};
+  analysisProfile.thermal.depth = v;
+  const label = document.getElementById('analysisDepthLabel');
+  if (label) {
+    if (v <= 33) label.textContent = 'Fast';
+    else if (v <= 66) label.textContent = 'Balanced';
+    else label.textContent = 'Thorough';
+  }
+}
+
+function onChamberTypeChange(value) {
+  if (!analysisProfile.environment) analysisProfile.environment = {};
+  analysisProfile.environment.chamberType = value;
 }
 
 function navigateToFinding(findingId) {
@@ -1737,6 +1818,7 @@ function switchTab(tabName) {
   }
   if (tabName === 'analysis') {
     renderAnalysisPanel();
+    renderCustomMaterials();
   }
 }
 
@@ -2106,21 +2188,89 @@ function onModDragEnd() {
 // ===== VIEW TOGGLE =====
 function setView(view) {
   currentView = view;
+  const isViewer = view === 'visual' || view === 'warp';
   document.getElementById('viewCodeBtn').classList.toggle('active', view === 'code');
   document.getElementById('viewVisualBtn').classList.toggle('active', view === 'visual');
-  document.getElementById('gcodePreview').classList.toggle('hidden', view === 'visual');
-  document.getElementById('viewerWrap').classList.toggle('active', view === 'visual');
-  if (view === 'visual' && selectedLayer !== null) {
+  document.getElementById('viewWarpBtn').classList.toggle('active', view === 'warp');
+  document.getElementById('gcodePreview').classList.toggle('hidden', isViewer);
+  document.getElementById('viewerWrap').classList.toggle('active', isViewer);
+  document.getElementById('warpControls').classList.toggle('hidden', view !== 'warp');
+
+  // Set viewer warp mode
+  viewer._warpViewActive = view === 'warp';
+  if (view !== 'warp') {
+    viewer._clearWarpMesh();
+  }
+
+  if (isViewer && selectedLayer !== null) {
     viewer.resize();
     viewer.fitBounds();
     viewer.maxVisibleLayer = selectedLayer;
     viewer.render(selectedLayer);
     updateViewerOverlay(selectedLayer);
-    showSimControls();
+    if (view === 'visual') {
+      showSimControls();
+      renderMotionLegend();
+    } else {
+      stopSimulation();
+      hideSimControls();
+    }
+    // Show legend with warping-risk colors + deformation slider when in warp view
+    if (view === 'warp') {
+      updateWarpLegend();
+    }
   } else {
     stopSimulation();
     hideSimControls();
   }
+}
+
+function updateWarpLegend() {
+  const legendEl = document.getElementById('viewerLegend');
+  if (!legendEl) return;
+  const range = viewer._warpMeshRange;
+  const minStr = range ? range.min.toFixed(3) : '0.000';
+  const maxStr = range ? range.max.toFixed(3) : '0.000';
+  const scale = viewer._warpDeformScale || 0;
+  legendEl.style.display = '';
+  legendEl.innerHTML = `<div class="legend-header"><span class="legend-title">Warp Risk</span></div>
+    <div style="padding:6px 10px;font-size:11px;">
+      <div style="height:12px;border-radius:3px;background:linear-gradient(to right,#0000ff,#00ffff,#00ff00,#ffff00,#ff0000);margin-bottom:4px;"></div>
+      <div style="display:flex;justify-content:space-between;color:var(--text-dim);">
+        <span>${minStr}mm</span><span>${maxStr}mm</span>
+      </div>
+    </div>
+    <div style="padding:6px 10px;border-top:1px solid var(--border);font-size:11px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="color:var(--text-dim);">Deformation</span>
+        <span id="warpDeformValue" style="font-family:var(--mono);color:var(--text);">${scale}x</span>
+      </div>
+      <input type="range" id="warpDeformSlider" min="0" max="50" value="${scale}" step="1" style="width:100%;">
+    </div>`;
+  const slider = document.getElementById('warpDeformSlider');
+  if (slider) {
+    slider.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value);
+      document.getElementById('warpDeformValue').textContent = val + 'x';
+      viewer._warpDeformScale = val;
+      viewer._clearWarpMesh();
+      if (currentView === 'warp' && selectedLayer !== null) {
+        viewer.render(selectedLayer);
+        // Update only the range labels (not the whole legend, to preserve slider state)
+        if (viewer._warpMeshRange) {
+          const spans = legendEl.querySelectorAll('.legend-header ~ div:first-of-type span');
+          if (spans.length >= 2) {
+            spans[0].textContent = viewer._warpMeshRange.min.toFixed(3) + 'mm';
+            spans[1].textContent = viewer._warpMeshRange.max.toFixed(3) + 'mm';
+          }
+        }
+      }
+    });
+  }
+}
+
+function initWarpControls() {
+  // Warp controls are now integrated into the legend panel via updateWarpLegend()
 }
 
 function onSliderChange(val) {
