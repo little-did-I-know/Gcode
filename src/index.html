@@ -498,10 +498,17 @@ main { display: flex; flex: 1; overflow: hidden; }
 .finding-text { flex: 1; min-width: 0; }
 .finding-title { font-weight: 500; }
 .finding-desc { color: var(--text-dim); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.finding-tooltip { display: none; padding: 6px 8px; margin-top: 4px; background: var(--bg-hover, rgba(255,255,255,0.05)); border: 1px solid var(--border); border-radius: 4px; font-size: 10px; line-height: 1.4; white-space: normal; }
+.analysis-finding:hover .finding-tooltip { display: block; }
+.finding-tooltip-desc { color: var(--text); margin-bottom: 4px; }
+.finding-tooltip-suggestion { color: var(--text-dim); border-top: 1px solid var(--border); padding-top: 4px; }
 .finding-layer { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
-.threshold-row { display: flex; align-items: center; gap: 4px; padding: 3px 0; font-size: 11px; flex-wrap: wrap; }
-.threshold-row label { min-width: 100px; color: var(--text-dim); }
-.threshold-input { width: 50px; font-size: 11px; padding: 1px 3px; background: var(--bg-input, var(--bg)); border: 1px solid var(--border); border-radius: 3px; color: var(--text); }
+.threshold-group { margin-bottom: 8px; }
+.threshold-group-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); padding: 4px 0 2px; }
+.threshold-group-hint { font-size: 9px; color: var(--text-dim); opacity: 0.7; margin-bottom: 4px; }
+.threshold-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 11px; }
+.threshold-row label { color: var(--text-dim); white-space: nowrap; }
+.threshold-input { width: 46px; font-size: 11px; padding: 2px 4px; background: var(--bg-input, var(--bg)); border: 1px solid var(--border); border-radius: 3px; color: var(--text); text-align: center; }
 </style>
 </head>
 <body>
@@ -918,17 +925,17 @@ main { display: flex; flex: 1; overflow: hidden; }
           <button onclick="runAnalysis()" style="margin-top:8px;width:100%;padding:6px;font-size:12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Run Analysis</button>
         </div>
 
-        <div id="analysisResults">
-          <div class="analysis-empty">Load a G-code file and run analysis</div>
-        </div>
-
         <div id="analysisThresholds" class="panel collapsed">
           <div class="panel-header" onclick="toggleAnalysisThresholds()">
-            <span>Thresholds</span>
+            <span>Severity Thresholds</span>
             <span class="toggle-icon">&#9660;</span>
           </div>
           <div class="panel-content" id="thresholdsContent">
           </div>
+        </div>
+
+        <div id="analysisResults">
+          <div class="analysis-empty">Load a G-code file and run analysis</div>
         </div>
       </div>
 

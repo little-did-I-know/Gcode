@@ -366,11 +366,11 @@ export const MATERIAL_PROFILES = {
 };
 
 export const DEFAULT_THRESHOLDS = {
-  'layer-bond-overlap':      { critical: 0.30, warning: 0.60 },
-  'layer-bond-cooling':      { critical: 1.0,  warning: 3.0 },
-  'wall-seam-alignment':     { warning: 5.0 },
-  'wall-gap-size':           { critical: 0.5,  warning: 0.2 },
-  'extrusion-consistency':   { warning: 0.15 },
+  'layer-bond-overlap':      { critical: 0.10, warning: 0.25 },
+  'layer-bond-cooling':      { critical: 1.0,  warning: 2.0 },
+  'wall-seam-alignment':     { warning: 3.0 },
+  'wall-gap-size':           { critical: 1.5,  warning: 0.8 },
+  'extrusion-consistency':   { warning: 0.35 },
 };
 
 export function inferMaterial(lines) {

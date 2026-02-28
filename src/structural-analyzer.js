@@ -87,49 +87,24 @@ export class StructuralAnalyzer {
     return scores;
   }
 
-  // --- Cooling Time Estimate ---
+  // --- Cooling Time Estimate (inter-layer) ---
 
-  _calcCoolingTimes(moves, motionResults) {
-    const times = new Map();
-    const PROXIMITY_SQ = 4.0; // 2mm radius squared
-
-    for (let i = 0; i < moves.length; i++) {
-      if (!moves[i].extrude) continue;
-      const mx = (moves[i].x1 + moves[i].x2) / 2;
-      const my = (moves[i].y1 + moves[i].y2) / 2;
-
-      let elapsed = 0;
-      let found = false;
-      for (let j = i + 1; j < moves.length; j++) {
-        if (motionResults && motionResults[j]) {
-          const r = motionResults[j];
-          elapsed += (r.timeAccel || 0) + (r.timeCruise || 0) + (r.timeDecel || 0);
-        } else {
-          const len = Math.hypot(moves[j].x2 - moves[j].x1, moves[j].y2 - moves[j].y1);
-          const speed = (moves[j].feedRate || 1500) / 60;
-          elapsed += speed > 0 ? len / speed : 0;
-        }
-        const jmx = (moves[j].x1 + moves[j].x2) / 2;
-        const jmy = (moves[j].y1 + moves[j].y2) / 2;
-        const distSq = (jmx - mx) * (jmx - mx) + (jmy - my) * (jmy - my);
-        if (distSq < PROXIMITY_SQ && moves[j].extrude) {
-          times.set(i, elapsed);
-          found = true;
-          break;
-        }
-      }
-      if (!found) times.set(i, Infinity);
+  _estimateLayerTime(moves) {
+    let total = 0;
+    for (const move of moves) {
+      const len = Math.hypot(move.x2 - move.x1, move.y2 - move.y1);
+      const speed = (move.feedRate || 1500) / 60;
+      total += speed > 0 ? len / speed : 0;
     }
-    return times;
+    return total;
   }
 
-  _coolingScore(time, material) {
+  _coolingScore(layerTime, material) {
     const minTime = material.minLayerTime || 8;
-    if (time === Infinity) return 1.0 - (material.coolingSensitivity || 0.5) * 0.3;
-    if (time < 1.0) return 0.2;
-    if (time < minTime * 0.5) return 0.5;
-    if (time > minTime) return 1.0;
-    return 0.5 + 0.5 * (time - minTime * 0.5) / (minTime * 0.5);
+    if (layerTime < 1.0) return 0.2;
+    if (layerTime < minTime * 0.5) return 0.5;
+    if (layerTime > minTime) return 1.0;
+    return 0.5 + 0.5 * (layerTime - minTime * 0.5) / (minTime * 0.5);
   }
 
   // --- Main Analysis ---
@@ -154,7 +129,17 @@ export class StructuralAnalyzer {
 
       const grid = this._buildSpatialGrid(moves, cellSize);
       const consistency = this._calcExtrusionConsistency(moves);
-      const coolingTimes = this._calcCoolingTimes(moves, null);
+      const layerTime = this._estimateLayerTime(moves);
+      const coolScore = this._coolingScore(layerTime, material);
+
+      // Track per-layer aggregates for findings
+      let worstOverlap = 1.0;
+      let worstOverlapMove = null;
+      let worstOverlapIdx = 0;
+      let lowOverlapCount = 0;
+      let inconsistentCount = 0;
+      let worstConsist = 1.0;
+      let worstConsistMove = null;
 
       const scores = [];
       for (let i = 0; i < moves.length; i++) {
@@ -169,8 +154,6 @@ export class StructuralAnalyzer {
 
         const overlap = this._calcOverlap(moves[i], prevGrid, cellSize);
         const consist = consistency.get(i) ?? 1.0;
-        const coolTime = coolingTimes.get(i) ?? Infinity;
-        const coolScore = this._coolingScore(coolTime, material);
 
         // Overlap is the primary structural factor. Without material below,
         // consistency and cooling cannot compensate. Gate the score by overlap.
@@ -178,52 +161,127 @@ export class StructuralAnalyzer {
         const bond = baseBond * Math.min(1, overlap + 0.3);
         scores.push(Math.max(0, Math.min(1, bond)));
 
-        // Generate findings
+        // Track worst overlap for layer-level finding
         const overlapThresh = thresholds['layer-bond-overlap'] || {};
-        if (overlap < (overlapThresh.critical ?? 0.30)) {
-          this._addFinding('critical', 'layer-bond', layerNum, i, moves[i],
-            'Very weak layer bond \u2014 low overlap',
-            `Only ${(overlap * 100).toFixed(0)}% of this extrusion overlaps with the layer below.`,
-            'Increase extrusion width or adjust perimeter overlap in slicer settings.',
-            { overlapPercent: overlap, coolingTime: coolTime });
-        } else if (overlap < (overlapThresh.warning ?? 0.60)) {
-          this._addFinding('warning', 'layer-bond', layerNum, i, moves[i],
-            'Reduced layer bond \u2014 partial overlap',
-            `${(overlap * 100).toFixed(0)}% overlap with layer below.`,
-            'Consider increasing extrusion width for better inter-layer adhesion.',
-            { overlapPercent: overlap, coolingTime: coolTime });
+        if (overlap < (overlapThresh.warning ?? 0.60)) {
+          lowOverlapCount++;
+          if (overlap < worstOverlap) {
+            worstOverlap = overlap;
+            worstOverlapMove = moves[i];
+            worstOverlapIdx = i;
+          }
         }
 
-        const coolThresh = thresholds['layer-bond-cooling'] || {};
-        if (coolTime < (coolThresh.critical ?? 1.0)) {
-          this._addFinding('critical', 'cooling', layerNum, i, moves[i],
-            'Insufficient cooling time',
-            `Only ${coolTime.toFixed(1)}s before nozzle returns. Risk of deformation.`,
-            'Increase minimum layer time or enable "slow down for small layers" in slicer.',
-            { coolingTime: coolTime });
-        } else if (coolTime < (coolThresh.warning ?? 3.0)) {
-          this._addFinding('warning', 'cooling', layerNum, i, moves[i],
-            'Short cooling time',
-            `${coolTime.toFixed(1)}s before nozzle returns.`,
-            'Consider increasing minimum layer time.',
-            { coolingTime: coolTime });
-        }
-
+        // Track worst consistency for layer-level finding
         const consistThresh = thresholds['extrusion-consistency'] || {};
         if (consist < (1 - (consistThresh.warning ?? 0.15))) {
-          this._addFinding('info', 'extrusion', layerNum, i, moves[i],
-            'Inconsistent extrusion',
-            `Flow deviation of ${((1 - consist) * 100).toFixed(0)}% from mean.`,
-            'Check for partial clog or inconsistent filament diameter.',
-            { consistencyScore: consist });
+          inconsistentCount++;
+          if (consist < worstConsist) {
+            worstConsist = consist;
+            worstConsistMove = moves[i];
+          }
         }
       }
 
       this._bondResults.set(layerNum, scores);
+
+      // Generate aggregated per-layer findings (not per-move)
+      if (worstOverlapMove) {
+        const overlapThresh = thresholds['layer-bond-overlap'] || {};
+        const severity = worstOverlap < (overlapThresh.critical ?? 0.30) ? 'critical' : 'warning';
+        this._addFinding(severity, 'layer-bond', layerNum, worstOverlapIdx, worstOverlapMove,
+          severity === 'critical' ? 'Very weak layer bond' : 'Reduced layer bond',
+          `Layer ${layerNum}: ${lowOverlapCount} extrusions with low overlap (worst: ${(worstOverlap * 100).toFixed(0)}%).`,
+          'Increase extrusion width or adjust perimeter overlap in slicer settings.',
+          { overlapPercent: worstOverlap, affectedMoves: lowOverlapCount });
+      }
+
+      // One cooling finding per layer (inter-layer: total layer time)
+      const coolThresh = thresholds['layer-bond-cooling'] || {};
+      if (layerTime < (coolThresh.critical ?? 1.0) && prevGrid !== null) {
+        const refMove = moves.find(m => m.extrude) || moves[0];
+        this._addFinding('critical', 'cooling', layerNum, 0, refMove,
+          'Insufficient layer cooling time',
+          `Layer ${layerNum} completes in ${layerTime.toFixed(1)}s — risk of deformation before material solidifies.`,
+          'Increase minimum layer time or enable "slow down for small layers" in slicer.',
+          { layerTime });
+      } else if (layerTime < (coolThresh.warning ?? 3.0) && prevGrid !== null) {
+        const refMove = moves.find(m => m.extrude) || moves[0];
+        this._addFinding('warning', 'cooling', layerNum, 0, refMove,
+          'Short layer cooling time',
+          `Layer ${layerNum} completes in ${layerTime.toFixed(1)}s.`,
+          'Consider increasing minimum layer time.',
+          { layerTime });
+      }
+
+      if (worstConsistMove && inconsistentCount > 0) {
+        this._addFinding('info', 'extrusion', layerNum, 0, worstConsistMove,
+          'Inconsistent extrusion',
+          `Layer ${layerNum}: ${inconsistentCount} moves with flow deviation >${((thresholds['extrusion-consistency']?.warning ?? 0.15) * 100).toFixed(0)}% (worst: ${((1 - worstConsist) * 100).toFixed(0)}%).`,
+          'Check for partial clog or inconsistent filament diameter.',
+          { worstConsistency: worstConsist, affectedMoves: inconsistentCount });
+      }
+
       prevGrid = grid;
     }
 
+    // Merge consecutive layer-bond findings into ranges
+    this._mergeConsecutiveFindings('layer-bond');
+    this._mergeConsecutiveFindings('cooling');
+    this._mergeConsecutiveFindings('extrusion');
+
     this._analyzeWallIntegrity(layerMoves, thresholds);
+  }
+
+  _mergeConsecutiveFindings(category) {
+    const catFindings = this._findings.filter(f => f.category === category);
+    if (catFindings.length <= 3) return; // not worth merging
+
+    const other = this._findings.filter(f => f.category !== category);
+
+    // Sort by layer
+    catFindings.sort((a, b) => a.location.layer - b.location.layer);
+
+    // Group consecutive layers into ranges
+    const groups = [];
+    let group = [catFindings[0]];
+    for (let i = 1; i < catFindings.length; i++) {
+      const prevLayer = catFindings[i - 1].location.layer;
+      const currLayer = catFindings[i].location.layer;
+      if (currLayer - prevLayer <= 2) {
+        group.push(catFindings[i]);
+      } else {
+        groups.push(group);
+        group = [catFindings[i]];
+      }
+    }
+    groups.push(group);
+
+    // Create merged findings
+    const merged = [];
+    for (const g of groups) {
+      if (g.length === 1) {
+        merged.push(g[0]);
+        continue;
+      }
+      const worst = g.reduce((w, f) => {
+        if (f.severity === 'critical') return f;
+        if (f.severity === 'warning' && w.severity !== 'critical') return f;
+        return w;
+      }, g[0]);
+      const startLayer = g[0].location.layer;
+      const endLayer = g[g.length - 1].location.layer;
+      merged.push({
+        ...worst,
+        id: `si-${category}-merged-${merged.length}`,
+        title: worst.title,
+        description: `Layers ${startLayer}\u2013${endLayer}: ${worst.description.replace(/^Layer \d+: /, '')}`,
+        location: { ...worst.location, layer: startLayer },
+        metadata: { ...worst.metadata, layerRange: [startLayer, endLayer], mergedCount: g.length },
+      });
+    }
+
+    this._findings = [...other, ...merged];
   }
 
   _addFinding(severity, category, layerNum, moveIndex, move, title, description, suggestion, metadata) {
@@ -284,8 +342,11 @@ export class StructuralAnalyzer {
       }
     }
 
-    // Gap Detection & Direction Reversals
+    // Gap Detection & Direction Reversals (aggregated per layer)
     const gapThresh = thresholds['wall-gap-size'] || { critical: 0.5, warning: 0.2 };
+    const allGaps = [];
+    const allReversals = [];
+
     for (const layerNum of layerNums) {
       const moves = layerMoves[layerNum];
       if (!moves) continue;
@@ -298,7 +359,13 @@ export class StructuralAnalyzer {
         }
       }
 
-      // Gap detection
+      // Gap detection — collect per layer, emit one finding
+      // Max gap distance: anything larger is a travel between separate wall features, not a gap
+      const MAX_GAP_DIST = 3.0; // mm — real gaps are sub-mm to ~2mm
+      let worstGap = 0;
+      let worstGapMove = null;
+      let worstGapEnd = null;
+      let gapCount = 0;
       for (let i = 0; i < moves.length - 1; i++) {
         const curr = moves[i];
         const next = moves[i + 1];
@@ -306,34 +373,32 @@ export class StructuralAnalyzer {
           for (let j = i + 2; j < moves.length; j++) {
             if (moves[j].extrude) {
               const gapDist = Math.hypot(curr.x2 - moves[j].x1, curr.y2 - moves[j].y1);
+              if (gapDist > MAX_GAP_DIST) break; // travel between separate features, not a gap
               const currType = (curr.type || '').toUpperCase();
               const nextType = (moves[j].type || '').toUpperCase();
               const isWallGap = (currType.includes('WALL') || currType.includes('PERIMETER')) &&
                                 (nextType.includes('WALL') || nextType.includes('PERIMETER'));
               if (isWallGap && gapDist > (gapThresh.warning ?? 0.2)) {
-                const severity = gapDist > (gapThresh.critical ?? 0.5) ? 'critical' : 'warning';
-                this._findings.push({
-                  id: `si-gap-${this._findings.length}`,
-                  engine: 'structural', severity, category: 'gap',
-                  title: `Gap in perimeter: ${gapDist.toFixed(1)}mm`,
-                  description: `${gapDist.toFixed(2)}mm gap between wall extrusions on layer ${layerNum}.`,
-                  suggestion: 'Check slicer settings for gap fill and perimeter overlap.',
-                  location: {
-                    layer: layerNum,
-                    lineStart: curr.lineIndex,
-                    lineEnd: moves[j].lineIndex,
-                    xyz: { x: curr.x2, y: curr.y2, z: 0 },
-                  },
-                  metadata: { gapDistance: gapDist },
-                });
+                gapCount++;
+                if (gapDist > worstGap) {
+                  worstGap = gapDist;
+                  worstGapMove = curr;
+                  worstGapEnd = moves[j];
+                }
               }
               break;
             }
           }
         }
       }
+      if (gapCount > 0 && worstGapMove) {
+        allGaps.push({ layerNum, gapCount, worstGap, move: worstGapMove, endMove: worstGapEnd });
+      }
 
-      // Direction reversals
+      // Direction reversals — count per layer
+      let reversalCount = 0;
+      let worstAngle = 0;
+      let worstReversalMove = null;
       for (let i = 0; i < wallMoves.length - 1; i++) {
         const m1 = wallMoves[i].move;
         const m2 = wallMoves[i + 1].move;
@@ -345,22 +410,72 @@ export class StructuralAnalyzer {
         const dot = (dx1 * dx2 + dy1 * dy2) / (len1 * len2);
         const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
         if (angle > 150) {
-          this._findings.push({
-            id: `si-reversal-${this._findings.length}`,
-            engine: 'structural', severity: 'info', category: 'reversal',
-            title: `Direction reversal (${angle.toFixed(0)}\u00B0)`,
-            description: `Sharp ${angle.toFixed(0)}\u00B0 reversal in wall path on layer ${layerNum}. This creates a stress concentrator.`,
-            suggestion: 'This is typically caused by thin features. Consider adjusting minimum feature size in slicer.',
-            location: {
-              layer: layerNum,
-              lineStart: m1.lineIndex,
-              lineEnd: m2.lineIndex,
-              xyz: { x: m1.x2, y: m1.y2, z: 0 },
-            },
-            metadata: { angle },
-          });
+          reversalCount++;
+          if (angle > worstAngle) {
+            worstAngle = angle;
+            worstReversalMove = m1;
+          }
         }
       }
+      if (reversalCount > 0 && worstReversalMove) {
+        allReversals.push({ layerNum, reversalCount, worstAngle, move: worstReversalMove });
+      }
+    }
+
+    // Emit gap findings — merge consecutive layers into ranges
+    this._emitMergedWallFindings(allGaps, 'gap', gapThresh,
+      (g) => g.worstGap > (gapThresh.critical ?? 0.5) ? 'critical' : 'warning',
+      (layers, worst) => `Perimeter gaps across layers ${layers} (worst: ${worst.worstGap.toFixed(1)}mm, ${worst.gapCount} gaps)`,
+      'Check slicer settings for gap fill and perimeter overlap.');
+
+    // Emit reversal findings — merge consecutive layers into ranges
+    this._emitMergedWallFindings(allReversals, 'reversal', {},
+      () => 'info',
+      (layers, worst) => `Direction reversals across layers ${layers} (${worst.reversalCount} reversals, sharpest: ${worst.worstAngle.toFixed(0)}\u00B0)`,
+      'Typically caused by thin features. Consider adjusting minimum feature size in slicer.');
+  }
+
+  _emitMergedWallFindings(items, category, thresholds, severityFn, descFn, suggestion) {
+    if (items.length === 0) return;
+
+    // Group consecutive layers (within 2 layers of each other)
+    const groups = [];
+    let group = [items[0]];
+    for (let i = 1; i < items.length; i++) {
+      if (items[i].layerNum - items[i - 1].layerNum <= 2) {
+        group.push(items[i]);
+      } else {
+        groups.push(group);
+        group = [items[i]];
+      }
+    }
+    groups.push(group);
+
+    for (const g of groups) {
+      const worst = g.reduce((w, item) => {
+        if (category === 'gap') return item.worstGap > w.worstGap ? item : w;
+        return item.worstAngle > w.worstAngle ? item : w;
+      }, g[0]);
+      const startLayer = g[0].layerNum;
+      const endLayer = g[g.length - 1].layerNum;
+      const layerStr = startLayer === endLayer ? `${startLayer}` : `${startLayer}\u2013${endLayer}`;
+      const severity = severityFn(worst);
+      const move = worst.move;
+
+      this._findings.push({
+        id: `si-${category}-${this._findings.length}`,
+        engine: 'structural', severity, category,
+        title: category === 'gap' ? `Perimeter gaps: layers ${layerStr}` : `Direction reversals: layers ${layerStr}`,
+        description: descFn(layerStr, worst),
+        suggestion,
+        location: {
+          layer: startLayer,
+          lineStart: move.lineIndex,
+          lineEnd: move.lineIndex,
+          xyz: { x: move.x2, y: move.y2, z: 0 },
+        },
+        metadata: { layerRange: [startLayer, endLayer], mergedCount: g.length },
+      });
     }
   }
 

@@ -674,6 +674,10 @@ function renderMotionLegend() {
     if (colorMode === 'speed' || colorMode === 'actual-speed') unitLabel = 'mm/s';
     else if (colorMode === 'acceleration') unitLabel = 'mm/s\u00B2';
     else if (colorMode === 'speed-delta') unitLabel = '%';
+    else {
+      const overlay = analysisManager.getSupportedOverlays().find(o => o.id === colorMode);
+      if (overlay) unitLabel = overlay.unit || '';
+    }
 
     const mult = colorMode === 'speed-delta' ? 100 : 1;
     html += `<div class="heatmap-gradient">
@@ -1584,11 +1588,17 @@ function renderAnalysisPanel() {
       const cls = SEVERITY_CLASS[finding.severity] || '';
       const desc = (finding.description || '').replace(/"/g, '&quot;');
       const suggestion = (finding.suggestion || '').replace(/"/g, '&quot;');
-      html += '<div class="analysis-finding ' + cls + '" onclick="navigateToFinding(\'' + finding.id + '\')" title="' + suggestion + '">' +
+      const tipDesc = (finding.description || '').replace(/</g, '&lt;');
+      const tipSugg = (finding.suggestion || '').replace(/</g, '&lt;');
+      html += '<div class="analysis-finding ' + cls + '" onclick="navigateToFinding(\'' + finding.id + '\')">' +
         '<span class="finding-icon">' + icon + '</span>' +
         '<div class="finding-text">' +
           '<div class="finding-title">' + finding.title + '</div>' +
           '<div class="finding-desc">' + desc + '</div>' +
+          '<div class="finding-tooltip">' +
+            '<div class="finding-tooltip-desc">' + tipDesc + '</div>' +
+            (tipSugg ? '<div class="finding-tooltip-suggestion"><strong>Suggestion:</strong> ' + tipSugg + '</div>' : '') +
+          '</div>' +
         '</div>' +
         '<span class="finding-layer">L' + finding.location.layer + '</span>' +
       '</div>';
@@ -1616,23 +1626,55 @@ function renderThresholds() {
   if (!container) return;
 
   const thresholds = analysisProfile.thresholds;
-  const LABELS = {
-    'layer-bond-overlap': 'Bond Overlap',
-    'layer-bond-cooling': 'Cooling Time (s)',
-    'wall-seam-alignment': 'Seam Radius (mm)',
-    'wall-gap-size': 'Gap Size (mm)',
-    'extrusion-consistency': 'Flow Deviation',
-  };
+
+  const DEFS = [
+    {
+      group: 'Layer Bond',
+      hint: 'How well layers stick together. Lower values = weaker bond.',
+      items: [
+        { key: 'layer-bond-overlap', label: 'Overlap %', hint: 'Fraction of extrusion overlapping layer below (0\u20131)',
+          fields: [{ level: 'warning', prefix: 'Warn below' }, { level: 'critical', prefix: 'Critical below' }] },
+        { key: 'layer-bond-cooling', label: 'Layer time (s)', hint: 'Total time to print a layer before next layer arrives',
+          fields: [{ level: 'warning', prefix: 'Warn below' }, { level: 'critical', prefix: 'Critical below' }] },
+      ],
+    },
+    {
+      group: 'Wall Integrity',
+      hint: 'Structural quality of perimeter walls.',
+      items: [
+        { key: 'wall-seam-alignment', label: 'Seam cluster radius (mm)', hint: 'How close seam starts must be to count as aligned',
+          fields: [{ level: 'warning', prefix: 'Detect within' }] },
+        { key: 'wall-gap-size', label: 'Perimeter gap (mm)', hint: 'Distance between wall extrusions where material is missing',
+          fields: [{ level: 'warning', prefix: 'Warn above' }, { level: 'critical', prefix: 'Critical above' }] },
+      ],
+    },
+    {
+      group: 'Extrusion',
+      hint: 'Consistency of material flow.',
+      items: [
+        { key: 'extrusion-consistency', label: 'Flow deviation', hint: 'Fraction deviation from mean flow rate (e.g. 0.15 = 15%)',
+          fields: [{ level: 'warning', prefix: 'Warn above' }] },
+      ],
+    },
+  ];
 
   let html = '';
-  for (const [key, values] of Object.entries(thresholds)) {
-    const label = LABELS[key] || key;
-    html += '<div class="threshold-row"><label>' + label + '</label>';
-    if (values.critical !== undefined) {
-      html += ' <span class="text-dim">crit&lt;</span><input type="number" step="0.1" value="' + values.critical + '" onchange="updateThreshold(\'' + key + '\',\'critical\',+this.value)" class="threshold-input">';
-    }
-    if (values.warning !== undefined) {
-      html += ' <span class="text-dim">warn&lt;</span><input type="number" step="0.1" value="' + values.warning + '" onchange="updateThreshold(\'' + key + '\',\'warning\',+this.value)" class="threshold-input">';
+  for (const group of DEFS) {
+    html += '<div class="threshold-group">';
+    html += '<div class="threshold-group-title">' + group.group + '</div>';
+    html += '<div class="threshold-group-hint">' + group.hint + '</div>';
+    for (const item of group.items) {
+      const values = thresholds[item.key] || {};
+      html += '<div class="threshold-row"><label title="' + item.hint + '">' + item.label + '</label>';
+      for (const f of item.fields) {
+        if (values[f.level] !== undefined) {
+          html += ' <span class="text-dim" style="font-size:9px">' + f.prefix + '</span>' +
+            '<input type="number" step="0.1" value="' + values[f.level] + '" ' +
+            'onchange="updateThreshold(\'' + item.key + '\',\'' + f.level + '\',+this.value)" ' +
+            'class="threshold-input" title="' + f.prefix + ' ' + values[f.level] + '">';
+        }
+      }
+      html += '</div>';
     }
     html += '</div>';
   }

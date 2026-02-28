@@ -68,8 +68,8 @@ describe('StructuralAnalyzer — Wall Integrity', () => {
     const layerMoves = {
       0: [
         { x1: 0, y1: 0, x2: 30, y2: 0, extrude: true, type: 'WALL-OUTER', feedRate: 3000, eLength: 1, lineIndex: 1 },
-        { x1: 30, y1: 0, x2: 35, y2: 0, extrude: false, type: 'TRAVEL', feedRate: 6000, lineIndex: 2 },
-        { x1: 35, y1: 0, x2: 60, y2: 0, extrude: true, type: 'WALL-OUTER', feedRate: 3000, eLength: 1, lineIndex: 3 },
+        { x1: 30, y1: 0, x2: 31, y2: 0, extrude: false, type: 'TRAVEL', feedRate: 6000, lineIndex: 2 },
+        { x1: 31, y1: 0, x2: 60, y2: 0, extrude: true, type: 'WALL-OUTER', feedRate: 3000, eLength: 1, lineIndex: 3 },
       ],
     };
     analyzer.analyze(layerMoves, { printer: {}, material: { type: 'PLA' }, thresholds: {} });
