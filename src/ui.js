@@ -683,8 +683,8 @@ function renderMotionLegend() {
     const isInverted = overlayDef?.invert || false;
     const mult = (colorMode === 'speed-delta' || unitLabel === '%') ? 100 : 1;
     const barStyle = isInverted ? ' style="background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff)"' : '';
-    const leftLabel = isInverted ? (stats.max * mult).toFixed(1) : (stats.min * mult).toFixed(1);
-    const rightLabel = isInverted ? (stats.min * mult).toFixed(1) : (stats.max * mult).toFixed(1);
+    const leftLabel = (stats.min * mult).toFixed(1);
+    const rightLabel = (stats.max * mult).toFixed(1);
     html += `<div class="heatmap-gradient">
       <div class="heatmap-bar"${barStyle}></div>
       <div class="heatmap-labels">

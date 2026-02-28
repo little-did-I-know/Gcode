@@ -22,7 +22,7 @@ function getExposure(type) {
 export class ThermalAnalyzer {
   constructor() {
     this.name = 'thermal';
-    this._overlayData = new Map(); // "layerNum:moveIndex" -> { coolingTime, heatAccum, coolingEff, gradient }
+    this._overlayData = new Map(); // "layerNum:moveIndex" -> { coolingTime, heatAccum, coolingEff, temperature, warpRisk }
     this._findings = [];
     this._gridData = null;
   }
@@ -34,7 +34,8 @@ export class ThermalAnalyzer {
       { id: 'cooling-time', label: 'Cooling Time', unit: 's', invert: true },
       { id: 'heat-accumulation', label: 'Heat Accumulation', unit: '%' },
       { id: 'cooling-effectiveness', label: 'Cooling Effectiveness', unit: '%', invert: true },
-      { id: 'thermal-gradient', label: 'Thermal Gradient', unit: '°C' },
+      { id: 'temperature', label: 'Temperature', unit: '°C' },
+      { id: 'warping-risk', label: 'Warping Risk', unit: 'mm' },
     ];
   }
 
@@ -46,7 +47,8 @@ export class ThermalAnalyzer {
       case 'cooling-time': return data.coolingTime ?? 0;
       case 'heat-accumulation': return data.heatAccum ?? 0;
       case 'cooling-effectiveness': return data.coolingEff ?? 0;
-      case 'thermal-gradient': return data.gradient ?? 0;
+      case 'temperature': return data.temperature ?? 0;
+      case 'warping-risk': return data.warpRisk ?? 0;
       default: return 0;
     }
   }
@@ -83,6 +85,65 @@ export class ThermalAnalyzer {
       cells.add(this._cellKey(x1 + dx * t, y1 + dy * t, cellSize));
     }
     return cells;
+  }
+
+  _distanceTransform(extrusionCount, gridW, gridH, gridRes) {
+    const totalCells = gridW * gridH;
+    const dist = new Float32Array(totalCells);
+    dist.fill(-1); // -1 = unvisited
+
+    // BFS queue: start from boundary cells (printed cells with a non-printed neighbor)
+    const queue = [];
+    for (let idx = 0; idx < totalCells; idx++) {
+      if (extrusionCount[idx] === 0) continue; // skip non-printed
+      const gy = Math.floor(idx / gridW);
+      const gx = idx % gridW;
+      const neighbors = [
+        gx > 0 ? idx - 1 : -1,
+        gx < gridW - 1 ? idx + 1 : -1,
+        gy > 0 ? idx - gridW : -1,
+        gy < gridH - 1 ? idx + gridW : -1,
+      ];
+      let isBoundary = false;
+      for (const nIdx of neighbors) {
+        if (nIdx < 0 || extrusionCount[nIdx] === 0) {
+          isBoundary = true;
+          break;
+        }
+      }
+      if (isBoundary) {
+        dist[idx] = 0;
+        queue.push(idx);
+      }
+    }
+
+    // BFS flood fill inward
+    let head = 0;
+    while (head < queue.length) {
+      const idx = queue[head++];
+      const gy = Math.floor(idx / gridW);
+      const gx = idx % gridW;
+      const nextDist = dist[idx] + 1;
+      const neighbors = [
+        gx > 0 ? idx - 1 : -1,
+        gx < gridW - 1 ? idx + 1 : -1,
+        gy > 0 ? idx - gridW : -1,
+        gy < gridH - 1 ? idx + gridW : -1,
+      ];
+      for (const nIdx of neighbors) {
+        if (nIdx < 0) continue;
+        if (extrusionCount[nIdx] === 0) continue; // skip non-printed
+        if (dist[nIdx] >= 0) continue; // already visited
+        dist[nIdx] = nextDist;
+        queue.push(nIdx);
+      }
+    }
+
+    // Convert grid steps to mm
+    for (let idx = 0; idx < totalCells; idx++) {
+      dist[idx] = Math.max(0, dist[idx]) * gridRes;
+    }
+    return dist;
   }
 
   // --- Fan State Tracking ---
@@ -296,17 +357,32 @@ export class ThermalAnalyzer {
       // readings — all moves on this layer see the same post-cooling state.
       const layerTemp = new Float32Array(temperature);
 
-      // Compute average temperature of printed cells for gradient baseline.
-      // Thermal gradient = deviation from this average — shows differential
-      // cooling that drives warping (center stays hot, edges cool faster).
-      let tempSum = 0, tempCount = 0;
+      const materialCTE = material.cte || 68e-6;
+
+      // Per-cell contraction strain for neighbor stress calculation.
+      // strain = CTE × max(0, T - Tg). Cells below Tg have solidified (strain 0).
+      const gt_warp = material.glassTransition || 60;
+      const cellStrain = new Float32Array(totalCells);
+
+      // Compute centroid of printed area — corners are farthest from centroid
+      // and warp the most because cumulative interior contraction pulls them
+      // away from the bed. Center is well-constrained from all sides.
+      let centroidX = 0, centroidY = 0, printedCount = 0;
       for (let idx = 0; idx < totalCells; idx++) {
+        const dT = layerTemp[idx] - gt_warp;
+        cellStrain[idx] = dT > 0 ? materialCTE * dT : 0;
         if (extrusionCount[idx] > 0) {
-          tempSum += layerTemp[idx];
-          tempCount++;
+          const gy = Math.floor(idx / gridW);
+          const gx = idx % gridW;
+          centroidX += (minX + gx * gridRes);
+          centroidY += (minY + gy * gridRes);
+          printedCount++;
         }
       }
-      const layerAvgTemp = tempCount > 0 ? tempSum / tempCount : ambientTemp;
+      if (printedCount > 0) {
+        centroidX /= printedCount;
+        centroidY /= printedCount;
+      }
 
       // Process each move
       for (let mi = 0; mi < moves.length; mi++) {
@@ -316,7 +392,8 @@ export class ThermalAnalyzer {
             coolingTime: layerTime,
             heatAccum: 0,
             coolingEff: 0,
-            gradient: 0,
+            temperature: 0,
+            warpRisk: 0,
           });
           continue;
         }
@@ -327,7 +404,8 @@ export class ThermalAnalyzer {
             coolingTime: layerTime,
             heatAccum: 0,
             coolingEff: 0,
-            gradient: 0,
+            temperature: 0,
+            warpRisk: 0,
           });
           continue;
         }
@@ -343,8 +421,9 @@ export class ThermalAnalyzer {
         const midIdx = cellToIndex(midKey);
 
         let heatScore = 0;
-        let gradient = 0;
+        let temperature_val = 0;
         let coolingEff = 0;
+        let warpRisk = 0;
 
         if (midIdx >= 0 && midIdx < totalCells) {
           const preTemp = layerTemp[midIdx]; // post-cooling, pre-injection
@@ -357,11 +436,8 @@ export class ThermalAnalyzer {
             heatScore = Math.min(1.0, (preTemp - gt) / Math.max(1, hdt - gt));
           }
 
-          // Thermal gradient: deviation from layer average temperature.
-          // Shows differential cooling — center stays hot (positive deviation),
-          // edges/corners cool faster (negative deviation). The magnitude of
-          // this deviation drives warping and residual stress.
-          gradient = Math.abs(preTemp - layerAvgTemp);
+          // Temperature: actual cell temp from layer snapshot (°C)
+          temperature_val = preTemp;
 
           // Cooling effectiveness: how well did this cell cool between layers?
           // 1.0 = fully cooled to ambient (excellent), 0.0 = no cooling at all.
@@ -371,6 +447,31 @@ export class ThermalAnalyzer {
           } else {
             coolingEff = 1.0; // first extrusion at this cell, no prior heat
           }
+
+          // Warping risk: (selfContraction + neighborStress) × distFromCentroid
+          // Corners/edges lift because cumulative interior contraction pulls
+          // them away from the bed. Center is constrained from all sides.
+          // selfContraction = CTE × ΔT (how much this cell wants to shrink)
+          // neighborStress = max strain difference with 4 neighbors (differential pull)
+          const selfContraction = cellStrain[midIdx];
+          let neighborStress = 0;
+          const gy = Math.floor(midIdx / gridW);
+          const gx = midIdx % gridW;
+          const warpNeighbors = [
+            gx > 0 ? midIdx - 1 : -1,
+            gx < gridW - 1 ? midIdx + 1 : -1,
+            gy > 0 ? midIdx - gridW : -1,
+            gy < gridH - 1 ? midIdx + gridW : -1,
+          ];
+          for (const nIdx of warpNeighbors) {
+            if (nIdx < 0 || nIdx >= totalCells) continue;
+            const diff = Math.abs(cellStrain[midIdx] - cellStrain[nIdx]);
+            if (diff > neighborStress) neighborStress = diff;
+          }
+
+          // Distance from centroid: corners are farthest → highest risk
+          const distFromCentroid = Math.hypot(midX - centroidX, midY - centroidY);
+          warpRisk = (selfContraction + neighborStress) * distFromCentroid;
         }
 
         // Heat injection: fresh filament arrives near melt temp.
@@ -393,7 +494,8 @@ export class ThermalAnalyzer {
           coolingTime: layerTime,
           heatAccum: heatScore,
           coolingEff,
-          gradient,
+          temperature: temperature_val,
+          warpRisk,
           _timestamp: globalTime,
         });
 
@@ -593,36 +695,36 @@ export class ThermalAnalyzer {
       }
     }
 
-    // Thermal gradient findings
+    // Warping risk findings
     for (const layerNum of layerNums) {
       const moves = layerMoves[layerNum];
       if (!moves) continue;
-      let worstGradient = 0;
+      let worstWarp = 0;
       let worstMove = null;
       let worstMoveIdx = 0;
 
       for (let mi = 0; mi < moves.length; mi++) {
         const data = this._overlayData.get(`${layerNum}:${mi}`);
         if (!data) continue;
-        if (data.gradient > worstGradient) {
-          worstGradient = data.gradient;
+        if ((data.warpRisk || 0) > worstWarp) {
+          worstWarp = data.warpRisk;
           worstMove = moves[mi];
           worstMoveIdx = mi;
         }
       }
 
-      if (worstGradient > 10 && material.needsEnclosure && worstMove) {
-        this._addFinding('critical', 'thermal-gradient', layerNum, worstMoveIdx, worstMove,
-          'High thermal stress — warping likely',
-          `Layer ${layerNum}: temperature deviation ${worstGradient.toFixed(1)}°C from layer average.`,
-          'Use an enclosure, increase ambient temperature, or reduce fan speed.',
-          { gradient: worstGradient });
-      } else if (worstGradient > 5 && worstMove) {
-        this._addFinding('warning', 'thermal-gradient', layerNum, worstMoveIdx, worstMove,
-          'Moderate thermal gradient',
-          `Layer ${layerNum}: temperature deviation ${worstGradient.toFixed(1)}°C from layer average.`,
-          'Consider reducing fan speed or enclosing the printer.',
-          { gradient: worstGradient });
+      if (worstWarp > 0.6 && worstMove) {
+        this._addFinding('critical', 'warping-risk', layerNum, worstMoveIdx, worstMove,
+          'High warping risk',
+          `Layer ${layerNum}: estimated warp displacement ${worstWarp.toFixed(2)}mm.`,
+          'Use brims, increase bed adhesion, use enclosure, or reduce print size.',
+          { warpDisplacement: worstWarp });
+      } else if (worstWarp > 0.3 && worstMove) {
+        this._addFinding('warning', 'warping-risk', layerNum, worstMoveIdx, worstMove,
+          'Moderate warping risk',
+          `Layer ${layerNum}: estimated warp displacement ${worstWarp.toFixed(2)}mm.`,
+          'Consider adding brims or improving bed adhesion.',
+          { warpDisplacement: worstWarp });
       }
     }
 
@@ -630,7 +732,7 @@ export class ThermalAnalyzer {
     this._mergeConsecutiveFindings('cooling-time');
     this._mergeConsecutiveFindings('heat-accumulation');
     this._mergeConsecutiveFindings('cooling-effectiveness');
-    this._mergeConsecutiveFindings('thermal-gradient');
+    this._mergeConsecutiveFindings('warping-risk');
   }
 
   _addFinding(severity, category, layerNum, moveIndex, move, title, description, suggestion, metadata) {

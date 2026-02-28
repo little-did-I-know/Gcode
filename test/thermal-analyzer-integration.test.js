@@ -53,7 +53,7 @@ describe('Thermal Analyzer Integration', () => {
     assert.ok(overlays.find(o => o.id === 'cooling-time'), 'Missing cooling-time overlay');
     assert.ok(overlays.find(o => o.id === 'heat-accumulation'), 'Missing heat-accumulation overlay');
     assert.ok(overlays.find(o => o.id === 'cooling-effectiveness'), 'Missing cooling-effectiveness overlay');
-    assert.ok(overlays.find(o => o.id === 'thermal-gradient'), 'Missing thermal-gradient overlay');
+    assert.ok(overlays.find(o => o.id === 'temperature'), 'Missing temperature overlay');
   });
 
   it('thermal overlay values accessible through AnalysisManager', async () => {

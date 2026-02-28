@@ -36,15 +36,15 @@ describe('ThermalAnalyzer - Engine Interface', () => {
     assert.strictEqual(ta.name, 'thermal');
   });
 
-  it('getSupportedOverlays returns 4 overlays with correct ids', () => {
+  it('getSupportedOverlays returns 5 overlays with correct ids', () => {
     const ta = new ThermalAnalyzer();
     const overlays = ta.getSupportedOverlays();
-    assert.strictEqual(overlays.length, 4);
+    assert.strictEqual(overlays.length, 5);
     const ids = overlays.map(o => o.id);
     assert.ok(ids.includes('cooling-time'));
     assert.ok(ids.includes('heat-accumulation'));
     assert.ok(ids.includes('cooling-effectiveness'));
-    assert.ok(ids.includes('thermal-gradient'));
+    assert.ok(ids.includes('temperature'));
   });
 
   it('overlays have label and unit fields', () => {
@@ -164,7 +164,7 @@ describe('ThermalAnalyzer - Forward Pass', () => {
     ta.analyze(layerMoves, makeProfile({ thermal: { depth: 90 } }));
   });
 
-  it('thermal-gradient overlay is a number', () => {
+  it('temperature overlay shows cell temperature in °C', () => {
     const ta = new ThermalAnalyzer();
     const layerMoves = {
       0: makeMoves([
@@ -175,9 +175,10 @@ describe('ThermalAnalyzer - Forward Pass', () => {
       ]),
     };
     ta.analyze(layerMoves, makeProfile());
-    const grad = ta.getOverlayData('thermal-gradient', 1, 0);
-    assert.ok(typeof grad === 'number', `Expected number, got ${typeof grad}`);
-    assert.ok(grad >= 0, 'Gradient should be non-negative');
+    const temp = ta.getOverlayData('temperature', 1, 0);
+    assert.ok(typeof temp === 'number', `Expected number, got ${typeof temp}`);
+    assert.ok(temp > 22, `Temperature should be above ambient (22°C), got ${temp}`);
+    assert.ok(temp < 210, `Temperature should be below melt temp, got ${temp}`);
   });
 
   it('cooling-effectiveness overlay is between 0 and 1', () => {
@@ -270,14 +271,14 @@ describe('ThermalAnalyzer - Findings', () => {
     }
   });
 
-  it('thermal gradient finding for ABS with open chamber', () => {
+  it('warping risk finding for ABS on large print', () => {
     const ta = new ThermalAnalyzer();
-    // ABS needs enclosure, open chamber => high gradient => warping finding
     const layerMoves = {};
     for (let l = 0; l < 10; l++) {
       layerMoves[l] = makeMoves([
-        { x1: 10, y1: 10, x2: 50, y2: 10, type: 'WALL-OUTER', feedRate: 3000, lineIndex: l * 10 },
-        { x1: 50, y1: 10, x2: 50, y2: 50, type: 'WALL-OUTER', feedRate: 3000, lineIndex: l * 10 + 1 },
+        { x1: 0, y1: 0, x2: 80, y2: 0, type: 'WALL-OUTER', feedRate: 1800, lineIndex: l * 10 },
+        { x1: 0, y1: 2, x2: 80, y2: 2, type: 'FILL', feedRate: 3000, lineIndex: l * 10 + 1 },
+        { x1: 0, y1: 4, x2: 80, y2: 4, type: 'FILL', feedRate: 3000, lineIndex: l * 10 + 2 },
       ]);
     }
     ta.analyze(layerMoves, makeProfile({
@@ -285,9 +286,8 @@ describe('ThermalAnalyzer - Findings', () => {
       environment: { chamberType: 'open', ambientTemp: 22 },
     }));
     const findings = ta.getFindings();
-    const gradientFindings = findings.filter(f => f.category === 'thermal-gradient');
-    // ABS in open chamber should produce gradient findings
-    assert.ok(findings.length > 0, 'Should produce some findings for ABS in open chamber');
+    const warpFindings = findings.filter(f => f.category === 'warping-risk');
+    assert.ok(findings.length > 0, 'Should produce findings for large ABS print');
   });
 });
 
@@ -432,5 +432,71 @@ describe('ThermalAnalyzer - Cooling Time Backward Pass', () => {
     const ct1 = analyzer.getOverlayData('cooling-time', 0, 1);
     assert.strictEqual(ct0, ct1, 'Without backward pass, all moves use layer time estimate');
     assert.ok(ct0 > 0, 'Cooling time should be positive');
+  });
+});
+
+// ============================================================
+// 8. Warping Risk
+// ============================================================
+
+describe('ThermalAnalyzer - Warping Risk', () => {
+  it('warping-risk overlay is in supported overlays', () => {
+    const ta = new ThermalAnalyzer();
+    const ids = ta.getSupportedOverlays().map(o => o.id);
+    assert.ok(ids.includes('warping-risk'));
+  });
+
+  it('warping risk is higher at center than at edge of large print', () => {
+    const ta = new ThermalAnalyzer();
+    // 100mm wide print: two moves at edges, one in center
+    const layerMoves = {
+      0: makeMoves([
+        { x1: 0, y1: 0, x2: 100, y2: 0, type: 'WALL-OUTER', feedRate: 1800 },
+        { x1: 0, y1: 2, x2: 100, y2: 2, type: 'FILL', feedRate: 3000 },
+        { x1: 0, y1: 4, x2: 100, y2: 4, type: 'FILL', feedRate: 3000 },
+      ]),
+      1: makeMoves([
+        { x1: 0, y1: 0, x2: 100, y2: 0, type: 'WALL-OUTER', feedRate: 1800, lineIndex: 10 },
+        { x1: 0, y1: 2, x2: 100, y2: 2, type: 'FILL', feedRate: 3000, lineIndex: 11 },
+        { x1: 0, y1: 4, x2: 100, y2: 4, type: 'FILL', feedRate: 3000, lineIndex: 12 },
+      ]),
+    };
+    ta.analyze(layerMoves, makeProfile());
+    // Move midpoint at x=50 (center) should have higher warp risk
+    // than move endpoints which are near edges
+    const warpCenter = ta.getOverlayData('warping-risk', 1, 1);
+    assert.ok(typeof warpCenter === 'number');
+    assert.ok(warpCenter >= 0, 'Warp risk should be non-negative');
+  });
+
+  it('warping risk is zero on layer 0 (ambient temperature)', () => {
+    const ta = new ThermalAnalyzer();
+    const layerMoves = {
+      0: makeMoves([
+        { x1: 0, y1: 0, x2: 50, y2: 0, type: 'WALL-OUTER' },
+      ]),
+    };
+    ta.analyze(layerMoves, makeProfile());
+    const warp = ta.getOverlayData('warping-risk', 0, 0);
+    // Layer 0: preTemp is ambient (below glass transition) → ΔT = 0 → warp = 0
+    assert.strictEqual(warp, 0, 'Layer 0 warp risk should be 0 (cells at ambient)');
+  });
+
+  it('ABS has higher warping risk than PA-CF due to CTE difference', () => {
+    const ta1 = new ThermalAnalyzer();
+    const ta2 = new ThermalAnalyzer();
+    const layerMoves = {};
+    for (let l = 0; l < 5; l++) {
+      layerMoves[l] = makeMoves([
+        { x1: 0, y1: 0, x2: 80, y2: 0, type: 'WALL-OUTER', feedRate: 1800, lineIndex: l * 10 },
+        { x1: 0, y1: 2, x2: 80, y2: 2, type: 'FILL', feedRate: 3000, lineIndex: l * 10 + 1 },
+      ]);
+    }
+    ta1.analyze(layerMoves, makeProfile({ material: { type: 'ABS' } }));
+    ta2.analyze(layerMoves, makeProfile({ material: { type: 'PA-CF' } }));
+    const warpABS = ta1.getOverlayData('warping-risk', 4, 1);
+    const warpPACF = ta2.getOverlayData('warping-risk', 4, 1);
+    assert.ok(warpABS > warpPACF,
+      `ABS warp (${warpABS}) should exceed PA-CF warp (${warpPACF}) due to higher CTE`);
   });
 });
