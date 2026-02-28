@@ -2210,6 +2210,7 @@ function setView(view) {
     updateViewerOverlay(selectedLayer);
     if (view === 'visual') {
       showSimControls();
+      renderMotionLegend();
     } else {
       stopSimulation();
       hideSimControls();
