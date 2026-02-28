@@ -146,7 +146,7 @@ export class MotionAnalyzer {
    * @param {Array} moves - Array of move objects from parser
    * @returns {Array} Array of result objects with actual velocities
    */
-  analyze(moves) {
+  analyzeMoves(moves) {
     if (!moves || moves.length === 0) return [];
 
     const results = [];
@@ -258,10 +258,20 @@ export class MotionAnalyzer {
     this.results.clear();
     for (const [layerNum, moves] of Object.entries(layerMoves)) {
       if (moves && moves.length > 0) {
-        this.results.set(parseInt(layerNum), this.analyze(moves));
+        this.results.set(parseInt(layerNum), this.analyzeMoves(moves));
       }
     }
     return this.results;
+  }
+
+  /**
+   * Engine interface: analyze all layers.
+   * Called by AnalysisManager.analyzeAll(layerMoves, profile).
+   * @param {Object} layerMoves - Parser's layerMoves object
+   * @param {Object} profile - Analysis profile (unused by motion engine)
+   */
+  analyze(layerMoves, profile) {
+    this.analyzeAllLayers(layerMoves);
   }
 
   /**
@@ -274,5 +284,35 @@ export class MotionAnalyzer {
     const layerResults = this.results.get(layerNum);
     if (!layerResults || moveIndex >= layerResults.length) return null;
     return layerResults[moveIndex];
+  }
+
+  // ===== Engine Interface =====
+
+  get name() { return 'motion'; }
+
+  getSupportedOverlays() {
+    return [
+      { id: 'actual-speed', label: 'Actual Speed', unit: 'mm/s' },
+      { id: 'speed-delta', label: 'Speed Delta', unit: '%' },
+    ];
+  }
+
+  getOverlayData(overlayId, layerNum, moveIndex) {
+    const result = this.getResult(layerNum, moveIndex);
+    if (!result) return 0;
+    if (overlayId === 'actual-speed') return result.actualPeakSpeed;
+    if (overlayId === 'speed-delta') {
+      if (result.requestedSpeed <= 0) return 0;
+      return (result.requestedSpeed - result.actualPeakSpeed) / result.requestedSpeed;
+    }
+    return 0;
+  }
+
+  getFindings() {
+    return [];
+  }
+
+  clear() {
+    this.results.clear();
   }
 }

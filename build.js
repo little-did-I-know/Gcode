@@ -16,7 +16,10 @@ const FILES = [
   'parser.js',
   'modifier.js',
   'gcode-dictionary.js',
+  'material-profiles.js',      // NEW - no deps
   'motion-analyzer.js',
+  'analysis-manager.js',        // NEW - no deps
+  'structural-analyzer.js',     // NEW - depends on material-profiles
   'viewer3d.js',
   'ui.js',
   'app.js',

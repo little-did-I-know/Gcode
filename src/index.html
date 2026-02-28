@@ -475,6 +475,40 @@ main { display: flex; flex: 1; overflow: hidden; }
   border: 1px solid var(--border); background: var(--surface2); color: var(--text);
 }
 #printerProfilePanel button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+/* ===== Analysis Panel ===== */
+.analysis-config { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.analysis-config .field-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.analysis-config .field-row label { min-width: 60px; font-size: 11px; color: var(--text-dim); }
+.analysis-config .btn-sm { font-size: 10px; padding: 2px 6px; background: var(--bg-hover); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; color: var(--text); }
+.analysis-empty { padding: 16px 8px; text-align: center; color: var(--text-dim); font-size: 12px; }
+.analysis-engine { border-bottom: 1px solid var(--border); }
+.analysis-engine-header { display: flex; align-items: center; gap: 6px; padding: 6px 4px; cursor: pointer; font-size: 12px; }
+.analysis-engine-header:hover { background: var(--bg-hover); }
+.analysis-engine-header .finding-count { margin-left: auto; font-size: 11px; color: var(--text-dim); }
+.analysis-engine-body.collapsed { display: none; }
+.analysis-finding { display: flex; align-items: flex-start; gap: 6px; padding: 4px 8px; cursor: pointer; font-size: 11px; border-left: 3px solid transparent; }
+.analysis-finding:hover { background: var(--bg-hover); }
+.analysis-finding.severity-critical { border-left-color: #ef4444; }
+.analysis-finding.severity-warning { border-left-color: #f59e0b; }
+.analysis-finding.severity-info { border-left-color: #3b82f6; }
+.finding-icon { font-size: 10px; flex-shrink: 0; margin-top: 2px; }
+.severity-critical .finding-icon { color: #ef4444; }
+.severity-warning .finding-icon { color: #f59e0b; }
+.severity-info .finding-icon { color: #3b82f6; }
+.finding-text { flex: 1; min-width: 0; }
+.finding-title { font-weight: 500; }
+.finding-desc { color: var(--text-dim); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.finding-tooltip { display: none; padding: 6px 8px; margin-top: 4px; background: var(--bg-hover, rgba(255,255,255,0.05)); border: 1px solid var(--border); border-radius: 4px; font-size: 10px; line-height: 1.4; white-space: normal; }
+.analysis-finding:hover .finding-tooltip { display: block; }
+.finding-tooltip-desc { color: var(--text); margin-bottom: 4px; }
+.finding-tooltip-suggestion { color: var(--text-dim); border-top: 1px solid var(--border); padding-top: 4px; }
+.finding-layer { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
+.threshold-group { margin-bottom: 8px; }
+.threshold-group-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); padding: 4px 0 2px; }
+.threshold-group-hint { font-size: 9px; color: var(--text-dim); opacity: 0.7; margin-bottom: 4px; }
+.threshold-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 11px; }
+.threshold-row label { color: var(--text-dim); white-space: nowrap; }
+.threshold-input { width: 46px; font-size: 11px; padding: 2px 4px; background: var(--bg-input, var(--bg)); border: 1px solid var(--border); border-radius: 3px; color: var(--text); text-align: center; }
 </style>
 </head>
 <body>
@@ -640,6 +674,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="tab" data-tab="inserts" onclick="switchTab('inserts')">Inserts</button>
         <button class="tab" data-tab="reference" onclick="switchTab('reference')">Reference</button>
         <button class="tab" data-tab="recovery" onclick="switchTab('recovery')">Recovery</button>
+        <button class="tab" data-tab="analysis" onclick="switchTab('analysis')">Analysis</button>
       </div>
 
       <!-- PAUSE TAB -->
@@ -849,6 +884,59 @@ main { display: flex; flex: 1; overflow: hidden; }
           <div class="hint">Z-heights are shifted so the resume layer prints at the original first-layer height. Feedrates on the resume layer are overridden with first-layer speeds for bed adhesion.</div>
         </div>
         <button class="btn btn-primary" onclick="addRecovery()">+ Add Recovery</button>
+      </div>
+
+      <!-- ANALYSIS TAB -->
+      <div class="tab-content" id="tab-analysis">
+        <div class="analysis-config">
+          <div class="field-row">
+            <label>Printer</label>
+            <span id="analysisPrinterInfo" style="flex:1;font-size:11px">Not loaded</span>
+            <button class="btn-sm" onclick="togglePrinterProfile()">Configure</button>
+          </div>
+          <div class="field-row">
+            <label>Material</label>
+            <select id="analysisMaterialType" onchange="onMaterialChange(this.value)" style="flex:1;font-size:11px">
+              <option value="PLA">PLA</option>
+              <option value="PETG">PETG</option>
+              <option value="ABS">ABS</option>
+              <option value="ASA">ASA</option>
+              <option value="TPU">TPU</option>
+              <option value="PC">PC</option>
+              <option value="Nylon">Nylon</option>
+              <option value="PLA-CF">PLA-CF</option>
+              <option value="PETG-CF">PETG-CF</option>
+              <option value="ABS-GF">ABS-GF</option>
+              <option value="ASA-CF">ASA-CF</option>
+              <option value="PC-FR">PC-FR</option>
+              <option value="PET-CF">PET-CF</option>
+              <option value="PA-CF">PA-CF</option>
+              <option value="PA6-CF">PA6-CF</option>
+              <option value="PA6-GF">PA6-GF</option>
+              <option value="PPA-CF">PPA-CF</option>
+              <option value="PPS-CF">PPS-CF</option>
+            </select>
+            <span id="analysisMaterialInferred" style="font-size:10px;color:var(--text-dim)"></span>
+          </div>
+          <div class="field-row" style="margin-top:6px">
+            <label>Custom JSON</label>
+            <input type="file" id="materialProfileFile" accept=".json" onchange="loadMaterialProfileFile(this)" style="font-size:10px;flex:1">
+          </div>
+          <button onclick="runAnalysis()" style="margin-top:8px;width:100%;padding:6px;font-size:12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Run Analysis</button>
+        </div>
+
+        <div id="analysisThresholds" class="panel collapsed">
+          <div class="panel-header" onclick="toggleAnalysisThresholds()">
+            <span>Severity Thresholds</span>
+            <span class="toggle-icon">&#9660;</span>
+          </div>
+          <div class="panel-content" id="thresholdsContent">
+          </div>
+        </div>
+
+        <div id="analysisResults">
+          <div class="analysis-empty">Load a G-code file and run analysis</div>
+        </div>
       </div>
 
       <!-- MODIFICATIONS LIST -->

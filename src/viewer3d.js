@@ -1073,6 +1073,25 @@ export class GcodeViewer3D {
     this.cam.zoom = 1.0;
   }
 
+  flyTo(x, y, z) {
+    const startTarget = [...this.cam.target];
+    const endTarget = [x, y, z || 0];
+    const startTime = performance.now();
+    const duration = 300; // ms
+
+    const animate = (now) => {
+      const t = Math.min(1, (now - startTime) / duration);
+      // Ease-out cubic
+      const ease = 1 - Math.pow(1 - t, 3);
+      this.cam.target[0] = startTarget[0] + (endTarget[0] - startTarget[0]) * ease;
+      this.cam.target[1] = startTarget[1] + (endTarget[1] - startTarget[1]) * ease;
+      this.cam.target[2] = startTarget[2] + (endTarget[2] - startTarget[2]) * ease;
+      this.render(this.currentLayer);
+      if (t < 1) requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
+  }
+
   _setupInteraction() {
     const c = this.canvas;
 

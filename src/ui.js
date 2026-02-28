@@ -649,9 +649,11 @@ function renderMotionLegend() {
     ['speed', 'Speed (mm/s)'],
     ['acceleration', 'Acceleration (mm/s\u00B2)'],
     ['flow', 'Flow Rate (mm\u00B3/s)'],
-    ['actual-speed', 'Actual Speed'],
-    ['speed-delta', 'Speed Delta'],
   ];
+  // Add engine overlays dynamically
+  for (const overlay of analysisManager.getSupportedOverlays()) {
+    modeOptions.push([overlay.id, overlay.label + (overlay.unit ? ' (' + overlay.unit + ')' : '')]);
+  }
   const modeSelect = modeOptions.map(([val, label]) =>
     `<option value="${val}"${colorMode === val ? ' selected' : ''}>${label}</option>`
   ).join('');
@@ -672,6 +674,10 @@ function renderMotionLegend() {
     if (colorMode === 'speed' || colorMode === 'actual-speed') unitLabel = 'mm/s';
     else if (colorMode === 'acceleration') unitLabel = 'mm/s\u00B2';
     else if (colorMode === 'speed-delta') unitLabel = '%';
+    else {
+      const overlay = analysisManager.getSupportedOverlays().find(o => o.id === colorMode);
+      if (overlay) unitLabel = overlay.unit || '';
+    }
 
     const mult = colorMode === 'speed-delta' ? 100 : 1;
     html += `<div class="heatmap-gradient">
@@ -857,6 +863,19 @@ function loadFile(file) {
     document.getElementById('profileAccel').value = motionAnalyzer.profile.acceleration;
     document.getElementById('profileJerk').value = motionAnalyzer.profile.jerk;
     document.getElementById('profileFirmware').value = motionAnalyzer.profile.firmwareType;
+
+    // Run structural analysis
+    runAnalysis();
+
+    // Update analysis panel material dropdown
+    const inferredMaterial = inferMaterial(parser.lines);
+    const materialSelect = document.getElementById('analysisMaterialType');
+    if (materialSelect) materialSelect.value = inferredMaterial;
+    const inferredLabel = document.getElementById('analysisMaterialInferred');
+    if (inferredLabel) inferredLabel.textContent = '(inferred: ' + inferredMaterial + ')';
+    const printerInfo = document.getElementById('analysisPrinterInfo');
+    if (printerInfo) printerInfo.textContent = motionAnalyzer.profile.firmwareType + ' (inferred)';
+
     renderMotionLegend();
     if (parser.layers.length > 0) selectLayer(parser.layers[0].number);
     else renderFullPreview();
@@ -1525,12 +1544,199 @@ function showToast(message, type = 'success', duration = 4000) {
   if (duration > 0) setTimeout(() => toast.remove(), duration);
 }
 
+// ===== ANALYSIS PANEL =====
+
+function renderAnalysisPanel() {
+  const container = document.getElementById('analysisResults');
+  if (!container) return;
+
+  if (!parser.layers || parser.layers.length === 0) {
+    container.innerHTML = '<div class="analysis-empty">Load a G-code file and run analysis</div>';
+    return;
+  }
+
+  const findings = analysisManager.getAllFindings();
+  if (findings.length === 0) {
+    container.innerHTML = '<div class="analysis-empty">No issues found. Run analysis to scan for potential problems.</div>';
+    return;
+  }
+
+  // Group findings by engine
+  const grouped = {};
+  for (const f of findings) {
+    if (!grouped[f.engine]) grouped[f.engine] = [];
+    grouped[f.engine].push(f);
+  }
+
+  const ENGINE_LABELS = { motion: 'Motion Reality', structural: 'Structural Integrity', thermal: 'Thermal Dynamics' };
+  const SEVERITY_ICON = { critical: '\u2B24', warning: '\u26A0', info: '\u2139' };
+  const SEVERITY_CLASS = { critical: 'severity-critical', warning: 'severity-warning', info: 'severity-info' };
+
+  let html = '';
+  for (const [engineName, engineFindings] of Object.entries(grouped)) {
+    const label = ENGINE_LABELS[engineName] || engineName;
+    html += '<div class="analysis-engine">' +
+      '<div class="analysis-engine-header" onclick="toggleAnalysisEngine(\'' + engineName + '\')">' +
+        '<span class="toggle-icon">\u25BC</span>' +
+        '<strong>' + label + '</strong>' +
+        '<span class="finding-count">' + engineFindings.length + ' finding' + (engineFindings.length !== 1 ? 's' : '') + '</span>' +
+      '</div>' +
+      '<div class="analysis-engine-body" id="analysis-engine-' + engineName + '">';
+
+    for (const finding of engineFindings) {
+      const icon = SEVERITY_ICON[finding.severity] || '';
+      const cls = SEVERITY_CLASS[finding.severity] || '';
+      const desc = (finding.description || '').replace(/"/g, '&quot;');
+      const suggestion = (finding.suggestion || '').replace(/"/g, '&quot;');
+      const tipDesc = (finding.description || '').replace(/</g, '&lt;');
+      const tipSugg = (finding.suggestion || '').replace(/</g, '&lt;');
+      html += '<div class="analysis-finding ' + cls + '" onclick="navigateToFinding(\'' + finding.id + '\')">' +
+        '<span class="finding-icon">' + icon + '</span>' +
+        '<div class="finding-text">' +
+          '<div class="finding-title">' + finding.title + '</div>' +
+          '<div class="finding-desc">' + desc + '</div>' +
+          '<div class="finding-tooltip">' +
+            '<div class="finding-tooltip-desc">' + tipDesc + '</div>' +
+            (tipSugg ? '<div class="finding-tooltip-suggestion"><strong>Suggestion:</strong> ' + tipSugg + '</div>' : '') +
+          '</div>' +
+        '</div>' +
+        '<span class="finding-layer">L' + finding.location.layer + '</span>' +
+      '</div>';
+    }
+
+    html += '</div></div>';
+  }
+
+  container.innerHTML = html;
+}
+
+function toggleAnalysisEngine(engineName) {
+  const body = document.getElementById('analysis-engine-' + engineName);
+  if (body) body.classList.toggle('collapsed');
+}
+
+function toggleAnalysisThresholds() {
+  const panel = document.getElementById('analysisThresholds');
+  if (panel) panel.classList.toggle('collapsed');
+  renderThresholds();
+}
+
+function renderThresholds() {
+  const container = document.getElementById('thresholdsContent');
+  if (!container) return;
+
+  const thresholds = analysisProfile.thresholds;
+
+  const DEFS = [
+    {
+      group: 'Layer Bond',
+      hint: 'How well layers stick together. Lower values = weaker bond.',
+      items: [
+        { key: 'layer-bond-overlap', label: 'Overlap %', hint: 'Fraction of extrusion overlapping layer below (0\u20131)',
+          fields: [{ level: 'warning', prefix: 'Warn below' }, { level: 'critical', prefix: 'Critical below' }] },
+        { key: 'layer-bond-cooling', label: 'Layer time (s)', hint: 'Total time to print a layer before next layer arrives',
+          fields: [{ level: 'warning', prefix: 'Warn below' }, { level: 'critical', prefix: 'Critical below' }] },
+      ],
+    },
+    {
+      group: 'Wall Integrity',
+      hint: 'Structural quality of perimeter walls.',
+      items: [
+        { key: 'wall-seam-alignment', label: 'Seam cluster radius (mm)', hint: 'How close seam starts must be to count as aligned',
+          fields: [{ level: 'warning', prefix: 'Detect within' }] },
+        { key: 'wall-gap-size', label: 'Perimeter gap (mm)', hint: 'Distance between wall extrusions where material is missing',
+          fields: [{ level: 'warning', prefix: 'Warn above' }, { level: 'critical', prefix: 'Critical above' }] },
+      ],
+    },
+    {
+      group: 'Extrusion',
+      hint: 'Consistency of material flow.',
+      items: [
+        { key: 'extrusion-consistency', label: 'Flow deviation', hint: 'Fraction deviation from mean flow rate (e.g. 0.15 = 15%)',
+          fields: [{ level: 'warning', prefix: 'Warn above' }] },
+      ],
+    },
+  ];
+
+  let html = '';
+  for (const group of DEFS) {
+    html += '<div class="threshold-group">';
+    html += '<div class="threshold-group-title">' + group.group + '</div>';
+    html += '<div class="threshold-group-hint">' + group.hint + '</div>';
+    for (const item of group.items) {
+      const values = thresholds[item.key] || {};
+      html += '<div class="threshold-row"><label title="' + item.hint + '">' + item.label + '</label>';
+      for (const f of item.fields) {
+        if (values[f.level] !== undefined) {
+          html += ' <span class="text-dim" style="font-size:9px">' + f.prefix + '</span>' +
+            '<input type="number" step="0.1" value="' + values[f.level] + '" ' +
+            'onchange="updateThreshold(\'' + item.key + '\',\'' + f.level + '\',+this.value)" ' +
+            'class="threshold-input" title="' + f.prefix + ' ' + values[f.level] + '">';
+        }
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function updateThreshold(key, level, value) {
+  if (!analysisProfile.thresholds[key]) analysisProfile.thresholds[key] = {};
+  analysisProfile.thresholds[key][level] = value;
+}
+
+function onMaterialChange(type) {
+  analysisProfile.material = getMaterialProfile(type);
+  analysisProfile._manualMaterial = true;
+  const inferred = document.getElementById('analysisMaterialInferred');
+  if (inferred) inferred.textContent = '(manual)';
+}
+
+function loadMaterialProfileFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const custom = JSON.parse(e.target.result);
+      analysisProfile.material = { ...analysisProfile.material, ...custom };
+      analysisProfile._manualMaterial = true;
+      showToast('Material profile loaded');
+    } catch (err) {
+      showToast('Invalid JSON profile: ' + err.message, 0, 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function navigateToFinding(findingId) {
+  const findings = analysisManager.getAllFindings();
+  const finding = findings.find(function(f) { return f.id === findingId; });
+  if (!finding || !finding.location) return;
+
+  if (currentView !== 'visual') setView('visual');
+
+  const slider = document.getElementById('layerSlider');
+  if (slider) {
+    slider.value = finding.location.layer;
+    onSliderChange(finding.location.layer);
+  }
+
+  if (finding.location.xyz && typeof viewer.flyTo === 'function') {
+    viewer.flyTo(finding.location.xyz.x, finding.location.xyz.y, finding.location.xyz.z);
+  }
+}
+
 // ===== TAB SWITCHING =====
 function switchTab(tabName) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
   document.querySelectorAll('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === 'tab-' + tabName));
   if (tabName === 'reference' && document.getElementById('refContent').children.length === 0) {
     renderReference();
+  }
+  if (tabName === 'analysis') {
+    renderAnalysisPanel();
   }
 }
 
