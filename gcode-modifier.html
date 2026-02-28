@@ -475,6 +475,33 @@ main { display: flex; flex: 1; overflow: hidden; }
   border: 1px solid var(--border); background: var(--surface2); color: var(--text);
 }
 #printerProfilePanel button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+/* ===== Analysis Panel ===== */
+.analysis-config { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.analysis-config .field-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.analysis-config .field-row label { min-width: 60px; font-size: 11px; color: var(--text-dim); }
+.analysis-config .btn-sm { font-size: 10px; padding: 2px 6px; background: var(--bg-hover); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; color: var(--text); }
+.analysis-empty { padding: 16px 8px; text-align: center; color: var(--text-dim); font-size: 12px; }
+.analysis-engine { border-bottom: 1px solid var(--border); }
+.analysis-engine-header { display: flex; align-items: center; gap: 6px; padding: 6px 4px; cursor: pointer; font-size: 12px; }
+.analysis-engine-header:hover { background: var(--bg-hover); }
+.analysis-engine-header .finding-count { margin-left: auto; font-size: 11px; color: var(--text-dim); }
+.analysis-engine-body.collapsed { display: none; }
+.analysis-finding { display: flex; align-items: flex-start; gap: 6px; padding: 4px 8px; cursor: pointer; font-size: 11px; border-left: 3px solid transparent; }
+.analysis-finding:hover { background: var(--bg-hover); }
+.analysis-finding.severity-critical { border-left-color: #ef4444; }
+.analysis-finding.severity-warning { border-left-color: #f59e0b; }
+.analysis-finding.severity-info { border-left-color: #3b82f6; }
+.finding-icon { font-size: 10px; flex-shrink: 0; margin-top: 2px; }
+.severity-critical .finding-icon { color: #ef4444; }
+.severity-warning .finding-icon { color: #f59e0b; }
+.severity-info .finding-icon { color: #3b82f6; }
+.finding-text { flex: 1; min-width: 0; }
+.finding-title { font-weight: 500; }
+.finding-desc { color: var(--text-dim); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.finding-layer { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
+.threshold-row { display: flex; align-items: center; gap: 4px; padding: 3px 0; font-size: 11px; flex-wrap: wrap; }
+.threshold-row label { min-width: 100px; color: var(--text-dim); }
+.threshold-input { width: 50px; font-size: 11px; padding: 1px 3px; background: var(--bg-input, var(--bg)); border: 1px solid var(--border); border-radius: 3px; color: var(--text); }
 </style>
 </head>
 <body>
@@ -640,6 +667,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="tab" data-tab="inserts" onclick="switchTab('inserts')">Inserts</button>
         <button class="tab" data-tab="reference" onclick="switchTab('reference')">Reference</button>
         <button class="tab" data-tab="recovery" onclick="switchTab('recovery')">Recovery</button>
+        <button class="tab" data-tab="analysis" onclick="switchTab('analysis')">Analysis</button>
       </div>
 
       <!-- PAUSE TAB -->
@@ -849,6 +877,59 @@ main { display: flex; flex: 1; overflow: hidden; }
           <div class="hint">Z-heights are shifted so the resume layer prints at the original first-layer height. Feedrates on the resume layer are overridden with first-layer speeds for bed adhesion.</div>
         </div>
         <button class="btn btn-primary" onclick="addRecovery()">+ Add Recovery</button>
+      </div>
+
+      <!-- ANALYSIS TAB -->
+      <div class="tab-content" id="tab-analysis">
+        <div class="analysis-config">
+          <div class="field-row">
+            <label>Printer</label>
+            <span id="analysisPrinterInfo" style="flex:1;font-size:11px">Not loaded</span>
+            <button class="btn-sm" onclick="togglePrinterProfile()">Configure</button>
+          </div>
+          <div class="field-row">
+            <label>Material</label>
+            <select id="analysisMaterialType" onchange="onMaterialChange(this.value)" style="flex:1;font-size:11px">
+              <option value="PLA">PLA</option>
+              <option value="PETG">PETG</option>
+              <option value="ABS">ABS</option>
+              <option value="ASA">ASA</option>
+              <option value="TPU">TPU</option>
+              <option value="PC">PC</option>
+              <option value="Nylon">Nylon</option>
+              <option value="PLA-CF">PLA-CF</option>
+              <option value="PETG-CF">PETG-CF</option>
+              <option value="ABS-GF">ABS-GF</option>
+              <option value="ASA-CF">ASA-CF</option>
+              <option value="PC-FR">PC-FR</option>
+              <option value="PET-CF">PET-CF</option>
+              <option value="PA-CF">PA-CF</option>
+              <option value="PA6-CF">PA6-CF</option>
+              <option value="PA6-GF">PA6-GF</option>
+              <option value="PPA-CF">PPA-CF</option>
+              <option value="PPS-CF">PPS-CF</option>
+            </select>
+            <span id="analysisMaterialInferred" style="font-size:10px;color:var(--text-dim)"></span>
+          </div>
+          <div class="field-row" style="margin-top:6px">
+            <label>Custom JSON</label>
+            <input type="file" id="materialProfileFile" accept=".json" onchange="loadMaterialProfileFile(this)" style="font-size:10px;flex:1">
+          </div>
+          <button onclick="runAnalysis()" style="margin-top:8px;width:100%;padding:6px;font-size:12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Run Analysis</button>
+        </div>
+
+        <div id="analysisResults">
+          <div class="analysis-empty">Load a G-code file and run analysis</div>
+        </div>
+
+        <div id="analysisThresholds" class="panel collapsed">
+          <div class="panel-header" onclick="toggleAnalysisThresholds()">
+            <span>Thresholds</span>
+            <span class="toggle-icon">&#9660;</span>
+          </div>
+          <div class="panel-content" id="thresholdsContent">
+          </div>
+        </div>
       </div>
 
       <!-- MODIFICATIONS LIST -->
@@ -3729,7 +3810,7 @@ class MotionAnalyzer {
    * @param {Array} moves - Array of move objects from parser
    * @returns {Array} Array of result objects with actual velocities
    */
-  analyze(moves) {
+  analyzeMoves(moves) {
     if (!moves || moves.length === 0) return [];
 
     const results = [];
@@ -3841,10 +3922,20 @@ class MotionAnalyzer {
     this.results.clear();
     for (const [layerNum, moves] of Object.entries(layerMoves)) {
       if (moves && moves.length > 0) {
-        this.results.set(parseInt(layerNum), this.analyze(moves));
+        this.results.set(parseInt(layerNum), this.analyzeMoves(moves));
       }
     }
     return this.results;
+  }
+
+  /**
+   * Engine interface: analyze all layers.
+   * Called by AnalysisManager.analyzeAll(layerMoves, profile).
+   * @param {Object} layerMoves - Parser's layerMoves object
+   * @param {Object} profile - Analysis profile (unused by motion engine)
+   */
+  analyze(layerMoves, profile) {
+    this.analyzeAllLayers(layerMoves);
   }
 
   /**
@@ -6440,9 +6531,11 @@ function renderMotionLegend() {
     ['speed', 'Speed (mm/s)'],
     ['acceleration', 'Acceleration (mm/s\u00B2)'],
     ['flow', 'Flow Rate (mm\u00B3/s)'],
-    ['actual-speed', 'Actual Speed'],
-    ['speed-delta', 'Speed Delta'],
   ];
+  // Add engine overlays dynamically
+  for (const overlay of analysisManager.getSupportedOverlays()) {
+    modeOptions.push([overlay.id, overlay.label + (overlay.unit ? ' (' + overlay.unit + ')' : '')]);
+  }
   const modeSelect = modeOptions.map(([val, label]) =>
     `<option value="${val}"${colorMode === val ? ' selected' : ''}>${label}</option>`
   ).join('');
@@ -6648,6 +6741,19 @@ function loadFile(file) {
     document.getElementById('profileAccel').value = motionAnalyzer.profile.acceleration;
     document.getElementById('profileJerk').value = motionAnalyzer.profile.jerk;
     document.getElementById('profileFirmware').value = motionAnalyzer.profile.firmwareType;
+
+    // Run structural analysis
+    runAnalysis();
+
+    // Update analysis panel material dropdown
+    const inferredMaterial = inferMaterial(parser.lines);
+    const materialSelect = document.getElementById('analysisMaterialType');
+    if (materialSelect) materialSelect.value = inferredMaterial;
+    const inferredLabel = document.getElementById('analysisMaterialInferred');
+    if (inferredLabel) inferredLabel.textContent = '(inferred: ' + inferredMaterial + ')';
+    const printerInfo = document.getElementById('analysisPrinterInfo');
+    if (printerInfo) printerInfo.textContent = motionAnalyzer.profile.firmwareType + ' (inferred)';
+
     renderMotionLegend();
     if (parser.layers.length > 0) selectLayer(parser.layers[0].number);
     else renderFullPreview();
@@ -7316,12 +7422,161 @@ function showToast(message, type = 'success', duration = 4000) {
   if (duration > 0) setTimeout(() => toast.remove(), duration);
 }
 
+// ===== ANALYSIS PANEL =====
+
+function renderAnalysisPanel() {
+  const container = document.getElementById('analysisResults');
+  if (!container) return;
+
+  if (!parser.layers || parser.layers.length === 0) {
+    container.innerHTML = '<div class="analysis-empty">Load a G-code file and run analysis</div>';
+    return;
+  }
+
+  const findings = analysisManager.getAllFindings();
+  if (findings.length === 0) {
+    container.innerHTML = '<div class="analysis-empty">No issues found. Run analysis to scan for potential problems.</div>';
+    return;
+  }
+
+  // Group findings by engine
+  const grouped = {};
+  for (const f of findings) {
+    if (!grouped[f.engine]) grouped[f.engine] = [];
+    grouped[f.engine].push(f);
+  }
+
+  const ENGINE_LABELS = { motion: 'Motion Reality', structural: 'Structural Integrity', thermal: 'Thermal Dynamics' };
+  const SEVERITY_ICON = { critical: '\u2B24', warning: '\u26A0', info: '\u2139' };
+  const SEVERITY_CLASS = { critical: 'severity-critical', warning: 'severity-warning', info: 'severity-info' };
+
+  let html = '';
+  for (const [engineName, engineFindings] of Object.entries(grouped)) {
+    const label = ENGINE_LABELS[engineName] || engineName;
+    html += '<div class="analysis-engine">' +
+      '<div class="analysis-engine-header" onclick="toggleAnalysisEngine(\'' + engineName + '\')">' +
+        '<span class="toggle-icon">\u25BC</span>' +
+        '<strong>' + label + '</strong>' +
+        '<span class="finding-count">' + engineFindings.length + ' finding' + (engineFindings.length !== 1 ? 's' : '') + '</span>' +
+      '</div>' +
+      '<div class="analysis-engine-body" id="analysis-engine-' + engineName + '">';
+
+    for (const finding of engineFindings) {
+      const icon = SEVERITY_ICON[finding.severity] || '';
+      const cls = SEVERITY_CLASS[finding.severity] || '';
+      const desc = (finding.description || '').replace(/"/g, '&quot;');
+      const suggestion = (finding.suggestion || '').replace(/"/g, '&quot;');
+      html += '<div class="analysis-finding ' + cls + '" onclick="navigateToFinding(\'' + finding.id + '\')" title="' + suggestion + '">' +
+        '<span class="finding-icon">' + icon + '</span>' +
+        '<div class="finding-text">' +
+          '<div class="finding-title">' + finding.title + '</div>' +
+          '<div class="finding-desc">' + desc + '</div>' +
+        '</div>' +
+        '<span class="finding-layer">L' + finding.location.layer + '</span>' +
+      '</div>';
+    }
+
+    html += '</div></div>';
+  }
+
+  container.innerHTML = html;
+}
+
+function toggleAnalysisEngine(engineName) {
+  const body = document.getElementById('analysis-engine-' + engineName);
+  if (body) body.classList.toggle('collapsed');
+}
+
+function toggleAnalysisThresholds() {
+  const panel = document.getElementById('analysisThresholds');
+  if (panel) panel.classList.toggle('collapsed');
+  renderThresholds();
+}
+
+function renderThresholds() {
+  const container = document.getElementById('thresholdsContent');
+  if (!container) return;
+
+  const thresholds = analysisProfile.thresholds;
+  const LABELS = {
+    'layer-bond-overlap': 'Bond Overlap',
+    'layer-bond-cooling': 'Cooling Time (s)',
+    'wall-seam-alignment': 'Seam Radius (mm)',
+    'wall-gap-size': 'Gap Size (mm)',
+    'extrusion-consistency': 'Flow Deviation',
+  };
+
+  let html = '';
+  for (const [key, values] of Object.entries(thresholds)) {
+    const label = LABELS[key] || key;
+    html += '<div class="threshold-row"><label>' + label + '</label>';
+    if (values.critical !== undefined) {
+      html += ' <span class="text-dim">crit&lt;</span><input type="number" step="0.1" value="' + values.critical + '" onchange="updateThreshold(\'' + key + '\',\'critical\',+this.value)" class="threshold-input">';
+    }
+    if (values.warning !== undefined) {
+      html += ' <span class="text-dim">warn&lt;</span><input type="number" step="0.1" value="' + values.warning + '" onchange="updateThreshold(\'' + key + '\',\'warning\',+this.value)" class="threshold-input">';
+    }
+    html += '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function updateThreshold(key, level, value) {
+  if (!analysisProfile.thresholds[key]) analysisProfile.thresholds[key] = {};
+  analysisProfile.thresholds[key][level] = value;
+}
+
+function onMaterialChange(type) {
+  analysisProfile.material = getMaterialProfile(type);
+  analysisProfile._manualMaterial = true;
+  const inferred = document.getElementById('analysisMaterialInferred');
+  if (inferred) inferred.textContent = '(manual)';
+}
+
+function loadMaterialProfileFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const custom = JSON.parse(e.target.result);
+      analysisProfile.material = { ...analysisProfile.material, ...custom };
+      analysisProfile._manualMaterial = true;
+      showToast('Material profile loaded');
+    } catch (err) {
+      showToast('Invalid JSON profile: ' + err.message, 0, 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function navigateToFinding(findingId) {
+  const findings = analysisManager.getAllFindings();
+  const finding = findings.find(function(f) { return f.id === findingId; });
+  if (!finding || !finding.location) return;
+
+  if (currentView !== 'visual') setView('visual');
+
+  const slider = document.getElementById('layerSlider');
+  if (slider) {
+    slider.value = finding.location.layer;
+    onSliderChange(finding.location.layer);
+  }
+
+  if (finding.location.xyz && typeof viewer.flyTo === 'function') {
+    viewer.flyTo(finding.location.xyz.x, finding.location.xyz.y, finding.location.xyz.z);
+  }
+}
+
 // ===== TAB SWITCHING =====
 function switchTab(tabName) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
   document.querySelectorAll('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === 'tab-' + tabName));
   if (tabName === 'reference' && document.getElementById('refContent').children.length === 0) {
     renderReference();
+  }
+  if (tabName === 'analysis') {
+    renderAnalysisPanel();
   }
 }
 

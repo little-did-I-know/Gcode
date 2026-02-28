@@ -146,7 +146,7 @@ export class MotionAnalyzer {
    * @param {Array} moves - Array of move objects from parser
    * @returns {Array} Array of result objects with actual velocities
    */
-  analyze(moves) {
+  analyzeMoves(moves) {
     if (!moves || moves.length === 0) return [];
 
     const results = [];
@@ -258,10 +258,20 @@ export class MotionAnalyzer {
     this.results.clear();
     for (const [layerNum, moves] of Object.entries(layerMoves)) {
       if (moves && moves.length > 0) {
-        this.results.set(parseInt(layerNum), this.analyze(moves));
+        this.results.set(parseInt(layerNum), this.analyzeMoves(moves));
       }
     }
     return this.results;
+  }
+
+  /**
+   * Engine interface: analyze all layers.
+   * Called by AnalysisManager.analyzeAll(layerMoves, profile).
+   * @param {Object} layerMoves - Parser's layerMoves object
+   * @param {Object} profile - Analysis profile (unused by motion engine)
+   */
+  analyze(layerMoves, profile) {
+    this.analyzeAllLayers(layerMoves);
   }
 
   /**
