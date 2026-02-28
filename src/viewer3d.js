@@ -243,9 +243,10 @@ export class GcodeViewer3D {
   }
 
   // Blue → Cyan → Green → Yellow → Red gradient
-  _getHeatmapColor(value, min, max) {
+  _getHeatmapColor(value, min, max, invert) {
     let t = max > min ? (value - min) / (max - min) : 0;
     t = Math.max(0, Math.min(1, t));
+    if (invert) t = 1 - t;
     // 5-stop gradient: blue(0) → cyan(0.25) → green(0.5) → yellow(0.75) → red(1)
     let r, g, b;
     if (t < 0.25) {
@@ -287,6 +288,10 @@ export class GcodeViewer3D {
     const offsets = [];
     const isHeatmap = colorMode !== 'motion-type';
     const heatStats = isHeatmap ? getHeatmapLayerStats(layerNum) : null;
+    const overlayDef = isHeatmap && typeof analysisManager !== 'undefined'
+      ? analysisManager.getSupportedOverlays().find(o => o.id === colorMode)
+      : null;
+    const invertColor = overlayDef?.invert || false;
 
     for (let moveIndex = 0; moveIndex < moves.length; moveIndex++) {
       const move = moves[moveIndex];
@@ -303,7 +308,7 @@ export class GcodeViewer3D {
 
       if (move.extrude) {
         const color = isHeatmap
-          ? this._getHeatmapColor(getHeatmapValue(move, layerNum, moveIndex), heatStats.min, heatStats.max)
+          ? this._getHeatmapColor(getHeatmapValue(move, layerNum, moveIndex), heatStats.min, heatStats.max, invertColor)
           : this._getTypeColor(move.type);
         const dx = move.x2 - move.x1;
         const dy = move.y2 - move.y1;
@@ -1222,9 +1227,17 @@ export class GcodeViewer3D {
         } else {
           const val = getHeatmapValue(move, this.currentLayer, moveIndex);
           let unit = 'mm\u00B3/s';
+          let tipMult = 1;
           if (colorMode === 'speed') unit = 'mm/s';
           else if (colorMode === 'acceleration') unit = 'mm/s\u00B2';
-          const displayVal = val.toFixed(1);
+          else if (typeof analysisManager !== 'undefined') {
+            const oDef = analysisManager.getSupportedOverlays().find(o => o.id === colorMode);
+            if (oDef) {
+              unit = oDef.unit || '';
+              if (unit === '%') tipMult = 100;
+            }
+          }
+          const displayVal = (val * tipMult).toFixed(1);
           heatmapTip.textContent = `${displayVal} ${unit}`;
         }
         heatmapTip.style.left = (mx + 14) + 'px';

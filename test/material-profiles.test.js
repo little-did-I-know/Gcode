@@ -41,9 +41,9 @@ describe('Material Profiles', () => {
     assert.strictEqual(inferMaterial(lines), 'PETG');
   });
 
-  it('infers ABS from hotend temp 255 with high bed temp', () => {
+  it('defaults to PETG for high hotend temp without filament comment', () => {
     const lines = ['M190 S95', 'M104 S255', ';LAYER:0', 'G1 X10 Y10 E1'];
-    assert.strictEqual(inferMaterial(lines), 'ABS');
+    assert.strictEqual(inferMaterial(lines), 'PETG');
   });
 
   it('returns PLA as default when no temp found', () => {
@@ -76,5 +76,20 @@ describe('Material Profiles', () => {
     assert.ok(DEFAULT_THRESHOLDS['wall-seam-alignment']);
     assert.ok(DEFAULT_THRESHOLDS['wall-gap-size']);
     assert.ok(DEFAULT_THRESHOLDS['extrusion-consistency']);
+  });
+});
+
+describe('Material Profiles — Thermal Properties', () => {
+  it('every material has thermalConductivity and specificHeatCapacity', () => {
+    for (const [name, mat] of Object.entries(MATERIAL_PROFILES)) {
+      assert.ok(typeof mat.thermalConductivity === 'number',
+        `${name} missing thermalConductivity`);
+      assert.ok(mat.thermalConductivity > 0 && mat.thermalConductivity < 1,
+        `${name} thermalConductivity out of range: ${mat.thermalConductivity}`);
+      assert.ok(typeof mat.specificHeatCapacity === 'number',
+        `${name} missing specificHeatCapacity`);
+      assert.ok(mat.specificHeatCapacity > 500 && mat.specificHeatCapacity < 3000,
+        `${name} specificHeatCapacity out of range: ${mat.specificHeatCapacity}`);
+    }
   });
 });

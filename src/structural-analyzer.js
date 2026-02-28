@@ -503,7 +503,7 @@ export class StructuralAnalyzer {
 
   getSupportedOverlays() {
     return [
-      { id: 'layer-bond', label: 'Layer Bond Strength', unit: 'score' },
+      { id: 'layer-bond', label: 'Layer Bond Strength', unit: '%' },
     ];
   }
 

@@ -12,6 +12,7 @@ import { GcodeViewer3D } from './viewer3d.js';
 import { MotionAnalyzer } from './motion-analyzer.js';
 import { AnalysisManager } from './analysis-manager.js';
 import { StructuralAnalyzer } from './structural-analyzer.js';
+import { ThermalAnalyzer } from './thermal-analyzer.js';
 import { MATERIAL_PROFILES, inferMaterial, getMaterialProfile, DEFAULT_THRESHOLDS } from './material-profiles.js';
 
 let currentFirmware = 'bambu';
@@ -24,14 +25,18 @@ const insertManager = new InsertManager();
 const undoStack = new UndoStack();
 const motionAnalyzer = new MotionAnalyzer();
 const structuralAnalyzer = new StructuralAnalyzer();
+const thermalAnalyzer = new ThermalAnalyzer();
 const analysisManager = new AnalysisManager();
 analysisManager.register(motionAnalyzer);
 analysisManager.register(structuralAnalyzer);
+analysisManager.register(thermalAnalyzer);
 
 let analysisProfile = {
   printer: {},
   material: { type: 'PLA' },
   thresholds: { ...DEFAULT_THRESHOLDS },
+  thermal: { depth: 50 },
+  environment: { ambientTemp: 22, chamberTemp: null, chamberType: 'open' },
 };
 const editUndoStack = { entries: [], index: -1, maxSize: 50 };
 let selectedLayer = null;
@@ -252,6 +257,7 @@ function runAnalysis() {
     analysisProfile.material = getMaterialProfile(inferredMaterial);
   }
   analysisProfile.printer = { ...motionAnalyzer.profile };
+  analysisProfile._parsedLines = parser.lines;
   analysisManager.analyzeAll(parser.layerMoves, analysisProfile);
   heatmapLayerStats = {};
   if (typeof renderAnalysisPanel === 'function') renderAnalysisPanel();
