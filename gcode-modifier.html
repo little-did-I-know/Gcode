@@ -3120,6 +3120,467 @@ function decodeLine(text) {
   };
 }
 
+// Material profiles based on Bambu Lab Filament Guide measurements.
+// Layer adhesion from Charpy Impact Strength Z-direction (kJ/m²).
+// adhesionCoefficient normalized 0-1 from measured impact strength Z values.
+// coolingSensitivity derived from recommended part cooling fan ranges.
+
+const MATERIAL_PROFILES = {
+  // --- Standard Materials ---
+  PLA: {
+    type: 'PLA',
+    hdt: 57,                     // HDT 0.45 MPa (°C)
+    glassTransition: 60,
+    adhesionCoefficient: 0.85,   // Impact Z: 13.8 kJ/m²
+    coolingSensitivity: 0.8,     // Fan: 50-100%
+    meltTemp: 210,               // Mid-range nozzle temp
+    nozzleTempRange: [190, 230],
+    bedTempRange: [55, 65],
+    maxPrintSpeed: 300,          // mm/s
+    minLayerTime: 8,
+    waterAbsorption: 0.43,       // % saturated
+    needsDrying: false,
+    needsEnclosure: false,
+    impactStrengthXY: 26.6,      // kJ/m²
+    impactStrengthZ: 13.8,       // kJ/m² — layer adhesion
+    bendingStrength: 76,         // MPa
+    bendingModulus: 2750,        // MPa
+  },
+  PETG: {
+    type: 'PETG',
+    hdt: 69,
+    glassTransition: 80,
+    adhesionCoefficient: 0.75,   // Impact Z: 10.6 kJ/m²
+    coolingSensitivity: 0.5,     // Fan: 0-80%
+    meltTemp: 245,
+    nozzleTempRange: [230, 260],
+    bedTempRange: [60, 80],
+    maxPrintSpeed: 300,
+    minLayerTime: 10,
+    waterAbsorption: 0.40,
+    needsDrying: true,
+    needsEnclosure: false,
+    impactStrengthXY: 31.5,
+    impactStrengthZ: 10.6,
+    bendingStrength: 64,
+    bendingModulus: 2050,
+  },
+  ABS: {
+    type: 'ABS',
+    hdt: 87,
+    glassTransition: 105,
+    adhesionCoefficient: 0.60,   // Impact Z: 7.4 kJ/m²
+    coolingSensitivity: 0.3,     // Fan: 0-80%, but needs enclosure
+    meltTemp: 260,
+    nozzleTempRange: [240, 280],
+    bedTempRange: [90, 100],
+    maxPrintSpeed: 300,
+    minLayerTime: 12,
+    waterAbsorption: 0.65,
+    needsDrying: false,
+    needsEnclosure: true,
+    impactStrengthXY: 39.3,
+    impactStrengthZ: 7.4,
+    bendingStrength: 62,
+    bendingModulus: 1880,
+  },
+  ASA: {
+    type: 'ASA',
+    hdt: 100,
+    glassTransition: 100,
+    adhesionCoefficient: 0.48,   // Impact Z: 4.9 kJ/m²
+    coolingSensitivity: 0.3,     // Fan: 0-80%, needs enclosure
+    meltTemp: 260,
+    nozzleTempRange: [240, 280],
+    bedTempRange: [90, 100],
+    maxPrintSpeed: 300,
+    minLayerTime: 12,
+    waterAbsorption: 0.45,
+    needsDrying: false,
+    needsEnclosure: true,
+    impactStrengthXY: 41.0,
+    impactStrengthZ: 4.9,
+    bendingStrength: 65,
+    bendingModulus: 1920,
+  },
+  TPU: {
+    type: 'TPU',
+    hdt: null,                   // N/A for TPU
+    glassTransition: -20,
+    adhesionCoefficient: 0.95,   // Impact Z: 86.3 kJ/m² (exceptional)
+    coolingSensitivity: 0.8,     // Fan: 50-100%
+    meltTemp: 230,
+    nozzleTempRange: [220, 240],
+    bedTempRange: [30, 45],
+    maxPrintSpeed: 200,
+    minLayerTime: 15,
+    waterAbsorption: 1.08,
+    needsDrying: true,
+    needsEnclosure: false,
+    impactStrengthXY: 123.2,
+    impactStrengthZ: 86.3,
+    bendingStrength: null,
+    bendingModulus: null,
+  },
+  PC: {
+    type: 'PC',
+    hdt: 117,
+    glassTransition: 147,
+    adhesionCoefficient: 0.68,   // Impact Z: 9.0 kJ/m²
+    coolingSensitivity: 0.2,     // Fan: 0-60%
+    meltTemp: 270,
+    nozzleTempRange: [260, 280],
+    bedTempRange: [90, 110],
+    maxPrintSpeed: 300,
+    minLayerTime: 15,
+    waterAbsorption: 0.25,
+    needsDrying: true,
+    needsEnclosure: true,
+    impactStrengthXY: 34.8,
+    impactStrengthZ: 9.0,
+    bendingStrength: 108,
+    bendingModulus: 2310,
+  },
+
+  // --- Carbon Fiber / Glass Fiber Reinforced ---
+  'PLA-CF': {
+    type: 'PLA-CF',
+    hdt: 55,
+    glassTransition: 55,
+    adhesionCoefficient: 0.62,   // Impact Z: 7.8 kJ/m²
+    coolingSensitivity: 0.8,     // Fan: 50-100%
+    meltTemp: 225,
+    nozzleTempRange: [210, 240],
+    bedTempRange: [45, 65],
+    maxPrintSpeed: 250,
+    minLayerTime: 8,
+    waterAbsorption: 0.42,
+    needsDrying: false,
+    needsEnclosure: false,
+    needsHardenedNozzle: true,
+    impactStrengthXY: 23.2,
+    impactStrengthZ: 7.8,
+    bendingStrength: 89,
+    bendingModulus: 3950,
+  },
+  'PETG-CF': {
+    type: 'PETG-CF',
+    hdt: 74,
+    glassTransition: 74,
+    adhesionCoefficient: 0.75,   // Impact Z: 10.7 kJ/m²
+    coolingSensitivity: 0.3,     // Fan: 0-40%
+    meltTemp: 255,
+    nozzleTempRange: [240, 270],
+    bedTempRange: [60, 80],
+    maxPrintSpeed: 200,
+    minLayerTime: 10,
+    waterAbsorption: 0.30,
+    needsDrying: false,
+    needsEnclosure: false,
+    needsHardenedNozzle: true,
+    impactStrengthXY: 41.2,
+    impactStrengthZ: 10.7,
+    bendingStrength: 70,
+    bendingModulus: 2910,
+  },
+  'ABS-GF': {
+    type: 'ABS-GF',
+    hdt: 99,
+    glassTransition: 99,
+    adhesionCoefficient: 0.50,   // Impact Z: 5.3 kJ/m²
+    coolingSensitivity: 0.3,     // Fan: 0-80%
+    meltTemp: 260,
+    nozzleTempRange: [240, 280],
+    bedTempRange: [90, 100],
+    maxPrintSpeed: 180,
+    minLayerTime: 12,
+    waterAbsorption: 0.53,
+    needsDrying: false,
+    needsEnclosure: true,
+    needsHardenedNozzle: true,
+    impactStrengthXY: 14.5,
+    impactStrengthZ: 5.3,
+    bendingStrength: 68,
+    bendingModulus: 2860,
+  },
+  'ASA-CF': {
+    type: 'ASA-CF',
+    hdt: 110,
+    glassTransition: 110,
+    adhesionCoefficient: 0.70,   // Impact Z: 9.4 kJ/m²
+    coolingSensitivity: 0.3,     // Fan: 0-80%
+    meltTemp: 270,
+    nozzleTempRange: [250, 290],
+    bedTempRange: [90, 100],
+    maxPrintSpeed: 250,
+    minLayerTime: 12,
+    waterAbsorption: 0.33,
+    needsDrying: false,
+    needsEnclosure: true,
+    needsHardenedNozzle: true,
+    impactStrengthXY: 14.0,
+    impactStrengthZ: 9.4,
+    bendingStrength: 72,
+    bendingModulus: 3740,
+  },
+  'PC-FR': {
+    type: 'PC-FR',
+    hdt: 113,
+    glassTransition: 113,
+    adhesionCoefficient: 0.65,   // Impact Z: 8.0 kJ/m²
+    coolingSensitivity: 0.2,     // Fan: 0-60%
+    meltTemp: 270,
+    nozzleTempRange: [260, 280],
+    bedTempRange: [90, 110],
+    maxPrintSpeed: 300,
+    minLayerTime: 15,
+    waterAbsorption: 0.12,
+    needsDrying: true,
+    needsEnclosure: true,
+    impactStrengthXY: 55.0,
+    impactStrengthZ: 8.0,
+    bendingStrength: 90,
+    bendingModulus: 1890,
+  },
+
+  // --- Engineering / Nylon ---
+  'PET-CF': {
+    type: 'PET-CF',
+    hdt: 205,
+    glassTransition: 120,
+    adhesionCoefficient: 0.45,   // Impact Z: 4.5 kJ/m²
+    coolingSensitivity: 0.2,     // Fan: 0-40%
+    meltTemp: 280,
+    nozzleTempRange: [260, 300],
+    bedTempRange: [70, 100],
+    maxPrintSpeed: 100,
+    minLayerTime: 15,
+    waterAbsorption: 0.37,
+    needsDrying: true,
+    needsEnclosure: false,
+    needsHardenedNozzle: true,
+    impactStrengthXY: 36.0,
+    impactStrengthZ: 4.5,
+    bendingStrength: 131,
+    bendingModulus: 5320,
+  },
+  'PA-CF': {
+    type: 'PA-CF',
+    hdt: 194,
+    glassTransition: 100,
+    adhesionCoefficient: 0.83,   // Impact Z: 13.3 kJ/m² (PAHT-CF)
+    coolingSensitivity: 0.2,     // Fan: 0-40%
+    meltTemp: 280,
+    nozzleTempRange: [260, 300],
+    bedTempRange: [100, 120],
+    maxPrintSpeed: 100,
+    minLayerTime: 15,
+    waterAbsorption: 0.88,
+    needsDrying: true,
+    needsEnclosure: true,
+    needsHardenedNozzle: true,
+    impactStrengthXY: 57.5,
+    impactStrengthZ: 13.3,
+    bendingStrength: 125,
+    bendingModulus: 4230,
+  },
+  'PA6-CF': {
+    type: 'PA6-CF',
+    hdt: 186,
+    glassTransition: 80,
+    adhesionCoefficient: 0.90,   // Impact Z: 15.5 kJ/m²
+    coolingSensitivity: 0.2,     // Fan: 0-40%
+    meltTemp: 280,
+    nozzleTempRange: [260, 300],
+    bedTempRange: [100, 120],
+    maxPrintSpeed: 100,
+    minLayerTime: 15,
+    waterAbsorption: 2.35,
+    needsDrying: true,
+    needsEnclosure: true,
+    needsHardenedNozzle: true,
+    impactStrengthXY: 40.3,
+    impactStrengthZ: 15.5,
+    bendingStrength: 151,
+    bendingModulus: 5460,
+  },
+  'PA6-GF': {
+    type: 'PA6-GF',
+    hdt: 182,
+    glassTransition: 80,
+    adhesionCoefficient: 0.42,   // Impact Z: 4.1 kJ/m²
+    coolingSensitivity: 0.2,     // Fan: 0-40%
+    meltTemp: 275,
+    nozzleTempRange: [260, 290],
+    bedTempRange: [100, 120],
+    maxPrintSpeed: 130,
+    minLayerTime: 15,
+    waterAbsorption: 2.56,
+    needsDrying: true,
+    needsEnclosure: true,
+    needsHardenedNozzle: true,
+    impactStrengthXY: 27.2,
+    impactStrengthZ: 4.1,
+    bendingStrength: 120,
+    bendingModulus: 3670,
+  },
+  'PPA-CF': {
+    type: 'PPA-CF',
+    hdt: 227,
+    glassTransition: 130,
+    adhesionCoefficient: 0.43,   // Impact Z: 4.3 kJ/m²
+    coolingSensitivity: 0.2,     // Fan: 0-40%
+    meltTemp: 295,
+    nozzleTempRange: [280, 310],
+    bedTempRange: [100, 120],
+    maxPrintSpeed: 100,
+    minLayerTime: 15,
+    waterAbsorption: 1.30,
+    needsDrying: true,
+    needsEnclosure: true,
+    needsHardenedNozzle: true,
+    impactStrengthXY: 41.7,
+    impactStrengthZ: 4.3,
+    bendingStrength: 208,
+    bendingModulus: 9860,
+  },
+  'PPS-CF': {
+    type: 'PPS-CF',
+    hdt: 264,
+    glassTransition: 90,
+    adhesionCoefficient: 0.35,   // Impact Z: 2.8 kJ/m²
+    coolingSensitivity: 0.2,     // Fan: 0-40%
+    meltTemp: 325,
+    nozzleTempRange: [310, 340],
+    bedTempRange: [100, 120],
+    maxPrintSpeed: 100,
+    minLayerTime: 15,
+    waterAbsorption: 0.05,
+    needsDrying: true,
+    needsEnclosure: true,
+    needsHardenedNozzle: true,
+    impactStrengthXY: 27.8,
+    impactStrengthZ: 2.8,
+    bendingStrength: 142,
+    bendingModulus: 7160,
+  },
+
+  // --- Legacy alias ---
+  Nylon: {
+    type: 'Nylon',
+    hdt: 186,
+    glassTransition: 80,
+    adhesionCoefficient: 0.83,   // Based on PA-CF family
+    coolingSensitivity: 0.2,
+    meltTemp: 270,
+    nozzleTempRange: [260, 300],
+    bedTempRange: [100, 120],
+    maxPrintSpeed: 100,
+    minLayerTime: 15,
+    waterAbsorption: 2.35,
+    needsDrying: true,
+    needsEnclosure: true,
+    impactStrengthXY: 40.0,
+    impactStrengthZ: 13.0,
+    bendingStrength: 125,
+    bendingModulus: 4230,
+  },
+};
+
+const DEFAULT_THRESHOLDS = {
+  'layer-bond-overlap':      { critical: 0.30, warning: 0.60 },
+  'layer-bond-cooling':      { critical: 1.0,  warning: 3.0 },
+  'wall-seam-alignment':     { warning: 5.0 },
+  'wall-gap-size':           { critical: 0.5,  warning: 0.2 },
+  'extrusion-consistency':   { warning: 0.15 },
+};
+
+function inferMaterial(lines) {
+  const scanLimit = Math.min(200, lines.length);
+  let hotendTemp = null;
+  let bedTemp = null;
+  let filamentComment = null;
+
+  for (let i = 0; i < scanLimit; i++) {
+    const line = lines[i].trim();
+
+    // Check slicer filament type comments first (most reliable)
+    const filamentMatch = line.match(/;\s*filament_type\s*=\s*(.+)/i) ||
+                          line.match(/;\s*FILAMENT_TYPE:\s*(.+)/i);
+    if (filamentMatch) {
+      filamentComment = filamentMatch[1].trim();
+    }
+
+    // M104/M109 - hotend temp
+    const hotendMatch = line.match(/^M10[49]\s.*S([\d.]+)/i);
+    if (hotendMatch && !hotendTemp) {
+      hotendTemp = parseFloat(hotendMatch[1]);
+    }
+
+    // M140/M190 - bed temp
+    const bedMatch = line.match(/^M1[49]0\s.*S([\d.]+)/i);
+    if (bedMatch && !bedTemp) {
+      bedTemp = parseFloat(bedMatch[1]);
+    }
+  }
+
+  // Try comment-based detection first
+  if (filamentComment) {
+    const fc = filamentComment.toUpperCase();
+    // Check specific variants before base types
+    if (fc.includes('PPS-CF') || fc.includes('PPS')) return 'PPS-CF';
+    if (fc.includes('PPA-CF') || fc.includes('PPA')) return 'PPA-CF';
+    if (fc.includes('PA6-GF')) return 'PA6-GF';
+    if (fc.includes('PA6-CF')) return 'PA6-CF';
+    if (fc.includes('PAHT-CF') || fc.includes('PA-CF')) return 'PA-CF';
+    if (fc.includes('PET-CF')) return 'PET-CF';
+    if (fc.includes('PETG-CF')) return 'PETG-CF';
+    if (fc.includes('PLA-CF')) return 'PLA-CF';
+    if (fc.includes('ABS-GF')) return 'ABS-GF';
+    if (fc.includes('ASA-CF')) return 'ASA-CF';
+    if (fc.includes('PC-FR') || fc.includes('PC FR')) return 'PC-FR';
+    if (fc.includes('TPU')) return 'TPU';
+    if (fc.includes('PETG')) return 'PETG';
+    if (fc.includes('PLA')) return 'PLA';
+    if (fc.includes('ASA')) return 'ASA';
+    if (fc.includes('ABS')) return 'ABS';
+    if (fc.includes('PC')) return 'PC';
+    if (fc.includes('NYLON') || fc.includes('PA')) return 'Nylon';
+  }
+
+  // Fall back to temperature-based inference
+  if (hotendTemp !== null) {
+    // Use bed temp to distinguish within overlapping nozzle ranges
+    if (hotendTemp >= 310) return 'PPS-CF';
+    if (hotendTemp >= 280) {
+      if (bedTemp && bedTemp >= 100) return 'PA-CF';
+      return 'PC';
+    }
+    if (hotendTemp >= 260) {
+      if (bedTemp && bedTemp >= 100) return 'PA-CF';
+      return 'PC';
+    }
+    if (hotendTemp >= 250) {
+      if (bedTemp && bedTemp >= 90) return 'ABS';
+      return 'PETG';
+    }
+    if (hotendTemp >= 240) {
+      if (bedTemp && bedTemp >= 90) return 'ABS';
+      return 'PETG';
+    }
+    if (hotendTemp >= 230) return 'PETG';
+    if (hotendTemp >= 220) return 'TPU';
+    if (hotendTemp >= 180) return 'PLA';
+  }
+
+  return 'PLA';
+}
+
+function getMaterialProfile(type, overrides = {}) {
+  const base = MATERIAL_PROFILES[type] || MATERIAL_PROFILES.PLA;
+  return { ...base, ...overrides, type: overrides.type || base.type };
+}
+
 // ===== MOTION ANALYZER =====
 class MotionAnalyzer {
   constructor(profile = {}) {
@@ -3396,6 +3857,531 @@ class MotionAnalyzer {
     const layerResults = this.results.get(layerNum);
     if (!layerResults || moveIndex >= layerResults.length) return null;
     return layerResults[moveIndex];
+  }
+
+  // ===== Engine Interface =====
+
+  get name() { return 'motion'; }
+
+  getSupportedOverlays() {
+    return [
+      { id: 'actual-speed', label: 'Actual Speed', unit: 'mm/s' },
+      { id: 'speed-delta', label: 'Speed Delta', unit: '%' },
+    ];
+  }
+
+  getOverlayData(overlayId, layerNum, moveIndex) {
+    const result = this.getResult(layerNum, moveIndex);
+    if (!result) return 0;
+    if (overlayId === 'actual-speed') return result.actualPeakSpeed;
+    if (overlayId === 'speed-delta') {
+      if (result.requestedSpeed <= 0) return 0;
+      return (result.requestedSpeed - result.actualPeakSpeed) / result.requestedSpeed;
+    }
+    return 0;
+  }
+
+  getFindings() {
+    return [];
+  }
+
+  clear() {
+    this.results.clear();
+  }
+}
+
+const SEVERITY_ORDER = { critical: 0, warning: 1, info: 2 };
+
+class AnalysisManager {
+  constructor() {
+    this.engines = [];
+    this._overlayMap = new Map();
+    this._statsCache = {};
+  }
+
+  register(engine) {
+    this.engines.push(engine);
+    for (const overlay of engine.getSupportedOverlays()) {
+      this._overlayMap.set(overlay.id, engine);
+    }
+  }
+
+  analyzeAll(layerMoves, profile) {
+    this._statsCache = {};
+    for (const engine of this.engines) {
+      engine.analyze(layerMoves, profile);
+    }
+  }
+
+  getAllFindings() {
+    const all = [];
+    for (const engine of this.engines) {
+      all.push(...engine.getFindings());
+    }
+    all.sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9));
+    return all;
+  }
+
+  getFindingsByEngine(engineName) {
+    const engine = this.engines.find(e => e.name === engineName);
+    if (!engine) return [];
+    const findings = engine.getFindings();
+    findings.sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9));
+    return findings;
+  }
+
+  getSupportedOverlays() {
+    const overlays = [];
+    for (const engine of this.engines) {
+      overlays.push(...engine.getSupportedOverlays());
+    }
+    return overlays;
+  }
+
+  getOverlayValue(overlayId, layerNum, moveIndex) {
+    const engine = this._overlayMap.get(overlayId);
+    if (!engine) return 0;
+    return engine.getOverlayData(overlayId, layerNum, moveIndex);
+  }
+
+  getOverlayStats(overlayId, layerNum, layerMoves) {
+    const key = `${overlayId}-${layerNum}`;
+    if (this._statsCache[key]) return this._statsCache[key];
+    const moves = layerMoves[layerNum];
+    if (!moves || moves.length === 0) return { min: 0, max: 1, avg: 0 };
+    let min = Infinity, max = -Infinity, sum = 0, count = 0;
+    for (let i = 0; i < moves.length; i++) {
+      if (!moves[i].extrude) continue;
+      const v = this.getOverlayValue(overlayId, layerNum, i);
+      if (v <= 0) continue;
+      if (v < min) min = v;
+      if (v > max) max = v;
+      sum += v;
+      count++;
+    }
+    if (count === 0) return { min: 0, max: 1, avg: 0 };
+    if (min === max) min = 0;
+    const stats = { min, max, avg: sum / count };
+    this._statsCache[key] = stats;
+    return stats;
+  }
+
+  clear() {
+    this._statsCache = {};
+    for (const engine of this.engines) {
+      engine.clear();
+    }
+  }
+}
+
+
+
+class StructuralAnalyzer {
+  constructor() {
+    this.name = 'structural';
+    this._bondResults = new Map();
+    this._findings = [];
+    this._profile = null;
+    this._thresholds = { ...DEFAULT_THRESHOLDS };
+  }
+
+  // --- Spatial Grid ---
+
+  _buildSpatialGrid(moves, cellSize) {
+    const grid = new Map();
+    for (let i = 0; i < moves.length; i++) {
+      const move = moves[i];
+      if (!move.extrude) continue;
+      const cells = this._rasterizeLine(move.x1, move.y1, move.x2, move.y2, cellSize);
+      for (const key of cells) {
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push(i);
+      }
+    }
+    return grid;
+  }
+
+  _rasterizeLine(x1, y1, x2, y2, cellSize) {
+    const cells = new Set();
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.001) {
+      cells.add(this._cellKey(x1, y1, cellSize));
+      return cells;
+    }
+    const steps = Math.max(1, Math.ceil(len / (cellSize * 0.5)));
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps;
+      const x = x1 + dx * t;
+      const y = y1 + dy * t;
+      cells.add(this._cellKey(x, y, cellSize));
+    }
+    return cells;
+  }
+
+  _cellKey(x, y, cellSize) {
+    const cx = Math.floor(x / cellSize);
+    const cy = Math.floor(y / cellSize);
+    return `${cx},${cy}`;
+  }
+
+  // --- Layer Overlap ---
+
+  _calcOverlap(move, prevGrid, cellSize) {
+    if (!move.extrude) return 1.0;
+    const cells = this._rasterizeLine(move.x1, move.y1, move.x2, move.y2, cellSize);
+    if (cells.size === 0) return 1.0;
+    let overlapping = 0;
+    for (const key of cells) {
+      if (prevGrid.has(key)) overlapping++;
+    }
+    return overlapping / cells.size;
+  }
+
+  // --- Extrusion Consistency ---
+
+  _calcExtrusionConsistency(moves) {
+    const flowRates = [];
+    const flowIndices = [];
+    for (let i = 0; i < moves.length; i++) {
+      const move = moves[i];
+      if (!move.extrude || !move.eLength) continue;
+      const len = Math.hypot(move.x2 - move.x1, move.y2 - move.y1);
+      if (len < 0.001) continue;
+      flowRates.push(move.eLength / len);
+      flowIndices.push(i);
+    }
+    if (flowRates.length === 0) return new Map();
+    const mean = flowRates.reduce((s, v) => s + v, 0) / flowRates.length;
+    if (mean <= 0) return new Map();
+
+    const scores = new Map();
+    for (let idx = 0; idx < flowRates.length; idx++) {
+      const deviation = Math.abs(flowRates[idx] - mean) / mean;
+      scores.set(flowIndices[idx], Math.max(0, 1 - deviation));
+    }
+    return scores;
+  }
+
+  // --- Cooling Time Estimate ---
+
+  _calcCoolingTimes(moves, motionResults) {
+    const times = new Map();
+    const PROXIMITY_SQ = 4.0; // 2mm radius squared
+
+    for (let i = 0; i < moves.length; i++) {
+      if (!moves[i].extrude) continue;
+      const mx = (moves[i].x1 + moves[i].x2) / 2;
+      const my = (moves[i].y1 + moves[i].y2) / 2;
+
+      let elapsed = 0;
+      let found = false;
+      for (let j = i + 1; j < moves.length; j++) {
+        if (motionResults && motionResults[j]) {
+          const r = motionResults[j];
+          elapsed += (r.timeAccel || 0) + (r.timeCruise || 0) + (r.timeDecel || 0);
+        } else {
+          const len = Math.hypot(moves[j].x2 - moves[j].x1, moves[j].y2 - moves[j].y1);
+          const speed = (moves[j].feedRate || 1500) / 60;
+          elapsed += speed > 0 ? len / speed : 0;
+        }
+        const jmx = (moves[j].x1 + moves[j].x2) / 2;
+        const jmy = (moves[j].y1 + moves[j].y2) / 2;
+        const distSq = (jmx - mx) * (jmx - mx) + (jmy - my) * (jmy - my);
+        if (distSq < PROXIMITY_SQ && moves[j].extrude) {
+          times.set(i, elapsed);
+          found = true;
+          break;
+        }
+      }
+      if (!found) times.set(i, Infinity);
+    }
+    return times;
+  }
+
+  _coolingScore(time, material) {
+    const minTime = material.minLayerTime || 8;
+    if (time === Infinity) return 1.0 - (material.coolingSensitivity || 0.5) * 0.3;
+    if (time < 1.0) return 0.2;
+    if (time < minTime * 0.5) return 0.5;
+    if (time > minTime) return 1.0;
+    return 0.5 + 0.5 * (time - minTime * 0.5) / (minTime * 0.5);
+  }
+
+  // --- Main Analysis ---
+
+  analyze(layerMoves, profile) {
+    this._bondResults.clear();
+    this._findings = [];
+    this._profile = profile;
+
+    const materialType = profile.material?.type || 'PLA';
+    const material = getMaterialProfile(materialType, profile.material || {});
+    const thresholds = { ...DEFAULT_THRESHOLDS, ...(profile.thresholds || {}) };
+    this._thresholds = thresholds;
+
+    const cellSize = 0.8;
+    const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
+    let prevGrid = null;
+
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves || moves.length === 0) continue;
+
+      const grid = this._buildSpatialGrid(moves, cellSize);
+      const consistency = this._calcExtrusionConsistency(moves);
+      const coolingTimes = this._calcCoolingTimes(moves, null);
+
+      const scores = [];
+      for (let i = 0; i < moves.length; i++) {
+        if (!moves[i].extrude) {
+          scores.push(1.0);
+          continue;
+        }
+        if (prevGrid === null) {
+          scores.push(1.0);
+          continue;
+        }
+
+        const overlap = this._calcOverlap(moves[i], prevGrid, cellSize);
+        const consist = consistency.get(i) ?? 1.0;
+        const coolTime = coolingTimes.get(i) ?? Infinity;
+        const coolScore = this._coolingScore(coolTime, material);
+
+        // Overlap is the primary structural factor. Without material below,
+        // consistency and cooling cannot compensate. Gate the score by overlap.
+        const baseBond = overlap * 0.5 + consist * 0.25 + coolScore * 0.25;
+        const bond = baseBond * Math.min(1, overlap + 0.3);
+        scores.push(Math.max(0, Math.min(1, bond)));
+
+        // Generate findings
+        const overlapThresh = thresholds['layer-bond-overlap'] || {};
+        if (overlap < (overlapThresh.critical ?? 0.30)) {
+          this._addFinding('critical', 'layer-bond', layerNum, i, moves[i],
+            'Very weak layer bond \u2014 low overlap',
+            `Only ${(overlap * 100).toFixed(0)}% of this extrusion overlaps with the layer below.`,
+            'Increase extrusion width or adjust perimeter overlap in slicer settings.',
+            { overlapPercent: overlap, coolingTime: coolTime });
+        } else if (overlap < (overlapThresh.warning ?? 0.60)) {
+          this._addFinding('warning', 'layer-bond', layerNum, i, moves[i],
+            'Reduced layer bond \u2014 partial overlap',
+            `${(overlap * 100).toFixed(0)}% overlap with layer below.`,
+            'Consider increasing extrusion width for better inter-layer adhesion.',
+            { overlapPercent: overlap, coolingTime: coolTime });
+        }
+
+        const coolThresh = thresholds['layer-bond-cooling'] || {};
+        if (coolTime < (coolThresh.critical ?? 1.0)) {
+          this._addFinding('critical', 'cooling', layerNum, i, moves[i],
+            'Insufficient cooling time',
+            `Only ${coolTime.toFixed(1)}s before nozzle returns. Risk of deformation.`,
+            'Increase minimum layer time or enable "slow down for small layers" in slicer.',
+            { coolingTime: coolTime });
+        } else if (coolTime < (coolThresh.warning ?? 3.0)) {
+          this._addFinding('warning', 'cooling', layerNum, i, moves[i],
+            'Short cooling time',
+            `${coolTime.toFixed(1)}s before nozzle returns.`,
+            'Consider increasing minimum layer time.',
+            { coolingTime: coolTime });
+        }
+
+        const consistThresh = thresholds['extrusion-consistency'] || {};
+        if (consist < (1 - (consistThresh.warning ?? 0.15))) {
+          this._addFinding('info', 'extrusion', layerNum, i, moves[i],
+            'Inconsistent extrusion',
+            `Flow deviation of ${((1 - consist) * 100).toFixed(0)}% from mean.`,
+            'Check for partial clog or inconsistent filament diameter.',
+            { consistencyScore: consist });
+        }
+      }
+
+      this._bondResults.set(layerNum, scores);
+      prevGrid = grid;
+    }
+
+    this._analyzeWallIntegrity(layerMoves, thresholds);
+  }
+
+  _addFinding(severity, category, layerNum, moveIndex, move, title, description, suggestion, metadata) {
+    const id = `si-${category}-${this._findings.length}`;
+    const midX = (move.x1 + move.x2) / 2;
+    const midY = (move.y1 + move.y2) / 2;
+    this._findings.push({
+      id, engine: 'structural', severity, category, title, description, suggestion,
+      location: {
+        layer: layerNum,
+        lineStart: move.lineIndex,
+        lineEnd: move.lineIndex,
+        xyz: { x: midX, y: midY, z: 0 },
+      },
+      metadata: metadata || {},
+    });
+  }
+
+  // --- Wall Integrity ---
+
+  _analyzeWallIntegrity(layerMoves, thresholds) {
+    const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
+
+    // Seam Detection
+    const seamRadius = thresholds['wall-seam-alignment']?.warning ?? 5.0;
+    const seamStarts = [];
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves) continue;
+      const firstExtrusion = moves.find(m => m.extrude);
+      if (firstExtrusion) {
+        seamStarts.push({ layer: layerNum, x: firstExtrusion.x1, y: firstExtrusion.y1, lineIndex: firstExtrusion.lineIndex });
+      }
+    }
+
+    if (seamStarts.length >= 3) {
+      const clusters = this._clusterPoints(seamStarts, seamRadius);
+      for (const cluster of clusters) {
+        if (cluster.length >= 3) {
+          const avgX = cluster.reduce((s, p) => s + p.x, 0) / cluster.length;
+          const avgY = cluster.reduce((s, p) => s + p.y, 0) / cluster.length;
+          const layerRange = cluster.map(p => p.layer);
+          this._findings.push({
+            id: `si-seam-${this._findings.length}`,
+            engine: 'structural', severity: 'warning', category: 'seam',
+            title: `Aligned seam across ${cluster.length} layers`,
+            description: `Seam starts cluster at (${avgX.toFixed(1)}, ${avgY.toFixed(1)}) across layers ${Math.min(...layerRange)}-${Math.max(...layerRange)}. This creates a weak line in the part.`,
+            suggestion: 'Enable random or aligned-to-back seam positioning in slicer to distribute weak points.',
+            location: {
+              layer: cluster[0].layer,
+              lineStart: cluster[0].lineIndex,
+              lineEnd: cluster[0].lineIndex,
+              xyz: { x: avgX, y: avgY, z: 0 },
+            },
+            metadata: { clusterSize: cluster.length, layerRange },
+          });
+        }
+      }
+    }
+
+    // Gap Detection & Direction Reversals
+    const gapThresh = thresholds['wall-gap-size'] || { critical: 0.5, warning: 0.2 };
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves) continue;
+
+      const wallMoves = [];
+      for (let i = 0; i < moves.length; i++) {
+        const t = (moves[i].type || '').toUpperCase();
+        if (moves[i].extrude && (t.includes('WALL') || t.includes('OUTER') || t.includes('INNER') || t.includes('PERIMETER'))) {
+          wallMoves.push({ move: moves[i], index: i });
+        }
+      }
+
+      // Gap detection
+      for (let i = 0; i < moves.length - 1; i++) {
+        const curr = moves[i];
+        const next = moves[i + 1];
+        if (curr.extrude && !next.extrude) {
+          for (let j = i + 2; j < moves.length; j++) {
+            if (moves[j].extrude) {
+              const gapDist = Math.hypot(curr.x2 - moves[j].x1, curr.y2 - moves[j].y1);
+              const currType = (curr.type || '').toUpperCase();
+              const nextType = (moves[j].type || '').toUpperCase();
+              const isWallGap = (currType.includes('WALL') || currType.includes('PERIMETER')) &&
+                                (nextType.includes('WALL') || nextType.includes('PERIMETER'));
+              if (isWallGap && gapDist > (gapThresh.warning ?? 0.2)) {
+                const severity = gapDist > (gapThresh.critical ?? 0.5) ? 'critical' : 'warning';
+                this._findings.push({
+                  id: `si-gap-${this._findings.length}`,
+                  engine: 'structural', severity, category: 'gap',
+                  title: `Gap in perimeter: ${gapDist.toFixed(1)}mm`,
+                  description: `${gapDist.toFixed(2)}mm gap between wall extrusions on layer ${layerNum}.`,
+                  suggestion: 'Check slicer settings for gap fill and perimeter overlap.',
+                  location: {
+                    layer: layerNum,
+                    lineStart: curr.lineIndex,
+                    lineEnd: moves[j].lineIndex,
+                    xyz: { x: curr.x2, y: curr.y2, z: 0 },
+                  },
+                  metadata: { gapDistance: gapDist },
+                });
+              }
+              break;
+            }
+          }
+        }
+      }
+
+      // Direction reversals
+      for (let i = 0; i < wallMoves.length - 1; i++) {
+        const m1 = wallMoves[i].move;
+        const m2 = wallMoves[i + 1].move;
+        const dx1 = m1.x2 - m1.x1, dy1 = m1.y2 - m1.y1;
+        const dx2 = m2.x2 - m2.x1, dy2 = m2.y2 - m2.y1;
+        const len1 = Math.hypot(dx1, dy1);
+        const len2 = Math.hypot(dx2, dy2);
+        if (len1 < 0.001 || len2 < 0.001) continue;
+        const dot = (dx1 * dx2 + dy1 * dy2) / (len1 * len2);
+        const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+        if (angle > 150) {
+          this._findings.push({
+            id: `si-reversal-${this._findings.length}`,
+            engine: 'structural', severity: 'info', category: 'reversal',
+            title: `Direction reversal (${angle.toFixed(0)}\u00B0)`,
+            description: `Sharp ${angle.toFixed(0)}\u00B0 reversal in wall path on layer ${layerNum}. This creates a stress concentrator.`,
+            suggestion: 'This is typically caused by thin features. Consider adjusting minimum feature size in slicer.',
+            location: {
+              layer: layerNum,
+              lineStart: m1.lineIndex,
+              lineEnd: m2.lineIndex,
+              xyz: { x: m1.x2, y: m1.y2, z: 0 },
+            },
+            metadata: { angle },
+          });
+        }
+      }
+    }
+  }
+
+  _clusterPoints(points, radius) {
+    const visited = new Set();
+    const clusters = [];
+    for (let i = 0; i < points.length; i++) {
+      if (visited.has(i)) continue;
+      const cluster = [points[i]];
+      visited.add(i);
+      for (let j = i + 1; j < points.length; j++) {
+        if (visited.has(j)) continue;
+        const dist = Math.hypot(points[j].x - points[i].x, points[j].y - points[i].y);
+        if (dist <= radius) {
+          cluster.push(points[j]);
+          visited.add(j);
+        }
+      }
+      clusters.push(cluster);
+    }
+    return clusters;
+  }
+
+  // --- Engine Interface ---
+
+  getSupportedOverlays() {
+    return [
+      { id: 'layer-bond', label: 'Layer Bond Strength', unit: 'score' },
+    ];
+  }
+
+  getOverlayData(overlayId, layerNum, moveIndex) {
+    if (overlayId !== 'layer-bond') return 0;
+    const scores = this._bondResults.get(layerNum);
+    if (!scores || moveIndex >= scores.length) return 0;
+    return scores[moveIndex];
+  }
+
+  getFindings() {
+    return this._findings;
+  }
+
+  clear() {
+    this._bondResults.clear();
+    this._findings = [];
   }
 }
 
@@ -4472,6 +5458,25 @@ class GcodeViewer3D {
     this.cam.panX = 0;
     this.cam.panY = 0;
     this.cam.zoom = 1.0;
+  }
+
+  flyTo(x, y, z) {
+    const startTarget = [...this.cam.target];
+    const endTarget = [x, y, z || 0];
+    const startTime = performance.now();
+    const duration = 300; // ms
+
+    const animate = (now) => {
+      const t = Math.min(1, (now - startTime) / duration);
+      // Ease-out cubic
+      const ease = 1 - Math.pow(1 - t, 3);
+      this.cam.target[0] = startTarget[0] + (endTarget[0] - startTarget[0]) * ease;
+      this.cam.target[1] = startTarget[1] + (endTarget[1] - startTarget[1]) * ease;
+      this.cam.target[2] = startTarget[2] + (endTarget[2] - startTarget[2]) * ease;
+      this.render(this.currentLayer);
+      if (t < 1) requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
   }
 
   _setupInteraction() {
@@ -7482,6 +8487,9 @@ function initDecodeTooltip() {
 
 
 
+
+
+
 let currentFirmware = 'bambu';
 
 // ===== APP STATE =====
@@ -7491,6 +8499,16 @@ const holeDetector = new HoleDetector();
 const insertManager = new InsertManager();
 const undoStack = new UndoStack();
 const motionAnalyzer = new MotionAnalyzer();
+const structuralAnalyzer = new StructuralAnalyzer();
+const analysisManager = new AnalysisManager();
+analysisManager.register(motionAnalyzer);
+analysisManager.register(structuralAnalyzer);
+
+let analysisProfile = {
+  printer: {},
+  material: { type: 'PLA' },
+  thresholds: { ...DEFAULT_THRESHOLDS },
+};
 const editUndoStack = { entries: [], index: -1, maxSize: 50 };
 let selectedLayer = null;
 let holeDetectMode = false;
@@ -7656,6 +8674,7 @@ function setColorMode(mode) {
 }
 
 function getHeatmapValue(move, layerNum, moveIndex) {
+  // Built-in modes (backward compatible)
   if (colorMode === 'speed') return (move.feedRate || 0) / 60;
   if (colorMode === 'acceleration') return move.accel || 0;
   if (colorMode === 'flow') {
@@ -7665,22 +8684,24 @@ function getHeatmapValue(move, layerNum, moveIndex) {
     const speed = (move.feedRate || 0) / 60;
     return (move.eLength / moveLen) * speed;
   }
-  if (colorMode === 'actual-speed') {
-    const result = motionAnalyzer.getResult(layerNum, moveIndex);
-    return result ? result.actualPeakSpeed : (move.feedRate || 0) / 60;
-  }
-  if (colorMode === 'speed-delta') {
-    const result = motionAnalyzer.getResult(layerNum, moveIndex);
-    if (!result) return 0;
-    const requested = result.requestedSpeed;
-    if (requested <= 0) return 0;
-    return (requested - result.actualPeakSpeed) / requested;
+  // Engine overlay modes — route through AnalysisManager
+  const engineOverlay = analysisManager.getSupportedOverlays().find(o => o.id === colorMode);
+  if (engineOverlay) {
+    return analysisManager.getOverlayValue(colorMode, layerNum, moveIndex);
   }
   return 0;
 }
 
 function getHeatmapLayerStats(layerNum) {
   if (heatmapLayerStats[layerNum]) return heatmapLayerStats[layerNum];
+  // Check if current mode is an engine overlay
+  const engineOverlay = analysisManager.getSupportedOverlays().find(o => o.id === colorMode);
+  if (engineOverlay) {
+    const stats = analysisManager.getOverlayStats(colorMode, layerNum, parser.layerMoves);
+    heatmapLayerStats[layerNum] = stats;
+    return stats;
+  }
+  // Built-in modes
   const moves = parser.layerMoves[layerNum];
   if (!moves || moves.length === 0) return { min: 0, max: 1, avg: 0 };
   let min = Infinity, max = -Infinity, sum = 0, count = 0;
@@ -7695,10 +8716,25 @@ function getHeatmapLayerStats(layerNum) {
     count++;
   }
   if (count === 0) return { min: 0, max: 1, avg: 0 };
-  if (min === max) { min = 0; } // Avoid zero-range
+  if (min === max) { min = 0; }
   const stats = { min, max, avg: sum / count };
   heatmapLayerStats[layerNum] = stats;
   return stats;
+}
+
+function runAnalysis() {
+  const inferredMaterial = inferMaterial(parser.lines);
+  if (!analysisProfile._manualMaterial) {
+    analysisProfile.material = getMaterialProfile(inferredMaterial);
+  }
+  analysisProfile.printer = { ...motionAnalyzer.profile };
+  analysisManager.analyzeAll(parser.layerMoves, analysisProfile);
+  heatmapLayerStats = {};
+  if (typeof renderAnalysisPanel === 'function') renderAnalysisPanel();
+  if (currentView === 'visual') {
+    viewer.clearBuffers();
+    viewer.render(viewer.currentLayer);
+  }
 }
 
 // Initialize firmware UI
@@ -7765,7 +8801,7 @@ window.addEventListener('keydown', e => {
   }
 
   // Tab switching: 1-8
-  const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts', '7': 'reference', '8': 'recovery' };
+  const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts', '7': 'reference', '8': 'recovery', '9': 'analysis' };
   if (tabKeys[e.key]) { switchTab(tabKeys[e.key]); return; }
 
   // Layer navigation

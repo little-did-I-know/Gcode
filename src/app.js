@@ -10,6 +10,9 @@ import { GcodeParser } from './parser.js';
 import { GcodeModifier } from './modifier.js';
 import { GcodeViewer3D } from './viewer3d.js';
 import { MotionAnalyzer } from './motion-analyzer.js';
+import { AnalysisManager } from './analysis-manager.js';
+import { StructuralAnalyzer } from './structural-analyzer.js';
+import { MATERIAL_PROFILES, inferMaterial, getMaterialProfile, DEFAULT_THRESHOLDS } from './material-profiles.js';
 
 let currentFirmware = 'bambu';
 
@@ -20,6 +23,16 @@ const holeDetector = new HoleDetector();
 const insertManager = new InsertManager();
 const undoStack = new UndoStack();
 const motionAnalyzer = new MotionAnalyzer();
+const structuralAnalyzer = new StructuralAnalyzer();
+const analysisManager = new AnalysisManager();
+analysisManager.register(motionAnalyzer);
+analysisManager.register(structuralAnalyzer);
+
+let analysisProfile = {
+  printer: {},
+  material: { type: 'PLA' },
+  thresholds: { ...DEFAULT_THRESHOLDS },
+};
 const editUndoStack = { entries: [], index: -1, maxSize: 50 };
 let selectedLayer = null;
 let holeDetectMode = false;
@@ -185,6 +198,7 @@ function setColorMode(mode) {
 }
 
 function getHeatmapValue(move, layerNum, moveIndex) {
+  // Built-in modes (backward compatible)
   if (colorMode === 'speed') return (move.feedRate || 0) / 60;
   if (colorMode === 'acceleration') return move.accel || 0;
   if (colorMode === 'flow') {
@@ -194,22 +208,24 @@ function getHeatmapValue(move, layerNum, moveIndex) {
     const speed = (move.feedRate || 0) / 60;
     return (move.eLength / moveLen) * speed;
   }
-  if (colorMode === 'actual-speed') {
-    const result = motionAnalyzer.getResult(layerNum, moveIndex);
-    return result ? result.actualPeakSpeed : (move.feedRate || 0) / 60;
-  }
-  if (colorMode === 'speed-delta') {
-    const result = motionAnalyzer.getResult(layerNum, moveIndex);
-    if (!result) return 0;
-    const requested = result.requestedSpeed;
-    if (requested <= 0) return 0;
-    return (requested - result.actualPeakSpeed) / requested;
+  // Engine overlay modes — route through AnalysisManager
+  const engineOverlay = analysisManager.getSupportedOverlays().find(o => o.id === colorMode);
+  if (engineOverlay) {
+    return analysisManager.getOverlayValue(colorMode, layerNum, moveIndex);
   }
   return 0;
 }
 
 function getHeatmapLayerStats(layerNum) {
   if (heatmapLayerStats[layerNum]) return heatmapLayerStats[layerNum];
+  // Check if current mode is an engine overlay
+  const engineOverlay = analysisManager.getSupportedOverlays().find(o => o.id === colorMode);
+  if (engineOverlay) {
+    const stats = analysisManager.getOverlayStats(colorMode, layerNum, parser.layerMoves);
+    heatmapLayerStats[layerNum] = stats;
+    return stats;
+  }
+  // Built-in modes
   const moves = parser.layerMoves[layerNum];
   if (!moves || moves.length === 0) return { min: 0, max: 1, avg: 0 };
   let min = Infinity, max = -Infinity, sum = 0, count = 0;
@@ -224,10 +240,25 @@ function getHeatmapLayerStats(layerNum) {
     count++;
   }
   if (count === 0) return { min: 0, max: 1, avg: 0 };
-  if (min === max) { min = 0; } // Avoid zero-range
+  if (min === max) { min = 0; }
   const stats = { min, max, avg: sum / count };
   heatmapLayerStats[layerNum] = stats;
   return stats;
+}
+
+function runAnalysis() {
+  const inferredMaterial = inferMaterial(parser.lines);
+  if (!analysisProfile._manualMaterial) {
+    analysisProfile.material = getMaterialProfile(inferredMaterial);
+  }
+  analysisProfile.printer = { ...motionAnalyzer.profile };
+  analysisManager.analyzeAll(parser.layerMoves, analysisProfile);
+  heatmapLayerStats = {};
+  if (typeof renderAnalysisPanel === 'function') renderAnalysisPanel();
+  if (currentView === 'visual') {
+    viewer.clearBuffers();
+    viewer.render(viewer.currentLayer);
+  }
 }
 
 // Initialize firmware UI
@@ -294,7 +325,7 @@ window.addEventListener('keydown', e => {
   }
 
   // Tab switching: 1-8
-  const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts', '7': 'reference', '8': 'recovery' };
+  const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts', '7': 'reference', '8': 'recovery', '9': 'analysis' };
   if (tabKeys[e.key]) { switchTab(tabKeys[e.key]); return; }
 
   // Layer navigation

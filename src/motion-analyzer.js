@@ -275,4 +275,34 @@ export class MotionAnalyzer {
     if (!layerResults || moveIndex >= layerResults.length) return null;
     return layerResults[moveIndex];
   }
+
+  // ===== Engine Interface =====
+
+  get name() { return 'motion'; }
+
+  getSupportedOverlays() {
+    return [
+      { id: 'actual-speed', label: 'Actual Speed', unit: 'mm/s' },
+      { id: 'speed-delta', label: 'Speed Delta', unit: '%' },
+    ];
+  }
+
+  getOverlayData(overlayId, layerNum, moveIndex) {
+    const result = this.getResult(layerNum, moveIndex);
+    if (!result) return 0;
+    if (overlayId === 'actual-speed') return result.actualPeakSpeed;
+    if (overlayId === 'speed-delta') {
+      if (result.requestedSpeed <= 0) return 0;
+      return (result.requestedSpeed - result.actualPeakSpeed) / result.requestedSpeed;
+    }
+    return 0;
+  }
+
+  getFindings() {
+    return [];
+  }
+
+  clear() {
+    this.results.clear();
+  }
 }
