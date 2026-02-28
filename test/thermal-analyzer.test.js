@@ -500,3 +500,98 @@ describe('ThermalAnalyzer - Warping Risk', () => {
       `ABS warp (${warpABS}) should exceed PA-CF warp (${warpPACF}) due to higher CTE`);
   });
 });
+
+// ============================================================
+// 9. Warp Grid API
+// ============================================================
+
+describe('ThermalAnalyzer - getWarpGrid()', () => {
+  it('returns null before analysis', () => {
+    const ta = new ThermalAnalyzer();
+    assert.strictEqual(ta.getWarpGrid(0), null);
+  });
+
+  it('returns grid data with correct structure after analysis', () => {
+    const ta = new ThermalAnalyzer();
+    const layerMoves = {
+      0: makeMoves([
+        { x1: 0, y1: 0, x2: 50, y2: 0, type: 'WALL-OUTER' },
+        { x1: 0, y1: 2, x2: 50, y2: 2, type: 'FILL' },
+      ]),
+      1: makeMoves([
+        { x1: 0, y1: 0, x2: 50, y2: 0, type: 'WALL-OUTER', lineIndex: 10 },
+        { x1: 0, y1: 2, x2: 50, y2: 2, type: 'FILL', lineIndex: 11 },
+      ]),
+    };
+    ta.analyze(layerMoves, makeProfile());
+    const grid = ta.getWarpGrid(1);
+    assert.ok(grid !== null, 'Should return grid data for analyzed layer');
+    assert.ok(grid.warpRisk instanceof Float32Array, 'warpRisk should be Float32Array');
+    assert.ok(grid.extrusionCount instanceof Uint16Array, 'extrusionCount should be Uint16Array');
+    assert.strictEqual(typeof grid.gridW, 'number');
+    assert.strictEqual(typeof grid.gridH, 'number');
+    assert.strictEqual(typeof grid.minX, 'number');
+    assert.strictEqual(typeof grid.minY, 'number');
+    assert.strictEqual(typeof grid.gridRes, 'number');
+    assert.strictEqual(grid.warpRisk.length, grid.gridW * grid.gridH);
+    assert.strictEqual(grid.extrusionCount.length, grid.gridW * grid.gridH);
+  });
+
+  it('returns null for non-existent layer', () => {
+    const ta = new ThermalAnalyzer();
+    const layerMoves = {
+      0: makeMoves([{ x1: 0, y1: 0, x2: 10, y2: 0 }]),
+    };
+    ta.analyze(layerMoves, makeProfile());
+    assert.strictEqual(ta.getWarpGrid(999), null);
+  });
+
+  it('clear() removes warp grid data', () => {
+    const ta = new ThermalAnalyzer();
+    const layerMoves = {
+      0: makeMoves([{ x1: 0, y1: 0, x2: 50, y2: 0 }]),
+      1: makeMoves([{ x1: 0, y1: 0, x2: 50, y2: 0, lineIndex: 10 }]),
+    };
+    ta.analyze(layerMoves, makeProfile());
+    assert.ok(ta.getWarpGrid(0) !== null || ta.getWarpGrid(1) !== null);
+    ta.clear();
+    assert.strictEqual(ta.getWarpGrid(0), null);
+    assert.strictEqual(ta.getWarpGrid(1), null);
+  });
+
+  it('warp grid has non-zero values for multi-layer prints', () => {
+    const ta = new ThermalAnalyzer();
+    const layerMoves = {};
+    for (let l = 0; l < 5; l++) {
+      layerMoves[l] = makeMoves([
+        { x1: 0, y1: 0, x2: 80, y2: 0, type: 'WALL-OUTER', feedRate: 1800, lineIndex: l * 10 },
+        { x1: 0, y1: 2, x2: 80, y2: 2, type: 'FILL', feedRate: 3000, lineIndex: l * 10 + 1 },
+        { x1: 0, y1: 4, x2: 80, y2: 4, type: 'FILL', feedRate: 3000, lineIndex: l * 10 + 2 },
+      ]);
+    }
+    ta.analyze(layerMoves, makeProfile());
+    const grid = ta.getWarpGrid(4);
+    assert.ok(grid !== null);
+    let hasNonZero = false;
+    for (let i = 0; i < grid.warpRisk.length; i++) {
+      if (grid.warpRisk[i] > 0) { hasNonZero = true; break; }
+    }
+    assert.ok(hasNonZero, 'Later layers should have non-zero warp risk values');
+  });
+
+  it('extrusionCount is a snapshot (not shared reference)', () => {
+    const ta = new ThermalAnalyzer();
+    const layerMoves = {
+      0: makeMoves([{ x1: 0, y1: 0, x2: 20, y2: 0 }]),
+      1: makeMoves([{ x1: 0, y1: 0, x2: 20, y2: 0, lineIndex: 10 }]),
+    };
+    ta.analyze(layerMoves, makeProfile());
+    const grid0 = ta.getWarpGrid(0);
+    const grid1 = ta.getWarpGrid(1);
+    if (grid0 && grid1) {
+      // They should be independent arrays, not the same buffer
+      assert.notStrictEqual(grid0.extrusionCount, grid1.extrusionCount,
+        'Each layer should have its own extrusionCount snapshot');
+    }
+  });
+});

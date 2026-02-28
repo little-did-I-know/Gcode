@@ -206,6 +206,7 @@ main { display: flex; flex: 1; overflow: hidden; }
   max-height: calc(100% - 80px); display: flex; flex-direction: column;
   color: var(--text);
 }
+.warp-controls { display: none; }
 .legend-header {
   display: flex; align-items: center; gap: 6px; padding: 6px 10px;
   border-bottom: 1px solid var(--border); cursor: pointer; user-select: none;
@@ -564,6 +565,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div class="view-toggle">
           <button class="active" onclick="setView('code')" id="viewCodeBtn">Code</button>
           <button onclick="setView('visual')" id="viewVisualBtn">Visual</button>
+          <button onclick="setView('warp')" id="viewWarpBtn">Warp</button>
         </div>
         <span>Go to layer:</span>
         <input type="number" class="jump-input" id="jumpLayer" min="0" placeholder="#" onchange="jumpToLayer(+this.value)">
@@ -593,6 +595,10 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div class="viewer-overlay" id="viewerOverlay"></div>
         <div class="edit-mode-banner" id="editModeBanner">Edit Mode — Experimental</div>
         <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
+        <div id="warpControls" class="warp-controls hidden">
+          <label>Deformation: <span id="deformLabel">0x</span></label>
+          <input type="range" id="deformSlider" min="0" max="50" value="0" step="1">
+        </div>
         <div id="editInfoPanel">
           <div class="edit-line" id="editLineText"></div>
           <div class="edit-meta" id="editLineMeta"></div>
@@ -4682,6 +4688,7 @@ class ThermalAnalyzer {
     this._overlayData = new Map(); // "layerNum:moveIndex" -> { coolingTime, heatAccum, coolingEff, temperature, warpRisk }
     this._findings = [];
     this._gridData = null;
+    this._warpGrids = new Map(); // layerNum -> { warpRisk, extrusionCount, gridW, gridH, minX, minY, gridRes }
   }
 
   // --- Engine Interface ---
@@ -4718,6 +4725,11 @@ class ThermalAnalyzer {
     this._overlayData.clear();
     this._findings = [];
     this._gridData = null;
+    this._warpGrids.clear();
+  }
+
+  getWarpGrid(layerNum) {
+    return this._warpGrids.get(layerNum) || null;
   }
 
   // --- Grid Helpers ---
@@ -5159,6 +5171,38 @@ class ThermalAnalyzer {
         globalTime += moveDuration;
       }
 
+      // Store per-layer warp grid for mesh visualization.
+      // Always store even when printedCount is 0 (e.g. layer 0 before any prior
+      // extrusions) — the extrusionCount footprint is needed for cumulative warp
+      // display in the viewer, and warp values will naturally be zero when
+      // cellStrain is zero (temperature below glass transition).
+      const warpGrid = new Float32Array(totalCells);
+      if (printedCount > 0) {
+        for (let idx = 0; idx < totalCells; idx++) {
+          if (extrusionCount[idx] === 0) continue;
+          const strain = cellStrain[idx];
+          const gy = Math.floor(idx / gridW), gx = idx % gridW;
+          let nStress = 0;
+          const neighbors = [
+            gx > 0 ? idx - 1 : -1,
+            gx < gridW - 1 ? idx + 1 : -1,
+            gy > 0 ? idx - gridW : -1,
+            gy < gridH - 1 ? idx + gridW : -1,
+          ];
+          for (const nIdx of neighbors) {
+            if (nIdx >= 0 && nIdx < totalCells) nStress = Math.max(nStress, Math.abs(strain - cellStrain[nIdx]));
+          }
+          const cellX = minX + gx * gridRes, cellY = minY + gy * gridRes;
+          const distC = Math.hypot(cellX - centroidX, cellY - centroidY);
+          warpGrid[idx] = (strain + nStress) * distC;
+        }
+      }
+      this._warpGrids.set(layerNum, {
+        warpRisk: warpGrid,
+        extrusionCount: new Uint16Array(extrusionCount),
+        gridW, gridH, minX, minY, gridRes,
+      });
+
       // Between layers: cool all cells (Newton's Law)
       for (let idx = 0; idx < totalCells; idx++) {
         if (temperature[idx] > ambientTemp) {
@@ -5481,6 +5525,12 @@ class GcodeViewer3D {
 
     // Cross-section clipping plane state
     this.clipPlane = null; // [nx, ny, nz, d] or null when inactive
+
+    // Warp mesh view state
+    this._warpViewActive = false;
+    this._warpDeformScale = 0;
+    this._warpMeshBuf = null; // { vao, vbo, count, key }
+    this._warpMeshRange = null; // { min, max } for legend
 
     // Camera state
     this.cam = {
@@ -5877,6 +5927,174 @@ class GcodeViewer3D {
     }
     this.layerBuffers.clear();
     this.moveOffsets.clear();
+    this._clearWarpMesh();
+  }
+
+  _clearWarpMesh() {
+    if (this._warpMeshBuf) {
+      const gl = this.gl;
+      if (this._warpMeshBuf.vao) gl.deleteVertexArray(this._warpMeshBuf.vao);
+      if (this._warpMeshBuf.vbo) gl.deleteBuffer(this._warpMeshBuf.vbo);
+      this._warpMeshBuf = null;
+    }
+    this._warpMeshRange = null;
+  }
+
+  _buildWarpMesh(layerNum, deformScale) {
+    const key = `${layerNum}:${deformScale}`;
+    if (this._warpMeshBuf && this._warpMeshBuf.key === key) return this._warpMeshBuf;
+
+    this._clearWarpMesh();
+
+    // Find thermal engine via analysisManager
+    const thermalEngine = analysisManager.engines.find(e => e.name === 'thermal');
+    if (!thermalEngine) return null;
+
+    // Get grid dimensions from any available warp grid (dimensions are identical
+    // across all layers since the grid is computed from global extrusion bounds).
+    const layerNums = Object.keys(parser.layerMoves).map(Number).sort((a, b) => a - b);
+    let refGrid = thermalEngine.getWarpGrid(layerNum);
+    if (!refGrid) {
+      for (const ln of layerNums) {
+        refGrid = thermalEngine.getWarpGrid(ln);
+        if (refGrid) break;
+      }
+    }
+    if (!refGrid) return null;
+    const { gridW, gridH, minX, minY, gridRes } = refGrid;
+    const totalCells = gridW * gridH;
+    const vW = gridW + 1, vH = gridH + 1;
+
+    // Collect layers up to selected
+    const validLayers = layerNums.filter(ln => ln <= layerNum);
+    if (validLayers.length === 0) return null;
+
+    // First pass: compute FINAL cumulative warp for global min/max color scale
+    const finalCumWarp = new Float32Array(totalCells);
+    const finalCumExtrusion = new Uint8Array(totalCells);
+    for (const ln of validLayers) {
+      const grid = thermalEngine.getWarpGrid(ln);
+      if (!grid) continue;
+      for (let i = 0; i < totalCells; i++) {
+        finalCumWarp[i] += grid.warpRisk[i];
+        if (grid.extrusionCount[i] > 0) finalCumExtrusion[i] = 1;
+      }
+    }
+    let minWarp = Infinity, maxWarp = -Infinity;
+    for (let i = 0; i < totalCells; i++) {
+      if (!finalCumExtrusion[i]) continue;
+      if (finalCumWarp[i] < minWarp) minWarp = finalCumWarp[i];
+      if (finalCumWarp[i] > maxWarp) maxWarp = finalCumWarp[i];
+    }
+    if (minWarp === Infinity) return null;
+    this._warpMeshRange = { min: minWarp, max: maxWarp };
+
+    // Determine which layers get mesh surfaces (sample evenly if too many)
+    const maxMeshLayers = 60;
+    let meshLayerSet;
+    if (validLayers.length <= maxMeshLayers) {
+      meshLayerSet = new Set(validLayers);
+    } else {
+      meshLayerSet = new Set();
+      const step = (validLayers.length - 1) / (maxMeshLayers - 1);
+      for (let i = 0; i < maxMeshLayers; i++) {
+        meshLayerSet.add(validLayers[Math.round(i * step)]);
+      }
+      meshLayerSet.add(validLayers[0]);
+      meshLayerSet.add(validLayers[validLayers.length - 1]);
+    }
+
+    // Second pass: incrementally accumulate warp, emit mesh at sampled layers.
+    // Each layer's mesh uses cumulative warp up to that layer for coloring,
+    // but the GLOBAL min/max for consistent color scale across all layers.
+    const cumWarp = new Float32Array(totalCells);
+    const cumExtrusion = new Uint8Array(totalCells);
+    const verts = [];
+
+    for (const ln of validLayers) {
+      const grid = thermalEngine.getWarpGrid(ln);
+      if (grid) {
+        for (let i = 0; i < totalCells; i++) {
+          cumWarp[i] += grid.warpRisk[i];
+          if (grid.extrusionCount[i] > 0) cumExtrusion[i] = 1;
+        }
+      }
+      if (!meshLayerSet.has(ln)) continue;
+
+      // Check if any cells have been printed up to this point
+      let hasExtrusion = false;
+      for (let i = 0; i < totalCells; i++) {
+        if (cumExtrusion[i]) { hasExtrusion = true; break; }
+      }
+      if (!hasExtrusion) continue;
+
+      const layerInfo = parser.layers.find(l => l.number === ln);
+      const z = layerInfo ? (layerInfo.zHeight || 0) : 0;
+
+      // Build vertex grid: each corner averages warp from up to 4 surrounding cells
+      const vertexWarp = new Float32Array(vW * vH);
+      for (let vy = 0; vy < vH; vy++) {
+        for (let vx = 0; vx < vW; vx++) {
+          let sum = 0, count = 0;
+          for (const [cx, cy] of [[vx-1,vy-1],[vx,vy-1],[vx-1,vy],[vx,vy]]) {
+            if (cx >= 0 && cx < gridW && cy >= 0 && cy < gridH) {
+              const idx = cy * gridW + cx;
+              if (cumExtrusion[idx]) { sum += cumWarp[idx]; count++; }
+            }
+          }
+          vertexWarp[vy * vW + vx] = count > 0 ? sum / count : 0;
+        }
+      }
+
+      // Emit triangles with per-vertex colors and Z deformation
+      for (let gy = 0; gy < gridH; gy++) {
+        for (let gx = 0; gx < gridW; gx++) {
+          if (!cumExtrusion[gy * gridW + gx]) continue;
+          const corners = [[gx,gy],[gx+1,gy],[gx+1,gy+1],[gx,gy+1]];
+          const cv = corners.map(([vx, vy]) => {
+            const w = vertexWarp[vy * vW + vx];
+            const [r, g, b] = this._getHeatmapColor(w, minWarp, maxWarp, false);
+            return {
+              x: minX + vx * gridRes,
+              y: minY + vy * gridRes,
+              z: z + w * deformScale,
+              r, g, b,
+            };
+          });
+          // Triangle 1: BL, BR, TR
+          for (const v of [cv[0], cv[1], cv[2]]) {
+            verts.push(v.x, v.y, v.z, v.r, v.g, v.b, 1.0);
+          }
+          // Triangle 2: BL, TR, TL
+          for (const v of [cv[0], cv[2], cv[3]]) {
+            verts.push(v.x, v.y, v.z, v.r, v.g, v.b, 1.0);
+          }
+        }
+      }
+    }
+
+    if (verts.length === 0) return null;
+
+    // Upload to GPU — same VAO/VBO pattern as existing layer buffers
+    const gl = this.gl;
+    const data = new Float32Array(verts);
+    const stride = 7 * 4; // 7 floats × 4 bytes
+
+    const vao = gl.createVertexArray();
+    const vbo = gl.createBuffer();
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(this.a_pos);
+    gl.vertexAttribPointer(this.a_pos, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(this.a_color);
+    gl.vertexAttribPointer(this.a_color, 3, gl.FLOAT, false, stride, 12);
+    gl.enableVertexAttribArray(this.a_alpha);
+    gl.vertexAttribPointer(this.a_alpha, 1, gl.FLOAT, false, stride, 24);
+    gl.bindVertexArray(null);
+
+    this._warpMeshBuf = { vao, vbo, count: verts.length / 7, key };
+    return this._warpMeshBuf;
   }
 
   _initShaders() {
@@ -5977,6 +6195,21 @@ class GcodeViewer3D {
 
     // Draw bed grid
     this._drawGrid(mvp);
+
+    // Warp mesh view: draw surface mesh instead of toolpath lines
+    if (this._warpViewActive) {
+      const mesh = this._buildWarpMesh(layerNum, this._warpDeformScale);
+      if (mesh) {
+        gl.useProgram(this.prog);
+        gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+        gl.uniform4fv(this.u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
+        gl.uniform1f(this.u_alphaOverride, -1.0);
+        gl.bindVertexArray(mesh.vao);
+        gl.drawArrays(gl.TRIANGLES, 0, mesh.count);
+        gl.bindVertexArray(null);
+      }
+      return;
+    }
 
     // Draw layers 0..maxVisibleLayer
     gl.useProgram(this.prog);
@@ -6855,7 +7088,7 @@ class GcodeViewer3D {
 
     // Resize observer
     new ResizeObserver(() => {
-      if (currentView === 'visual') { this.resize(); this.render(this.currentLayer); }
+      if (currentView === 'visual' || currentView === 'warp') { this.resize(); this.render(this.currentLayer); }
     }).observe(c.parentElement);
   }
 }
@@ -7840,6 +8073,12 @@ function selectLayer(num) {
     viewer.render(num);
     updateViewerOverlay(num);
     showSimControls();
+  } else if (currentView === 'warp') {
+    viewer.maxVisibleLayer = num;
+    viewer._clearWarpMesh(); // Invalidate cached mesh for new layer
+    viewer.render(num);
+    updateViewerOverlay(num);
+    updateWarpLegend();
   }
 
   // Fill layer number into active tab's layer input
@@ -9058,21 +9297,88 @@ function onModDragEnd() {
 // ===== VIEW TOGGLE =====
 function setView(view) {
   currentView = view;
+  const isViewer = view === 'visual' || view === 'warp';
   document.getElementById('viewCodeBtn').classList.toggle('active', view === 'code');
   document.getElementById('viewVisualBtn').classList.toggle('active', view === 'visual');
-  document.getElementById('gcodePreview').classList.toggle('hidden', view === 'visual');
-  document.getElementById('viewerWrap').classList.toggle('active', view === 'visual');
-  if (view === 'visual' && selectedLayer !== null) {
+  document.getElementById('viewWarpBtn').classList.toggle('active', view === 'warp');
+  document.getElementById('gcodePreview').classList.toggle('hidden', isViewer);
+  document.getElementById('viewerWrap').classList.toggle('active', isViewer);
+  document.getElementById('warpControls').classList.toggle('hidden', view !== 'warp');
+
+  // Set viewer warp mode
+  viewer._warpViewActive = view === 'warp';
+  if (view !== 'warp') {
+    viewer._clearWarpMesh();
+  }
+
+  if (isViewer && selectedLayer !== null) {
     viewer.resize();
     viewer.fitBounds();
     viewer.maxVisibleLayer = selectedLayer;
     viewer.render(selectedLayer);
     updateViewerOverlay(selectedLayer);
-    showSimControls();
+    if (view === 'visual') {
+      showSimControls();
+    } else {
+      stopSimulation();
+      hideSimControls();
+    }
+    // Show legend with warping-risk colors + deformation slider when in warp view
+    if (view === 'warp') {
+      updateWarpLegend();
+    }
   } else {
     stopSimulation();
     hideSimControls();
   }
+}
+
+function updateWarpLegend() {
+  const legendEl = document.getElementById('viewerLegend');
+  if (!legendEl) return;
+  const range = viewer._warpMeshRange;
+  const minStr = range ? range.min.toFixed(3) : '0.000';
+  const maxStr = range ? range.max.toFixed(3) : '0.000';
+  const scale = viewer._warpDeformScale || 0;
+  legendEl.style.display = '';
+  legendEl.innerHTML = `<div class="legend-header"><span class="legend-title">Warp Risk</span></div>
+    <div style="padding:6px 10px;font-size:11px;">
+      <div style="height:12px;border-radius:3px;background:linear-gradient(to right,#0000ff,#00ffff,#00ff00,#ffff00,#ff0000);margin-bottom:4px;"></div>
+      <div style="display:flex;justify-content:space-between;color:var(--text-dim);">
+        <span>${minStr}mm</span><span>${maxStr}mm</span>
+      </div>
+    </div>
+    <div style="padding:6px 10px;border-top:1px solid var(--border);font-size:11px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="color:var(--text-dim);">Deformation</span>
+        <span id="warpDeformValue" style="font-family:var(--mono);color:var(--text);">${scale}x</span>
+      </div>
+      <input type="range" id="warpDeformSlider" min="0" max="50" value="${scale}" step="1" style="width:100%;">
+    </div>`;
+  const slider = document.getElementById('warpDeformSlider');
+  if (slider) {
+    slider.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value);
+      document.getElementById('warpDeformValue').textContent = val + 'x';
+      viewer._warpDeformScale = val;
+      viewer._clearWarpMesh();
+      if (currentView === 'warp' && selectedLayer !== null) {
+        viewer.render(selectedLayer);
+        // Update only the range labels (not the whole legend, to preserve slider state)
+        if (viewer._warpMeshRange) {
+          const spans = legendEl.querySelectorAll('.legend-header ~ div:first-of-type span');
+          if (spans.length >= 2) {
+            spans[0].textContent = viewer._warpMeshRange.min.toFixed(3) + 'mm';
+            spans[1].textContent = viewer._warpMeshRange.max.toFixed(3) + 'mm';
+          }
+        }
+      }
+    });
+  }
+}
+
+function initWarpControls() {
+  // Warp controls are now integrated into the legend panel via updateWarpLegend()
 }
 
 function onSliderChange(val) {
@@ -10196,8 +10502,12 @@ window.addEventListener('keydown', e => {
   // View toggle
   if (e.key === ' ') { e.preventDefault(); setView(currentView === 'code' ? 'visual' : 'code'); return; }
 
+  // Warp view
+  if (e.key === 'w') { setView(currentView === 'warp' ? 'visual' : 'warp'); return; }
+
   // Reset camera
-  if (e.key === 'f' && currentView === 'visual') { viewer.fitBounds(); viewer.render(viewer.currentLayer); return; }
+  const isViewerView = currentView === 'visual' || currentView === 'warp';
+  if (e.key === 'f' && isViewerView) { viewer.fitBounds(); viewer.render(viewer.currentLayer); return; }
 
   // Simulation play/pause
   if (e.key === 'p' && currentView === 'visual') { toggleSimulation(); return; }
@@ -10210,6 +10520,7 @@ window.addEventListener('keydown', e => {
 });
 
 applyTheme(getPreferredTheme());
+initWarpControls();
 
 </script>
 </body>

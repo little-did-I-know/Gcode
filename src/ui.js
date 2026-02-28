@@ -964,6 +964,12 @@ function selectLayer(num) {
     viewer.render(num);
     updateViewerOverlay(num);
     showSimControls();
+  } else if (currentView === 'warp') {
+    viewer.maxVisibleLayer = num;
+    viewer._clearWarpMesh(); // Invalidate cached mesh for new layer
+    viewer.render(num);
+    updateViewerOverlay(num);
+    updateWarpLegend();
   }
 
   // Fill layer number into active tab's layer input
@@ -2182,21 +2188,88 @@ function onModDragEnd() {
 // ===== VIEW TOGGLE =====
 function setView(view) {
   currentView = view;
+  const isViewer = view === 'visual' || view === 'warp';
   document.getElementById('viewCodeBtn').classList.toggle('active', view === 'code');
   document.getElementById('viewVisualBtn').classList.toggle('active', view === 'visual');
-  document.getElementById('gcodePreview').classList.toggle('hidden', view === 'visual');
-  document.getElementById('viewerWrap').classList.toggle('active', view === 'visual');
-  if (view === 'visual' && selectedLayer !== null) {
+  document.getElementById('viewWarpBtn').classList.toggle('active', view === 'warp');
+  document.getElementById('gcodePreview').classList.toggle('hidden', isViewer);
+  document.getElementById('viewerWrap').classList.toggle('active', isViewer);
+  document.getElementById('warpControls').classList.toggle('hidden', view !== 'warp');
+
+  // Set viewer warp mode
+  viewer._warpViewActive = view === 'warp';
+  if (view !== 'warp') {
+    viewer._clearWarpMesh();
+  }
+
+  if (isViewer && selectedLayer !== null) {
     viewer.resize();
     viewer.fitBounds();
     viewer.maxVisibleLayer = selectedLayer;
     viewer.render(selectedLayer);
     updateViewerOverlay(selectedLayer);
-    showSimControls();
+    if (view === 'visual') {
+      showSimControls();
+    } else {
+      stopSimulation();
+      hideSimControls();
+    }
+    // Show legend with warping-risk colors + deformation slider when in warp view
+    if (view === 'warp') {
+      updateWarpLegend();
+    }
   } else {
     stopSimulation();
     hideSimControls();
   }
+}
+
+function updateWarpLegend() {
+  const legendEl = document.getElementById('viewerLegend');
+  if (!legendEl) return;
+  const range = viewer._warpMeshRange;
+  const minStr = range ? range.min.toFixed(3) : '0.000';
+  const maxStr = range ? range.max.toFixed(3) : '0.000';
+  const scale = viewer._warpDeformScale || 0;
+  legendEl.style.display = '';
+  legendEl.innerHTML = `<div class="legend-header"><span class="legend-title">Warp Risk</span></div>
+    <div style="padding:6px 10px;font-size:11px;">
+      <div style="height:12px;border-radius:3px;background:linear-gradient(to right,#0000ff,#00ffff,#00ff00,#ffff00,#ff0000);margin-bottom:4px;"></div>
+      <div style="display:flex;justify-content:space-between;color:var(--text-dim);">
+        <span>${minStr}mm</span><span>${maxStr}mm</span>
+      </div>
+    </div>
+    <div style="padding:6px 10px;border-top:1px solid var(--border);font-size:11px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="color:var(--text-dim);">Deformation</span>
+        <span id="warpDeformValue" style="font-family:var(--mono);color:var(--text);">${scale}x</span>
+      </div>
+      <input type="range" id="warpDeformSlider" min="0" max="50" value="${scale}" step="1" style="width:100%;">
+    </div>`;
+  const slider = document.getElementById('warpDeformSlider');
+  if (slider) {
+    slider.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value);
+      document.getElementById('warpDeformValue').textContent = val + 'x';
+      viewer._warpDeformScale = val;
+      viewer._clearWarpMesh();
+      if (currentView === 'warp' && selectedLayer !== null) {
+        viewer.render(selectedLayer);
+        // Update only the range labels (not the whole legend, to preserve slider state)
+        if (viewer._warpMeshRange) {
+          const spans = legendEl.querySelectorAll('.legend-header ~ div:first-of-type span');
+          if (spans.length >= 2) {
+            spans[0].textContent = viewer._warpMeshRange.min.toFixed(3) + 'mm';
+            spans[1].textContent = viewer._warpMeshRange.max.toFixed(3) + 'mm';
+          }
+        }
+      }
+    });
+  }
+}
+
+function initWarpControls() {
+  // Warp controls are now integrated into the legend panel via updateWarpLegend()
 }
 
 function onSliderChange(val) {

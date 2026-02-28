@@ -353,8 +353,12 @@ window.addEventListener('keydown', e => {
   // View toggle
   if (e.key === ' ') { e.preventDefault(); setView(currentView === 'code' ? 'visual' : 'code'); return; }
 
+  // Warp view
+  if (e.key === 'w') { setView(currentView === 'warp' ? 'visual' : 'warp'); return; }
+
   // Reset camera
-  if (e.key === 'f' && currentView === 'visual') { viewer.fitBounds(); viewer.render(viewer.currentLayer); return; }
+  const isViewerView = currentView === 'visual' || currentView === 'warp';
+  if (e.key === 'f' && isViewerView) { viewer.fitBounds(); viewer.render(viewer.currentLayer); return; }
 
   // Simulation play/pause
   if (e.key === 'p' && currentView === 'visual') { toggleSimulation(); return; }
@@ -367,3 +371,4 @@ window.addEventListener('keydown', e => {
 });
 
 applyTheme(getPreferredTheme());
+initWarpControls();

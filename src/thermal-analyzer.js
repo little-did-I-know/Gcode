@@ -25,6 +25,7 @@ export class ThermalAnalyzer {
     this._overlayData = new Map(); // "layerNum:moveIndex" -> { coolingTime, heatAccum, coolingEff, temperature, warpRisk }
     this._findings = [];
     this._gridData = null;
+    this._warpGrids = new Map(); // layerNum -> { warpRisk, extrusionCount, gridW, gridH, minX, minY, gridRes }
   }
 
   // --- Engine Interface ---
@@ -61,6 +62,11 @@ export class ThermalAnalyzer {
     this._overlayData.clear();
     this._findings = [];
     this._gridData = null;
+    this._warpGrids.clear();
+  }
+
+  getWarpGrid(layerNum) {
+    return this._warpGrids.get(layerNum) || null;
   }
 
   // --- Grid Helpers ---
@@ -501,6 +507,38 @@ export class ThermalAnalyzer {
 
         globalTime += moveDuration;
       }
+
+      // Store per-layer warp grid for mesh visualization.
+      // Always store even when printedCount is 0 (e.g. layer 0 before any prior
+      // extrusions) — the extrusionCount footprint is needed for cumulative warp
+      // display in the viewer, and warp values will naturally be zero when
+      // cellStrain is zero (temperature below glass transition).
+      const warpGrid = new Float32Array(totalCells);
+      if (printedCount > 0) {
+        for (let idx = 0; idx < totalCells; idx++) {
+          if (extrusionCount[idx] === 0) continue;
+          const strain = cellStrain[idx];
+          const gy = Math.floor(idx / gridW), gx = idx % gridW;
+          let nStress = 0;
+          const neighbors = [
+            gx > 0 ? idx - 1 : -1,
+            gx < gridW - 1 ? idx + 1 : -1,
+            gy > 0 ? idx - gridW : -1,
+            gy < gridH - 1 ? idx + gridW : -1,
+          ];
+          for (const nIdx of neighbors) {
+            if (nIdx >= 0 && nIdx < totalCells) nStress = Math.max(nStress, Math.abs(strain - cellStrain[nIdx]));
+          }
+          const cellX = minX + gx * gridRes, cellY = minY + gy * gridRes;
+          const distC = Math.hypot(cellX - centroidX, cellY - centroidY);
+          warpGrid[idx] = (strain + nStress) * distC;
+        }
+      }
+      this._warpGrids.set(layerNum, {
+        warpRisk: warpGrid,
+        extrusionCount: new Uint16Array(extrusionCount),
+        gridW, gridH, minX, minY, gridRes,
+      });
 
       // Between layers: cool all cells (Newton's Law)
       for (let idx = 0; idx < totalCells; idx++) {

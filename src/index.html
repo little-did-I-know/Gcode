@@ -206,6 +206,7 @@ main { display: flex; flex: 1; overflow: hidden; }
   max-height: calc(100% - 80px); display: flex; flex-direction: column;
   color: var(--text);
 }
+.warp-controls { display: none; }
 .legend-header {
   display: flex; align-items: center; gap: 6px; padding: 6px 10px;
   border-bottom: 1px solid var(--border); cursor: pointer; user-select: none;
@@ -564,6 +565,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div class="view-toggle">
           <button class="active" onclick="setView('code')" id="viewCodeBtn">Code</button>
           <button onclick="setView('visual')" id="viewVisualBtn">Visual</button>
+          <button onclick="setView('warp')" id="viewWarpBtn">Warp</button>
         </div>
         <span>Go to layer:</span>
         <input type="number" class="jump-input" id="jumpLayer" min="0" placeholder="#" onchange="jumpToLayer(+this.value)">
@@ -593,6 +595,10 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div class="viewer-overlay" id="viewerOverlay"></div>
         <div class="edit-mode-banner" id="editModeBanner">Edit Mode — Experimental</div>
         <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
+        <div id="warpControls" class="warp-controls hidden">
+          <label>Deformation: <span id="deformLabel">0x</span></label>
+          <input type="range" id="deformSlider" min="0" max="50" value="0" step="1">
+        </div>
         <div id="editInfoPanel">
           <div class="edit-line" id="editLineText"></div>
           <div class="edit-meta" id="editLineMeta"></div>
