@@ -466,16 +466,30 @@ export class GcodeViewer3D {
     const validLayers = layerNums.filter(ln => ln <= layerNum);
     if (validLayers.length === 0) return null;
 
-    // First pass: compute FINAL cumulative warp for global min/max color scale
+    // First pass: compute FINAL average warp for global min/max color scale.
+    // Per-layer warpRisk = (strain + neighborStress) × distFromCentroid, which
+    // already has distance units (mm). Naive summation blows up linearly with
+    // layer count (e.g. 50 layers × ~2mm = 100mm — unrealistic). Physically,
+    // more layers add force but also stiffness, so total warp is roughly
+    // independent of layer count. We use per-cell averaging to keep values in a
+    // realistic range while still capturing spatial variation.
     const finalCumWarp = new Float32Array(totalCells);
+    const finalCumCount = new Uint16Array(totalCells);
     const finalCumExtrusion = new Uint8Array(totalCells);
     for (const ln of validLayers) {
       const grid = thermalEngine.getWarpGrid(ln);
       if (!grid) continue;
       for (let i = 0; i < totalCells; i++) {
-        finalCumWarp[i] += grid.warpRisk[i];
-        if (grid.extrusionCount[i] > 0) finalCumExtrusion[i] = 1;
+        if (grid.extrusionCount[i] > 0) {
+          finalCumWarp[i] += grid.warpRisk[i];
+          finalCumCount[i]++;
+          finalCumExtrusion[i] = 1;
+        }
       }
+    }
+    // Normalize: average per cell
+    for (let i = 0; i < totalCells; i++) {
+      if (finalCumCount[i] > 0) finalCumWarp[i] /= finalCumCount[i];
     }
     let minWarp = Infinity, maxWarp = -Infinity;
     for (let i = 0; i < totalCells; i++) {
@@ -502,9 +516,10 @@ export class GcodeViewer3D {
     }
 
     // Second pass: incrementally accumulate warp, emit mesh at sampled layers.
-    // Each layer's mesh uses cumulative warp up to that layer for coloring,
-    // but the GLOBAL min/max for consistent color scale across all layers.
-    const cumWarp = new Float32Array(totalCells);
+    // Each layer's mesh uses averaged cumulative warp up to that layer for
+    // coloring, but the GLOBAL min/max for consistent color scale.
+    const cumWarpSum = new Float32Array(totalCells);
+    const cumCount = new Uint16Array(totalCells);
     const cumExtrusion = new Uint8Array(totalCells);
     const verts = [];
 
@@ -512,8 +527,11 @@ export class GcodeViewer3D {
       const grid = thermalEngine.getWarpGrid(ln);
       if (grid) {
         for (let i = 0; i < totalCells; i++) {
-          cumWarp[i] += grid.warpRisk[i];
-          if (grid.extrusionCount[i] > 0) cumExtrusion[i] = 1;
+          if (grid.extrusionCount[i] > 0) {
+            cumWarpSum[i] += grid.warpRisk[i];
+            cumCount[i]++;
+            cumExtrusion[i] = 1;
+          }
         }
       }
       if (!meshLayerSet.has(ln)) continue;
@@ -524,6 +542,12 @@ export class GcodeViewer3D {
         if (cumExtrusion[i]) { hasExtrusion = true; break; }
       }
       if (!hasExtrusion) continue;
+
+      // Compute per-cell averaged warp for this layer's mesh
+      const avgWarp = new Float32Array(totalCells);
+      for (let i = 0; i < totalCells; i++) {
+        if (cumCount[i] > 0) avgWarp[i] = cumWarpSum[i] / cumCount[i];
+      }
 
       const layerInfo = parser.layers.find(l => l.number === ln);
       const z = layerInfo ? (layerInfo.zHeight || 0) : 0;
@@ -536,7 +560,7 @@ export class GcodeViewer3D {
           for (const [cx, cy] of [[vx-1,vy-1],[vx,vy-1],[vx-1,vy],[vx,vy]]) {
             if (cx >= 0 && cx < gridW && cy >= 0 && cy < gridH) {
               const idx = cy * gridW + cx;
-              if (cumExtrusion[idx]) { sum += cumWarp[idx]; count++; }
+              if (cumExtrusion[idx]) { sum += avgWarp[idx]; count++; }
             }
           }
           vertexWarp[vy * vW + vx] = count > 0 ? sum / count : 0;
