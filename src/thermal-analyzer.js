@@ -370,9 +370,7 @@ export class ThermalAnalyzer {
       const gt_warp = material.glassTransition || 60;
       const cellStrain = new Float32Array(totalCells);
 
-      // Compute centroid of printed area — corners are farthest from centroid
-      // and warp the most because cumulative interior contraction pulls them
-      // away from the bed. Center is well-constrained from all sides.
+      // Compute centroid of printed area for part radius calculation.
       let centroidX = 0, centroidY = 0, printedCount = 0;
       for (let idx = 0; idx < totalCells; idx++) {
         const dT = layerTemp[idx] - gt_warp;
@@ -388,6 +386,52 @@ export class ThermalAnalyzer {
       if (printedCount > 0) {
         centroidX /= printedCount;
         centroidY /= printedCount;
+      }
+
+      // Part radius and per-cell effective distance. Pure distFromCentroid
+      // makes the center appear zero-risk (wrong — internal stress is real).
+      // A constant makes corners = center (wrong — stress concentrates at
+      // free edges). Blend: effectiveDist = partRadius × (0.4 + 0.6 × d/R).
+      // Center gets 40% of corner risk — corners are higher but center isn't zero.
+      let partRadius = 1;
+      for (let idx = 0; idx < totalCells; idx++) {
+        if (extrusionCount[idx] > 0) {
+          const gy = Math.floor(idx / gridW), gx = idx % gridW;
+          const d = Math.hypot(minX + gx * gridRes - centroidX, minY + gy * gridRes - centroidY);
+          if (d > partRadius) partRadius = d;
+        }
+      }
+      const effectiveDist = new Float32Array(totalCells);
+      for (let idx = 0; idx < totalCells; idx++) {
+        if (extrusionCount[idx] === 0) continue;
+        const gy = Math.floor(idx / gridW), gx = idx % gridW;
+        const d = Math.hypot(minX + gx * gridRes - centroidX, minY + gy * gridRes - centroidY);
+        effectiveDist[idx] = partRadius * (0.4 + 0.6 * d / partRadius);
+      }
+
+      // Precompute local fill fraction for each cell.
+      // In a lattice/grid structure, contraction forces don't accumulate across
+      // gaps the way they do in a solid plate. The fill fraction scales the
+      // part radius term so sparse structures warp proportionally less.
+      // Uses a summed area table (integral image) for O(1) per-cell queries.
+      const fillRadius = Math.max(2, Math.round(10 / gridRes));
+      const satW = gridW + 1, satH = gridH + 1;
+      const sat = new Float32Array(satW * satH);
+      for (let y = 1; y <= gridH; y++) {
+        for (let x = 1; x <= gridW; x++) {
+          sat[y * satW + x] = (extrusionCount[(y - 1) * gridW + (x - 1)] > 0 ? 1 : 0)
+            + sat[(y - 1) * satW + x] + sat[y * satW + (x - 1)] - sat[(y - 1) * satW + (x - 1)];
+        }
+      }
+      const fillFraction = new Float32Array(totalCells);
+      for (let idx = 0; idx < totalCells; idx++) {
+        const gy = Math.floor(idx / gridW), gx = idx % gridW;
+        const x0 = Math.max(0, gx - fillRadius), y0 = Math.max(0, gy - fillRadius);
+        const x1 = Math.min(gridW - 1, gx + fillRadius), y1 = Math.min(gridH - 1, gy + fillRadius);
+        const sum = sat[(y1 + 1) * satW + (x1 + 1)] - sat[y0 * satW + (x1 + 1)]
+          - sat[(y1 + 1) * satW + x0] + sat[y0 * satW + x0];
+        const area = (x1 - x0 + 1) * (y1 - y0 + 1);
+        fillFraction[idx] = sum / area;
       }
 
       // Process each move
@@ -454,11 +498,11 @@ export class ThermalAnalyzer {
             coolingEff = 1.0; // first extrusion at this cell, no prior heat
           }
 
-          // Warping risk: (selfContraction + neighborStress) × distFromCentroid
-          // Corners/edges lift because cumulative interior contraction pulls
-          // them away from the bed. Center is constrained from all sides.
+          // Warping risk: (selfContraction + neighborStress) × partRadius × fillFraction
           // selfContraction = CTE × ΔT (how much this cell wants to shrink)
-          // neighborStress = max strain difference with 4 neighbors (differential pull)
+          // neighborStress = max strain difference with extruded neighbors
+          // partRadius = constant scale factor (mm) — larger parts warp more
+          // fillFraction = local material density — sparse structures warp less
           const selfContraction = cellStrain[midIdx];
           let neighborStress = 0;
           const gy = Math.floor(midIdx / gridW);
@@ -470,14 +514,12 @@ export class ThermalAnalyzer {
             gy < gridH - 1 ? midIdx + gridW : -1,
           ];
           for (const nIdx of warpNeighbors) {
-            if (nIdx < 0 || nIdx >= totalCells) continue;
+            if (nIdx < 0 || nIdx >= totalCells || extrusionCount[nIdx] === 0) continue;
             const diff = Math.abs(cellStrain[midIdx] - cellStrain[nIdx]);
             if (diff > neighborStress) neighborStress = diff;
           }
 
-          // Distance from centroid: corners are farthest → highest risk
-          const distFromCentroid = Math.hypot(midX - centroidX, midY - centroidY);
-          warpRisk = (selfContraction + neighborStress) * distFromCentroid;
+          warpRisk = (selfContraction + neighborStress) * effectiveDist[midIdx] * fillFraction[midIdx];
         }
 
         // Heat injection: fresh filament arrives near melt temp.
@@ -527,11 +569,9 @@ export class ThermalAnalyzer {
             gy < gridH - 1 ? idx + gridW : -1,
           ];
           for (const nIdx of neighbors) {
-            if (nIdx >= 0 && nIdx < totalCells) nStress = Math.max(nStress, Math.abs(strain - cellStrain[nIdx]));
+            if (nIdx >= 0 && nIdx < totalCells && extrusionCount[nIdx] > 0) nStress = Math.max(nStress, Math.abs(strain - cellStrain[nIdx]));
           }
-          const cellX = minX + gx * gridRes, cellY = minY + gy * gridRes;
-          const distC = Math.hypot(cellX - centroidX, cellY - centroidY);
-          warpGrid[idx] = (strain + nStress) * distC;
+          warpGrid[idx] = (strain + nStress) * effectiveDist[idx] * fillFraction[idx];
         }
       }
       this._warpGrids.set(layerNum, {
@@ -638,7 +678,7 @@ export class ThermalAnalyzer {
     }
 
     // Generate findings
-    this._generateFindings(layerMoves, layerNums, material, layerCoolingTimes, chamberFactor);
+    this._generateFindings(layerMoves, layerNums, material, layerCoolingTimes, chamberFactor, chamberType);
 
     // Store grid data for potential future use
     this._gridData = { temperature, gridW, gridH, minX, minY, gridRes };
@@ -646,7 +686,7 @@ export class ThermalAnalyzer {
 
   // --- Finding Generation ---
 
-  _generateFindings(layerMoves, layerNums, material, layerCoolingTimes, chamberFactor) {
+  _generateFindings(layerMoves, layerNums, material, layerCoolingTimes, chamberFactor, chamberType) {
     const minLayerTime = material.minLayerTime || 8;
 
     // Cooling time findings
@@ -733,44 +773,176 @@ export class ThermalAnalyzer {
       }
     }
 
-    // Warping risk findings
-    for (const layerNum of layerNums) {
-      const moves = layerMoves[layerNum];
-      if (!moves) continue;
-      let worstWarp = 0;
-      let worstMove = null;
-      let worstMoveIdx = 0;
-
-      for (let mi = 0; mi < moves.length; mi++) {
-        const data = this._overlayData.get(`${layerNum}:${mi}`);
-        if (!data) continue;
-        if ((data.warpRisk || 0) > worstWarp) {
-          worstWarp = data.warpRisk;
-          worstMove = moves[mi];
-          worstMoveIdx = mi;
-        }
-      }
-
-      if (worstWarp > 0.6 && worstMove) {
-        this._addFinding('critical', 'warping-risk', layerNum, worstMoveIdx, worstMove,
-          'High warping risk',
-          `Layer ${layerNum}: estimated warp displacement ${worstWarp.toFixed(2)}mm.`,
-          'Use brims, increase bed adhesion, use enclosure, or reduce print size.',
-          { warpDisplacement: worstWarp });
-      } else if (worstWarp > 0.3 && worstMove) {
-        this._addFinding('warning', 'warping-risk', layerNum, worstMoveIdx, worstMove,
-          'Moderate warping risk',
-          `Layer ${layerNum}: estimated warp displacement ${worstWarp.toFixed(2)}mm.`,
-          'Consider adding brims or improving bed adhesion.',
-          { warpDisplacement: worstWarp });
-      }
-    }
+    // Warp failure prediction (grid-based aggregate analysis)
+    this._analyzeWarpFailure(layerMoves, layerNums, material, chamberType);
 
     // Merge consecutive findings for each category
     this._mergeConsecutiveFindings('cooling-time');
     this._mergeConsecutiveFindings('heat-accumulation');
     this._mergeConsecutiveFindings('cooling-effectiveness');
-    this._mergeConsecutiveFindings('warping-risk');
+  }
+
+  _analyzeWarpFailure(layerMoves, layerNums, material, chamberType) {
+    if (this._warpGrids.size === 0) return;
+
+    // Step A: Compute cumulative averaged warp across all layers
+    // Find the grid dimensions from the first available grid
+    const firstGrid = this._warpGrids.values().next().value;
+    const { gridW, gridH, minX, minY, gridRes } = firstGrid;
+    const totalCells = gridW * gridH;
+
+    const warpSum = new Float32Array(totalCells);
+    const warpCount = new Uint16Array(totalCells);
+    let worstLayerNum = 0;
+    let worstLayerPeak = 0;
+
+    // Running cumulative average — track which layer produces the worst peak
+    for (const layerNum of layerNums) {
+      const grid = this._warpGrids.get(layerNum);
+      if (!grid) continue;
+
+      for (let idx = 0; idx < totalCells; idx++) {
+        const risk = grid.warpRisk[idx] || 0;
+        if (risk > 0 || grid.extrusionCount[idx] > 0) {
+          warpSum[idx] += risk;
+          warpCount[idx]++;
+        }
+      }
+
+      // Check running peak after this layer
+      for (let idx = 0; idx < totalCells; idx++) {
+        if (warpCount[idx] > 0) {
+          const avg = warpSum[idx] / warpCount[idx];
+          if (avg > worstLayerPeak) {
+            worstLayerPeak = avg;
+            worstLayerNum = layerNum;
+          }
+        }
+      }
+    }
+
+    // Step B: Compute aggregate metrics
+    let peakWarp = 0;
+    let peakCellIdx = 0;
+    let printedCells = 0;
+    let warnCells = 0;
+
+    // Material-adjusted thresholds (Step C — compute early for coverage calc)
+    const adhesion = material.adhesionCoefficient || 0.7;
+    const chamberScale = chamberType === 'heated' ? 2.0 : chamberType === 'enclosed' ? 1.5 : 1.0;
+    const warnThreshold = 0.4 * adhesion * chamberScale;
+    const critThreshold = 0.8 * adhesion * chamberScale;
+
+    for (let idx = 0; idx < totalCells; idx++) {
+      if (warpCount[idx] === 0) continue;
+      printedCells++;
+      const avg = warpSum[idx] / warpCount[idx];
+      if (avg > peakWarp) {
+        peakWarp = avg;
+        peakCellIdx = idx;
+      }
+      if (avg > warnThreshold) warnCells++;
+    }
+
+    if (printedCells === 0) return;
+
+    const warpCoverage = warnCells / printedCells;
+
+    // Convert peak cell to XY coordinates
+    const peakGy = Math.floor(peakCellIdx / gridW);
+    const peakGx = peakCellIdx % gridW;
+    const peakX = minX + peakGx * gridRes;
+    const peakY = minY + peakGy * gridRes;
+
+    // Find nearest extrusion move on worst layer for finding location
+    const worstMoves = layerMoves[worstLayerNum];
+    let refMove = null;
+    let refMoveIdx = 0;
+    if (worstMoves) {
+      let bestDist = Infinity;
+      for (let mi = 0; mi < worstMoves.length; mi++) {
+        const m = worstMoves[mi];
+        if (!m.extrude) continue;
+        const mx = (m.x1 + m.x2) / 2, my = (m.y1 + m.y2) / 2;
+        const d = Math.hypot(mx - peakX, my - peakY);
+        if (d < bestDist) { bestDist = d; refMove = m; refMoveIdx = mi; }
+      }
+    }
+    if (!refMove) {
+      // Fallback: use first extrusion move on any layer
+      for (const ln of layerNums) {
+        const moves = layerMoves[ln];
+        if (!moves) continue;
+        refMove = moves.find(m => m.extrude) || moves[0];
+        if (refMove) { worstLayerNum = ln; break; }
+      }
+      if (!refMove) return;
+    }
+
+    const materialName = material.type || 'unknown';
+    const layerHeight = 0.2; // default layer height
+
+    // Step D: Generate findings (at most 3)
+    const suggestions = this._warpSuggestion(material, chamberType, peakWarp);
+
+    // 1. Bed adhesion failure
+    if (peakWarp > critThreshold) {
+      this._addFinding('critical', 'warp-failure', worstLayerNum, refMoveIdx, refMove,
+        'Print likely to fail — warp exceeds bed adhesion capacity',
+        `Peak averaged warp ${peakWarp.toFixed(2)}mm (threshold ${critThreshold.toFixed(2)}mm for ${materialName}). ` +
+        `${(warpCoverage * 100).toFixed(0)}% of footprint affected.`,
+        suggestions,
+        { failureMode: 'bed-adhesion', peakWarp, warpCoverage, material: materialName });
+    } else if (peakWarp > warnThreshold) {
+      this._addFinding('warning', 'warp-failure', worstLayerNum, refMoveIdx, refMove,
+        'Warping risk — possible bed adhesion issues',
+        `Peak averaged warp ${peakWarp.toFixed(2)}mm (threshold ${warnThreshold.toFixed(2)}mm for ${materialName}). ` +
+        `${(warpCoverage * 100).toFixed(0)}% of footprint affected.`,
+        suggestions,
+        { failureMode: 'bed-adhesion', peakWarp, warpCoverage, material: materialName });
+    }
+
+    // 2. Nozzle collision — peakWarp > 1.5× layer height
+    if (peakWarp > 1.5 * layerHeight) {
+      this._addFinding('critical', 'warp-failure', worstLayerNum, refMoveIdx, refMove,
+        'Warp may cause nozzle collision — warped edge exceeds layer height',
+        `Peak warp ${peakWarp.toFixed(2)}mm exceeds ${(1.5 * layerHeight).toFixed(2)}mm (1.5× layer height ${layerHeight}mm).`,
+        suggestions,
+        { failureMode: 'nozzle-collision', peakWarp, layerHeight, material: materialName });
+    }
+
+    // 3. Dimensional failure — coverage above threshold
+    if (warpCoverage > 0.5) {
+      this._addFinding('critical', 'warp-failure', worstLayerNum, refMoveIdx, refMove,
+        `${(warpCoverage * 100).toFixed(0)}% of print footprint shows significant warping`,
+        `More than half of the printed area exceeds the warp warning threshold (${warnThreshold.toFixed(2)}mm).`,
+        suggestions,
+        { failureMode: 'dimensional', warpCoverage, peakWarp, material: materialName });
+    } else if (warpCoverage > 0.3) {
+      this._addFinding('warning', 'warp-failure', worstLayerNum, refMoveIdx, refMove,
+        `${(warpCoverage * 100).toFixed(0)}% of print footprint shows significant warping`,
+        `A substantial portion of the printed area exceeds the warp warning threshold (${warnThreshold.toFixed(2)}mm).`,
+        suggestions,
+        { failureMode: 'dimensional', warpCoverage, peakWarp, material: materialName });
+    }
+
+    // Safe result — if no warp-failure findings were generated
+    const warpFindings = this._findings.filter(f => f.category === 'warp-failure');
+    if (warpFindings.length === 0) {
+      this._addFinding('info', 'warp-failure', worstLayerNum, refMoveIdx, refMove,
+        `Warping within safe limits for ${materialName}`,
+        `Peak averaged warp ${peakWarp.toFixed(2)}mm is below warning threshold (${warnThreshold.toFixed(2)}mm).`,
+        'No action needed.',
+        { failureMode: 'none', peakWarp, warpCoverage, material: materialName });
+    }
+  }
+
+  _warpSuggestion(material, chamberType, peakWarp) {
+    const tips = ['Add a brim (10-15mm)'];
+    if (chamberType === 'open') tips.push('Use an enclosed or heated chamber');
+    if ((material.cte || 0) > 70e-6) tips.push('Consider a lower-CTE variant (e.g. PLA-CF)');
+    if (peakWarp > 1.0) tips.push('Reduce part size or split into smaller pieces');
+    return tips.join('. ') + '.';
   }
 
   _addFinding(severity, category, layerNum, moveIndex, move, title, description, suggestion, metadata) {

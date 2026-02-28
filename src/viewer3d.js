@@ -467,8 +467,8 @@ export class GcodeViewer3D {
     if (validLayers.length === 0) return null;
 
     // First pass: compute FINAL average warp for global min/max color scale.
-    // Per-layer warpRisk = (strain + neighborStress) × distFromCentroid, which
-    // already has distance units (mm). Naive summation blows up linearly with
+    // Per-layer warpRisk = (strain + neighborStress) × partRadius × fillFraction,
+    // which has distance units (mm). Naive summation blows up linearly with
     // layer count (e.g. 50 layers × ~2mm = 100mm — unrealistic). Physically,
     // more layers add force but also stiffness, so total warp is roughly
     // independent of layer count. We use per-cell averaging to keep values in a
@@ -499,6 +499,29 @@ export class GcodeViewer3D {
     }
     if (minWarp === Infinity) return null;
     this._warpMeshRange = { min: minWarp, max: maxWarp };
+
+    // Compute centroid and max distance for Z-deformation weighting.
+    // Warp risk values are now uniform (no distance bias) — the viewer
+    // applies distance-from-centroid only to Z-offset so edges visually
+    // lift while the color map reflects actual thermal stress.
+    let centX = 0, centY = 0, centCount = 0;
+    for (let i = 0; i < totalCells; i++) {
+      if (finalCumExtrusion[i]) {
+        const gy = Math.floor(i / gridW), gx = i % gridW;
+        centX += minX + gx * gridRes;
+        centY += minY + gy * gridRes;
+        centCount++;
+      }
+    }
+    if (centCount > 0) { centX /= centCount; centY /= centCount; }
+    let maxDistFromCent = 1;
+    for (let i = 0; i < totalCells; i++) {
+      if (finalCumExtrusion[i]) {
+        const gy = Math.floor(i / gridW), gx = i % gridW;
+        const d = Math.hypot(minX + gx * gridRes - centX, minY + gy * gridRes - centY);
+        if (d > maxDistFromCent) maxDistFromCent = d;
+      }
+    }
 
     // Determine which layers get mesh surfaces (sample evenly if too many)
     const maxMeshLayers = 60;
@@ -575,10 +598,14 @@ export class GcodeViewer3D {
           const cv = corners.map(([vx, vy]) => {
             const w = vertexWarp[vy * vW + vx];
             const [r, g, b] = this._getHeatmapColor(w, minWarp, maxWarp, false);
+            // Z-deformation: scale by distance from centroid so edges lift
+            // while center stays flat — mimics real plate bending behavior.
+            const wx = minX + vx * gridRes, wy = minY + vy * gridRes;
+            const distFactor = Math.hypot(wx - centX, wy - centY) / maxDistFromCent;
             return {
-              x: minX + vx * gridRes,
-              y: minY + vy * gridRes,
-              z: z + w * deformScale,
+              x: wx,
+              y: wy,
+              z: z + w * distFactor * deformScale,
               r, g, b,
             };
           });

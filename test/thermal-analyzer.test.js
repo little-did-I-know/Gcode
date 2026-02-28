@@ -286,7 +286,7 @@ describe('ThermalAnalyzer - Findings', () => {
       environment: { chamberType: 'open', ambientTemp: 22 },
     }));
     const findings = ta.getFindings();
-    const warpFindings = findings.filter(f => f.category === 'warping-risk');
+    const warpFindings = findings.filter(f => f.category === 'warp-failure');
     assert.ok(findings.length > 0, 'Should produce findings for large ABS print');
   });
 });
@@ -446,9 +446,8 @@ describe('ThermalAnalyzer - Warping Risk', () => {
     assert.ok(ids.includes('warping-risk'));
   });
 
-  it('warping risk is higher at center than at edge of large print', () => {
+  it('warping risk produces non-negative values for large print', () => {
     const ta = new ThermalAnalyzer();
-    // 100mm wide print: two moves at edges, one in center
     const layerMoves = {
       0: makeMoves([
         { x1: 0, y1: 0, x2: 100, y2: 0, type: 'WALL-OUTER', feedRate: 1800 },
@@ -462,8 +461,6 @@ describe('ThermalAnalyzer - Warping Risk', () => {
       ]),
     };
     ta.analyze(layerMoves, makeProfile());
-    // Move midpoint at x=50 (center) should have higher warp risk
-    // than move endpoints which are near edges
     const warpCenter = ta.getOverlayData('warping-risk', 1, 1);
     assert.ok(typeof warpCenter === 'number');
     assert.ok(warpCenter >= 0, 'Warp risk should be non-negative');
@@ -592,6 +589,121 @@ describe('ThermalAnalyzer - getWarpGrid()', () => {
       // They should be independent arrays, not the same buffer
       assert.notStrictEqual(grid0.extrusionCount, grid1.extrusionCount,
         'Each layer should have its own extrusionCount snapshot');
+    }
+  });
+});
+
+// ============================================================
+// Warp Failure Prediction
+// ============================================================
+
+describe('ThermalAnalyzer - Warp Failure Prediction', () => {
+  it('large ABS open-air print produces warp-failure findings', () => {
+    const ta = new ThermalAnalyzer();
+    const layerMoves = {};
+    for (let l = 0; l < 20; l++) {
+      layerMoves[l] = makeMoves([
+        { x1: 0, y1: 0, x2: 100, y2: 0, type: 'WALL-OUTER', feedRate: 1800, lineIndex: l * 10 },
+        { x1: 0, y1: 2, x2: 100, y2: 2, type: 'FILL', feedRate: 3000, lineIndex: l * 10 + 1 },
+        { x1: 0, y1: 4, x2: 100, y2: 4, type: 'FILL', feedRate: 3000, lineIndex: l * 10 + 2 },
+        { x1: 0, y1: 6, x2: 100, y2: 6, type: 'FILL', feedRate: 3000, lineIndex: l * 10 + 3 },
+      ]);
+    }
+    ta.analyze(layerMoves, makeProfile({
+      material: { type: 'ABS' },
+      environment: { chamberType: 'open', ambientTemp: 22 },
+    }));
+    const findings = ta.getFindings();
+    const warpFindings = findings.filter(f => f.category === 'warp-failure');
+    assert.ok(warpFindings.length > 0, 'Should produce warp-failure findings for large ABS open-air print');
+    for (const f of warpFindings) {
+      assert.ok(f.metadata.failureMode, 'Each finding should have a failureMode in metadata');
+    }
+  });
+
+  it('produces at most 3 warp-failure findings', () => {
+    const ta = new ThermalAnalyzer();
+    const layerMoves = {};
+    for (let l = 0; l < 30; l++) {
+      layerMoves[l] = makeMoves([
+        { x1: 0, y1: 0, x2: 150, y2: 0, type: 'WALL-OUTER', feedRate: 1800, lineIndex: l * 10 },
+        { x1: 0, y1: 3, x2: 150, y2: 3, type: 'FILL', feedRate: 3000, lineIndex: l * 10 + 1 },
+        { x1: 0, y1: 6, x2: 150, y2: 6, type: 'FILL', feedRate: 3000, lineIndex: l * 10 + 2 },
+      ]);
+    }
+    ta.analyze(layerMoves, makeProfile({
+      material: { type: 'ABS' },
+      environment: { chamberType: 'open', ambientTemp: 22 },
+    }));
+    const warpFindings = ta.getFindings().filter(f => f.category === 'warp-failure');
+    assert.ok(warpFindings.length <= 3, `Should produce at most 3 warp-failure findings, got ${warpFindings.length}`);
+  });
+
+  it('small PLA print produces info-level warp-failure only', () => {
+    const ta = new ThermalAnalyzer();
+    const layerMoves = {};
+    for (let l = 0; l < 5; l++) {
+      layerMoves[l] = makeMoves([
+        { x1: 0, y1: 0, x2: 10, y2: 0, type: 'WALL-OUTER', feedRate: 2400, lineIndex: l * 10 },
+        { x1: 0, y1: 1, x2: 10, y2: 1, type: 'FILL', feedRate: 3000, lineIndex: l * 10 + 1 },
+      ]);
+    }
+    ta.analyze(layerMoves, makeProfile({
+      material: { type: 'PLA' },
+      environment: { chamberType: 'enclosed', ambientTemp: 25 },
+    }));
+    const warpFindings = ta.getFindings().filter(f => f.category === 'warp-failure');
+    assert.ok(warpFindings.length > 0, 'Should still produce at least one warp-failure finding');
+    const nonInfo = warpFindings.filter(f => f.severity !== 'info');
+    assert.strictEqual(nonInfo.length, 0, `Small PLA print should only have info-level warp findings, got ${nonInfo.map(f => f.severity)}`);
+  });
+
+  it('heated chamber produces fewer critical findings than open', () => {
+    const layerMoves = {};
+    for (let l = 0; l < 20; l++) {
+      layerMoves[l] = makeMoves([
+        { x1: 0, y1: 0, x2: 100, y2: 0, type: 'WALL-OUTER', feedRate: 1800, lineIndex: l * 10 },
+        { x1: 0, y1: 2, x2: 100, y2: 2, type: 'FILL', feedRate: 3000, lineIndex: l * 10 + 1 },
+        { x1: 0, y1: 4, x2: 100, y2: 4, type: 'FILL', feedRate: 3000, lineIndex: l * 10 + 2 },
+      ]);
+    }
+
+    const taOpen = new ThermalAnalyzer();
+    taOpen.analyze(layerMoves, makeProfile({
+      material: { type: 'ABS' },
+      environment: { chamberType: 'open', ambientTemp: 22 },
+    }));
+    const openCritical = taOpen.getFindings().filter(f => f.category === 'warp-failure' && f.severity === 'critical');
+
+    const taHeated = new ThermalAnalyzer();
+    taHeated.analyze(layerMoves, makeProfile({
+      material: { type: 'ABS' },
+      environment: { chamberType: 'heated', ambientTemp: 22 },
+    }));
+    const heatedCritical = taHeated.getFindings().filter(f => f.category === 'warp-failure' && f.severity === 'critical');
+
+    assert.ok(heatedCritical.length <= openCritical.length,
+      `Heated chamber (${heatedCritical.length} critical) should produce <= critical findings than open (${openCritical.length})`);
+  });
+
+  it('warp-failure metadata contains failureMode field', () => {
+    const ta = new ThermalAnalyzer();
+    const layerMoves = {};
+    for (let l = 0; l < 10; l++) {
+      layerMoves[l] = makeMoves([
+        { x1: 0, y1: 0, x2: 50, y2: 0, type: 'WALL-OUTER', feedRate: 2400, lineIndex: l * 10 },
+        { x1: 0, y1: 2, x2: 50, y2: 2, type: 'FILL', feedRate: 3000, lineIndex: l * 10 + 1 },
+      ]);
+    }
+    ta.analyze(layerMoves, makeProfile({
+      material: { type: 'PLA' },
+      environment: { chamberType: 'open', ambientTemp: 22 },
+    }));
+    const warpFindings = ta.getFindings().filter(f => f.category === 'warp-failure');
+    const validModes = ['bed-adhesion', 'nozzle-collision', 'dimensional', 'none'];
+    for (const f of warpFindings) {
+      assert.ok(validModes.includes(f.metadata.failureMode),
+        `failureMode "${f.metadata.failureMode}" should be one of ${validModes.join(', ')}`);
     }
   });
 });

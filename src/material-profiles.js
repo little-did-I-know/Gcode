@@ -425,6 +425,7 @@ export const DEFAULT_THRESHOLDS = {
   'wall-seam-alignment':     { warning: 3.0 },
   'wall-gap-size':           { critical: 1.5,  warning: 0.8 },
   'extrusion-consistency':   { warning: 0.35 },
+  'warp-tolerance':          { critical: 0.8, warning: 0.4 },
 };
 
 function matchFilamentName(fc) {
