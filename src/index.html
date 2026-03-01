@@ -258,6 +258,29 @@ main { display: flex; flex: 1; overflow: hidden; }
 #editInfoPanel .edit-apply:hover { filter: brightness(1.1); }
 #editInfoPanel .edit-error { color: var(--red, #ef4444); font-size: 11px; margin-bottom: 6px; display: none; }
 
+/* TRANSFORM PANEL */
+#transformPanel { position: absolute; top: 44px; right: 10px; z-index: 100; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-family: var(--mono); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.3); display: none; max-width: 300px; pointer-events: auto; }
+#transformPanel.visible { display: block; }
+#transformPanel .transform-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+#transformPanel .transform-header span { font-weight: 600; color: var(--text); }
+#transformPanel .transform-header a { color: var(--accent); cursor: pointer; font-size: 11px; text-decoration: none; }
+#transformPanel .transform-header a:hover { text-decoration: underline; }
+#transformPanel .transform-section { margin-bottom: 8px; }
+#transformPanel .transform-section label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin-bottom: 4px; }
+#transformPanel .transform-row { display: flex; align-items: center; gap: 6px; }
+#transformPanel .transform-row .field-label { font-weight: 600; color: var(--text-dim); font-size: 11px; min-width: 10px; }
+#transformPanel .transform-row input { width: 72px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface2); color: var(--text); font-family: var(--mono); font-size: 12px; }
+#transformPanel .transform-row input:focus { border-color: var(--accent); outline: none; }
+#transformPanel .transform-row input.changed { border-color: var(--orange); background: rgba(251,146,60,.08); }
+#transformPanel .mirror-btns { display: flex; gap: 6px; }
+#transformPanel .mirror-btn { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 11px; cursor: pointer; }
+#transformPanel .mirror-btn.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+#transformPanel .transform-actions { display: flex; gap: 8px; margin-top: 8px; }
+#transformPanel .transform-actions button { padding: 4px 12px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; font-size: 12px; }
+#transformPanel .transform-apply { background: var(--accent); color: white; border-color: var(--accent); }
+#transformPanel .transform-apply:hover { filter: brightness(1.1); }
+#transformPanel .transform-cancel { background: var(--surface2); color: var(--text); }
+
 /* EMPTY STATES */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); text-align: center; padding: 40px; gap: 12px; }
 .empty-state svg { opacity: .3; }
@@ -607,6 +630,48 @@ main { display: flex; flex: 1; overflow: hidden; }
             <button class="edit-apply" id="editApplyBtn" onclick="applyEditParams()" style="display:none">Apply</button>
             <button class="edit-delete" onclick="deleteSelectedMove()">Delete</button>
             <button class="edit-cancel" onclick="cancelEditSelection()">Cancel</button>
+          </div>
+        </div>
+        <div id="transformPanel">
+          <div class="transform-header">
+            <span id="transformCount">0 moves selected</span>
+            <a id="transformClear" onclick="clearMultiSelection()">Clear</a>
+          </div>
+          <div class="transform-section">
+            <label>Translate</label>
+            <div class="transform-row">
+              <span class="field-label">X</span>
+              <input type="number" id="transformTX" value="0" step="0.1" oninput="onTransformInput()">
+              <span class="field-label">Y</span>
+              <input type="number" id="transformTY" value="0" step="0.1" oninput="onTransformInput()">
+            </div>
+          </div>
+          <div class="transform-section">
+            <label>Rotate</label>
+            <div class="transform-row">
+              <span class="field-label">Angle</span>
+              <input type="number" id="transformAngle" value="0" step="1" oninput="onTransformInput()">
+              <span class="field-label">&deg;</span>
+            </div>
+          </div>
+          <div class="transform-section">
+            <label>Scale</label>
+            <div class="transform-row">
+              <span class="field-label"></span>
+              <input type="number" id="transformScale" value="100" step="1" min="1" oninput="onTransformInput()">
+              <span class="field-label">%</span>
+            </div>
+          </div>
+          <div class="transform-section">
+            <label>Mirror</label>
+            <div class="mirror-btns">
+              <button class="mirror-btn" id="mirrorXBtn" onclick="toggleMirrorX()">X-Axis</button>
+              <button class="mirror-btn" id="mirrorYBtn" onclick="toggleMirrorY()">Y-Axis</button>
+            </div>
+          </div>
+          <div class="transform-actions">
+            <button class="transform-apply" onclick="applyTransform()">Apply</button>
+            <button class="transform-cancel" onclick="cancelTransform()">Cancel</button>
           </div>
         </div>
         <div class="cross-section-controls" id="crossSectionControls">

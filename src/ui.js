@@ -97,6 +97,10 @@ function toggleEditMode() {
   editMode = !editMode;
   editSelectedMove = null;
   editHoveredMove = null;
+  editSelectedMoves = [];
+  editSelectionBounds = null;
+  editTransformState = null;
+  hideTransformPanel();
   document.getElementById('editModeToggle').classList.toggle('active', editMode);
   document.getElementById('editModeBanner').classList.toggle('visible', editMode);
   document.getElementById('viewerCanvas').style.cursor = editMode ? 'crosshair' : '';
@@ -352,7 +356,11 @@ function cancelEditSelection() {
   editOriginalParams = null;
   editCurrentParams = null;
   editPreviewParams = null;
+  editSelectedMoves = [];
+  editSelectionBounds = null;
+  editTransformState = null;
   hideEditInfoPanel();
+  hideTransformPanel();
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
 
@@ -509,6 +517,123 @@ function buildGcodeLine(command, params, comment) {
   return line;
 }
 
+function showTransformPanel() {
+  const panel = document.getElementById('transformPanel');
+  document.getElementById('transformCount').textContent = editSelectedMoves.length + ' moves selected';
+  // Reset fields to identity
+  document.getElementById('transformTX').value = '0';
+  document.getElementById('transformTY').value = '0';
+  document.getElementById('transformAngle').value = '0';
+  document.getElementById('transformScale').value = '100';
+  document.getElementById('mirrorXBtn').classList.remove('active');
+  document.getElementById('mirrorYBtn').classList.remove('active');
+  editTransformState = { translateX: 0, translateY: 0, angle: 0, scale: 1, mirrorX: false, mirrorY: false };
+  panel.classList.add('visible');
+}
+
+function hideTransformPanel() {
+  const panel = document.getElementById('transformPanel');
+  if (panel) panel.classList.remove('visible');
+  editTransformState = null;
+}
+
+function onTransformInput() {
+  if (!editTransformState) return;
+  const tx = parseFloat(document.getElementById('transformTX').value) || 0;
+  const ty = parseFloat(document.getElementById('transformTY').value) || 0;
+  const angle = parseFloat(document.getElementById('transformAngle').value) || 0;
+  const scalePercent = parseFloat(document.getElementById('transformScale').value) || 100;
+  editTransformState.translateX = tx;
+  editTransformState.translateY = ty;
+  editTransformState.angle = angle;
+  editTransformState.scale = scalePercent / 100;
+  // Mark changed fields
+  document.getElementById('transformTX').classList.toggle('changed', tx !== 0);
+  document.getElementById('transformTY').classList.toggle('changed', ty !== 0);
+  document.getElementById('transformAngle').classList.toggle('changed', angle !== 0);
+  document.getElementById('transformScale').classList.toggle('changed', scalePercent !== 100);
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function toggleMirrorX() {
+  if (!editTransformState) return;
+  editTransformState.mirrorX = !editTransformState.mirrorX;
+  document.getElementById('mirrorXBtn').classList.toggle('active', editTransformState.mirrorX);
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function toggleMirrorY() {
+  if (!editTransformState) return;
+  editTransformState.mirrorY = !editTransformState.mirrorY;
+  document.getElementById('mirrorYBtn').classList.toggle('active', editTransformState.mirrorY);
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function clearMultiSelection() {
+  editSelectedMoves = [];
+  editSelectionBounds = null;
+  editTransformState = null;
+  hideTransformPanel();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function cancelTransform() {
+  clearMultiSelection();
+}
+
+async function applyTransform() {
+  if (editSelectedMoves.length < 2 || !editTransformState || !editSelectionBounds) return;
+
+  const t = editTransformState;
+  if (t.translateX === 0 && t.translateY === 0 && t.angle === 0 && t.scale === 1 && !t.mirrorX && !t.mirrorY) {
+    showToast('No changes', 'info');
+    return;
+  }
+
+  const edits = [];
+  let skipped = 0;
+
+  for (const move of editSelectedMoves) {
+    const lineIdx = move.lineIndex;
+    const oldLine = parser.lines[lineIdx];
+    const newLine = transformGcodeLine(oldLine, move, editSelectionBounds, editTransformState);
+    if (newLine === null) {
+      skipped++;
+      continue;
+    }
+    if (oldLine.trim() !== newLine.trim()) {
+      edits.push({ lineIndex: lineIdx, oldLine, newLine });
+    }
+  }
+
+  if (edits.length === 0) {
+    showToast('No changes to apply' + (skipped > 0 ? ` (${skipped} moves skipped — no X/Y)` : ''), 'info');
+    return;
+  }
+
+  pushEditUndo({
+    type: 'multi-transform',
+    layer: selectedLayer,
+    edits: edits,
+  });
+
+  for (const edit of edits) {
+    parser.lines[edit.lineIndex] = edit.newLine;
+  }
+
+  const count = edits.length;
+
+  editSelectedMoves = [];
+  editSelectionBounds = null;
+  editTransformState = null;
+  hideTransformPanel();
+
+  await reparseAndRender(selectedLayer, `Transformed ${count} move${count !== 1 ? 's' : ''}`);
+  if (skipped > 0) {
+    showToast(`Transformed ${count} moves (${skipped} skipped — no X/Y)`, 'success');
+  }
+}
+
 async function performEditUndo() {
   if (editUndoStack.index < 0) return false;
   const entry = editUndoStack.entries[editUndoStack.index];
@@ -547,6 +672,19 @@ async function performEditUndo() {
     hideEditInfoPanel();
     await reparseAndRender(selectedLayer, 'Undo: restored original line');
   }
+  else if (entry.type === 'multi-transform') {
+    for (const edit of entry.edits) {
+      parser.lines[edit.lineIndex] = edit.oldLine;
+    }
+    editSelectedMoves = [];
+    editSelectionBounds = null;
+    editTransformState = null;
+    hideTransformPanel();
+    editSelectedMove = null;
+    editHoveredMove = null;
+    hideEditInfoPanel();
+    await reparseAndRender(selectedLayer, 'Undo: restored transformed moves');
+  }
   return true;
 }
 
@@ -583,6 +721,19 @@ async function performEditRedo() {
     editPreviewParams = null;
     hideEditInfoPanel();
     await reparseAndRender(selectedLayer, 'Redo: re-applied edit');
+  }
+  else if (entry.type === 'multi-transform') {
+    for (const edit of entry.edits) {
+      parser.lines[edit.lineIndex] = edit.newLine;
+    }
+    editSelectedMoves = [];
+    editSelectionBounds = null;
+    editTransformState = null;
+    hideTransformPanel();
+    editSelectedMove = null;
+    editHoveredMove = null;
+    hideEditInfoPanel();
+    await reparseAndRender(selectedLayer, 'Redo: re-applied transform');
   }
   return true;
 }

@@ -14,6 +14,7 @@ import { AnalysisManager } from './analysis-manager.js';
 import { StructuralAnalyzer } from './structural-analyzer.js';
 import { ThermalAnalyzer } from './thermal-analyzer.js';
 import { MATERIAL_PROFILES, inferMaterial, getMaterialProfile, DEFAULT_THRESHOLDS } from './material-profiles.js';
+import { computeSelectionBounds, transformPoint, transformMoves, transformGcodeLine } from './transform.js';
 
 let currentFirmware = 'bambu';
 
@@ -52,6 +53,9 @@ let editHoveredMove = null;
 let editOriginalParams = null;
 let editCurrentParams = null;
 let editPreviewParams = null;
+let editSelectedMoves = [];
+let editSelectionBounds = null;
+let editTransformState = null;
 let crossSectionActive = false;
 let crossSectionFlipped = false;
 let reparsing = false;
@@ -322,10 +326,22 @@ window.addEventListener('keydown', e => {
 
   // Edit mode shortcuts
   if (editMode) {
-    if (e.key === 'Escape') { cancelEditSelection(); return; }
+    if (e.key === 'Escape') {
+      if (editSelectedMoves.length > 0) {
+        clearMultiSelection();
+      } else {
+        cancelEditSelection();
+      }
+      return;
+    }
     if ((e.key === 'Delete' || e.key === 'Backspace') && editSelectedMove) {
       e.preventDefault();
       deleteSelectedMove();
+      return;
+    }
+    if (e.key === 'Enter' && editSelectedMoves.length >= 2) {
+      e.preventDefault();
+      applyTransform();
       return;
     }
   }

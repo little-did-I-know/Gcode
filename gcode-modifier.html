@@ -258,6 +258,29 @@ main { display: flex; flex: 1; overflow: hidden; }
 #editInfoPanel .edit-apply:hover { filter: brightness(1.1); }
 #editInfoPanel .edit-error { color: var(--red, #ef4444); font-size: 11px; margin-bottom: 6px; display: none; }
 
+/* TRANSFORM PANEL */
+#transformPanel { position: absolute; top: 44px; right: 10px; z-index: 100; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-family: var(--mono); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.3); display: none; max-width: 300px; pointer-events: auto; }
+#transformPanel.visible { display: block; }
+#transformPanel .transform-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+#transformPanel .transform-header span { font-weight: 600; color: var(--text); }
+#transformPanel .transform-header a { color: var(--accent); cursor: pointer; font-size: 11px; text-decoration: none; }
+#transformPanel .transform-header a:hover { text-decoration: underline; }
+#transformPanel .transform-section { margin-bottom: 8px; }
+#transformPanel .transform-section label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin-bottom: 4px; }
+#transformPanel .transform-row { display: flex; align-items: center; gap: 6px; }
+#transformPanel .transform-row .field-label { font-weight: 600; color: var(--text-dim); font-size: 11px; min-width: 10px; }
+#transformPanel .transform-row input { width: 72px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface2); color: var(--text); font-family: var(--mono); font-size: 12px; }
+#transformPanel .transform-row input:focus { border-color: var(--accent); outline: none; }
+#transformPanel .transform-row input.changed { border-color: var(--orange); background: rgba(251,146,60,.08); }
+#transformPanel .mirror-btns { display: flex; gap: 6px; }
+#transformPanel .mirror-btn { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 11px; cursor: pointer; }
+#transformPanel .mirror-btn.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+#transformPanel .transform-actions { display: flex; gap: 8px; margin-top: 8px; }
+#transformPanel .transform-actions button { padding: 4px 12px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; font-size: 12px; }
+#transformPanel .transform-apply { background: var(--accent); color: white; border-color: var(--accent); }
+#transformPanel .transform-apply:hover { filter: brightness(1.1); }
+#transformPanel .transform-cancel { background: var(--surface2); color: var(--text); }
+
 /* EMPTY STATES */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); text-align: center; padding: 40px; gap: 12px; }
 .empty-state svg { opacity: .3; }
@@ -607,6 +630,48 @@ main { display: flex; flex: 1; overflow: hidden; }
             <button class="edit-apply" id="editApplyBtn" onclick="applyEditParams()" style="display:none">Apply</button>
             <button class="edit-delete" onclick="deleteSelectedMove()">Delete</button>
             <button class="edit-cancel" onclick="cancelEditSelection()">Cancel</button>
+          </div>
+        </div>
+        <div id="transformPanel">
+          <div class="transform-header">
+            <span id="transformCount">0 moves selected</span>
+            <a id="transformClear" onclick="clearMultiSelection()">Clear</a>
+          </div>
+          <div class="transform-section">
+            <label>Translate</label>
+            <div class="transform-row">
+              <span class="field-label">X</span>
+              <input type="number" id="transformTX" value="0" step="0.1" oninput="onTransformInput()">
+              <span class="field-label">Y</span>
+              <input type="number" id="transformTY" value="0" step="0.1" oninput="onTransformInput()">
+            </div>
+          </div>
+          <div class="transform-section">
+            <label>Rotate</label>
+            <div class="transform-row">
+              <span class="field-label">Angle</span>
+              <input type="number" id="transformAngle" value="0" step="1" oninput="onTransformInput()">
+              <span class="field-label">&deg;</span>
+            </div>
+          </div>
+          <div class="transform-section">
+            <label>Scale</label>
+            <div class="transform-row">
+              <span class="field-label"></span>
+              <input type="number" id="transformScale" value="100" step="1" min="1" oninput="onTransformInput()">
+              <span class="field-label">%</span>
+            </div>
+          </div>
+          <div class="transform-section">
+            <label>Mirror</label>
+            <div class="mirror-btns">
+              <button class="mirror-btn" id="mirrorXBtn" onclick="toggleMirrorX()">X-Axis</button>
+              <button class="mirror-btn" id="mirrorYBtn" onclick="toggleMirrorY()">Y-Axis</button>
+            </div>
+          </div>
+          <div class="transform-actions">
+            <button class="transform-apply" onclick="applyTransform()">Apply</button>
+            <button class="transform-cancel" onclick="cancelTransform()">Cancel</button>
           </div>
         </div>
         <div class="cross-section-controls" id="crossSectionControls">
@@ -6859,16 +6924,24 @@ class GcodeViewer3D {
     const editColor = [1.0, 0.3, 0.1, 1.0]; // red-orange
 
     // Hovered move (dimmer, thinner) — draw all segments sharing lineIndex for arcs
-    if (editHoveredMove && editHoveredMove !== editSelectedMove) {
+    if (editHoveredMove && editHoveredMove !== editSelectedMove && !editSelectedMoves.includes(editHoveredMove)) {
       const segments = this._getMovesWithSameLineIndex(editHoveredMove, this.currentLayer);
       for (const seg of segments) {
         this._drawMoveHighlight(mvp, seg, editColor, 0.5, 0.2, 1.0);
       }
     }
 
-    // Selected move (brighter, thicker)
+    // Single selected move (brighter, thicker)
     if (editSelectedMove) {
       const segments = this._getMovesWithSameLineIndex(editSelectedMove, this.currentLayer);
+      for (const seg of segments) {
+        this._drawMoveHighlight(mvp, seg, [1.0, 0.15, 0.05, 1.0], 1.0, 0.35, 1.5);
+      }
+    }
+
+    // Multi-selected moves
+    for (const move of editSelectedMoves) {
+      const segments = this._getMovesWithSameLineIndex(move, this.currentLayer);
       for (const seg of segments) {
         this._drawMoveHighlight(mvp, seg, [1.0, 0.15, 0.05, 1.0], 1.0, 0.35, 1.5);
       }
@@ -6876,24 +6949,38 @@ class GcodeViewer3D {
   }
 
   _drawEditPreview(mvp) {
-    if (!editMode || !editSelectedMove || !editPreviewParams) return;
+    if (!editMode) return;
 
-    const layer = parser.getLayerByNumber(this.currentLayer);
-    const z = (layer?.zHeight || 0) + 0.15;
+    // Single-move edit preview (existing behavior)
+    if (editSelectedMove && editPreviewParams) {
+      const ghostColor = [0.5, 0.5, 0.5, 1.0];
+      this._drawMoveHighlight(mvp, editSelectedMove, ghostColor, 0.3, 0.15, 0.8);
+      const previewMove = {
+        x1: editSelectedMove.x1, y1: editSelectedMove.y1,
+        x2: editPreviewParams.x2, y2: editPreviewParams.y2,
+      };
+      const previewColor = [0.1, 0.9, 0.6, 1.0];
+      this._drawMoveHighlight(mvp, previewMove, previewColor, 0.9, 0.3, 1.2);
+    }
 
-    // Draw ghost of original (dimmed)
-    const ghostColor = [0.5, 0.5, 0.5, 1.0];
-    this._drawMoveHighlight(mvp, editSelectedMove, ghostColor, 0.3, 0.15, 0.8);
+    // Multi-move transform preview
+    if (editSelectedMoves.length >= 2 && editTransformState && editSelectionBounds) {
+      const isIdentity = editTransformState.translateX === 0 && editTransformState.translateY === 0 &&
+                         editTransformState.angle === 0 && editTransformState.scale === 1 &&
+                         !editTransformState.mirrorX && !editTransformState.mirrorY;
+      if (isIdentity) return;
 
-    // Draw preview at new position
-    const previewMove = {
-      x1: editSelectedMove.x1,
-      y1: editSelectedMove.y1,
-      x2: editPreviewParams.x2,
-      y2: editPreviewParams.y2,
-    };
-    const previewColor = [0.1, 0.9, 0.6, 1.0]; // green-cyan
-    this._drawMoveHighlight(mvp, previewMove, previewColor, 0.9, 0.3, 1.2);
+      const transformed = transformMoves(editSelectedMoves, editSelectionBounds, editTransformState);
+      const ghostColor = [0.5, 0.5, 0.5, 1.0];
+      const previewColor = [0.1, 0.9, 0.6, 1.0];
+
+      for (let i = 0; i < editSelectedMoves.length; i++) {
+        // Ghost original
+        this._drawMoveHighlight(mvp, editSelectedMoves[i], ghostColor, 0.3, 0.15, 0.8);
+        // Preview transformed
+        this._drawMoveHighlight(mvp, transformed[i], previewColor, 0.9, 0.3, 1.2);
+      }
+    }
   }
 
   _getMovesWithSameLineIndex(move, layerNum) {
@@ -7297,12 +7384,49 @@ class GcodeViewer3D {
         const pt = this.screenToLayerPoint(sx, sy, z);
         if (!pt) return;
         const move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
-        if (move) {
+
+        if (e.shiftKey && move) {
+          // Multi-select: toggle move in/out of selection
+          const idx = editSelectedMoves.indexOf(move);
+          if (idx >= 0) {
+            editSelectedMoves.splice(idx, 1);
+          } else {
+            editSelectedMoves.push(move);
+          }
+          // If we have 2+ moves, show transform panel; otherwise revert to single-select behavior
+          if (editSelectedMoves.length >= 2) {
+            editSelectedMove = null;
+            hideEditInfoPanel();
+            editSelectionBounds = computeSelectionBounds(editSelectedMoves);
+            showTransformPanel();
+          } else if (editSelectedMoves.length === 1) {
+            // Only 1 in multi-select: treat as single select
+            editSelectedMove = editSelectedMoves[0];
+            editSelectedMoves = [];
+            editSelectionBounds = null;
+            hideTransformPanel();
+            showEditInfoPanel(editSelectedMove);
+          } else {
+            editSelectionBounds = null;
+            hideTransformPanel();
+          }
+          this.render(this.currentLayer);
+        } else if (move) {
+          // Single select (no shift): clear multi-selection
+          editSelectedMoves = [];
+          editSelectionBounds = null;
+          editTransformState = null;
+          hideTransformPanel();
           editSelectedMove = move;
           editHoveredMove = null;
           this.render(this.currentLayer);
           showEditInfoPanel(move);
         } else {
+          // Click on empty space: clear everything
+          editSelectedMoves = [];
+          editSelectionBounds = null;
+          editTransformState = null;
+          hideTransformPanel();
           editSelectedMove = null;
           hideEditInfoPanel();
           this.render(this.currentLayer);
@@ -7430,6 +7554,10 @@ function toggleEditMode() {
   editMode = !editMode;
   editSelectedMove = null;
   editHoveredMove = null;
+  editSelectedMoves = [];
+  editSelectionBounds = null;
+  editTransformState = null;
+  hideTransformPanel();
   document.getElementById('editModeToggle').classList.toggle('active', editMode);
   document.getElementById('editModeBanner').classList.toggle('visible', editMode);
   document.getElementById('viewerCanvas').style.cursor = editMode ? 'crosshair' : '';
@@ -7685,7 +7813,11 @@ function cancelEditSelection() {
   editOriginalParams = null;
   editCurrentParams = null;
   editPreviewParams = null;
+  editSelectedMoves = [];
+  editSelectionBounds = null;
+  editTransformState = null;
   hideEditInfoPanel();
+  hideTransformPanel();
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
 
@@ -7842,6 +7974,123 @@ function buildGcodeLine(command, params, comment) {
   return line;
 }
 
+function showTransformPanel() {
+  const panel = document.getElementById('transformPanel');
+  document.getElementById('transformCount').textContent = editSelectedMoves.length + ' moves selected';
+  // Reset fields to identity
+  document.getElementById('transformTX').value = '0';
+  document.getElementById('transformTY').value = '0';
+  document.getElementById('transformAngle').value = '0';
+  document.getElementById('transformScale').value = '100';
+  document.getElementById('mirrorXBtn').classList.remove('active');
+  document.getElementById('mirrorYBtn').classList.remove('active');
+  editTransformState = { translateX: 0, translateY: 0, angle: 0, scale: 1, mirrorX: false, mirrorY: false };
+  panel.classList.add('visible');
+}
+
+function hideTransformPanel() {
+  const panel = document.getElementById('transformPanel');
+  if (panel) panel.classList.remove('visible');
+  editTransformState = null;
+}
+
+function onTransformInput() {
+  if (!editTransformState) return;
+  const tx = parseFloat(document.getElementById('transformTX').value) || 0;
+  const ty = parseFloat(document.getElementById('transformTY').value) || 0;
+  const angle = parseFloat(document.getElementById('transformAngle').value) || 0;
+  const scalePercent = parseFloat(document.getElementById('transformScale').value) || 100;
+  editTransformState.translateX = tx;
+  editTransformState.translateY = ty;
+  editTransformState.angle = angle;
+  editTransformState.scale = scalePercent / 100;
+  // Mark changed fields
+  document.getElementById('transformTX').classList.toggle('changed', tx !== 0);
+  document.getElementById('transformTY').classList.toggle('changed', ty !== 0);
+  document.getElementById('transformAngle').classList.toggle('changed', angle !== 0);
+  document.getElementById('transformScale').classList.toggle('changed', scalePercent !== 100);
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function toggleMirrorX() {
+  if (!editTransformState) return;
+  editTransformState.mirrorX = !editTransformState.mirrorX;
+  document.getElementById('mirrorXBtn').classList.toggle('active', editTransformState.mirrorX);
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function toggleMirrorY() {
+  if (!editTransformState) return;
+  editTransformState.mirrorY = !editTransformState.mirrorY;
+  document.getElementById('mirrorYBtn').classList.toggle('active', editTransformState.mirrorY);
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function clearMultiSelection() {
+  editSelectedMoves = [];
+  editSelectionBounds = null;
+  editTransformState = null;
+  hideTransformPanel();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function cancelTransform() {
+  clearMultiSelection();
+}
+
+async function applyTransform() {
+  if (editSelectedMoves.length < 2 || !editTransformState || !editSelectionBounds) return;
+
+  const t = editTransformState;
+  if (t.translateX === 0 && t.translateY === 0 && t.angle === 0 && t.scale === 1 && !t.mirrorX && !t.mirrorY) {
+    showToast('No changes', 'info');
+    return;
+  }
+
+  const edits = [];
+  let skipped = 0;
+
+  for (const move of editSelectedMoves) {
+    const lineIdx = move.lineIndex;
+    const oldLine = parser.lines[lineIdx];
+    const newLine = transformGcodeLine(oldLine, move, editSelectionBounds, editTransformState);
+    if (newLine === null) {
+      skipped++;
+      continue;
+    }
+    if (oldLine.trim() !== newLine.trim()) {
+      edits.push({ lineIndex: lineIdx, oldLine, newLine });
+    }
+  }
+
+  if (edits.length === 0) {
+    showToast('No changes to apply' + (skipped > 0 ? ` (${skipped} moves skipped — no X/Y)` : ''), 'info');
+    return;
+  }
+
+  pushEditUndo({
+    type: 'multi-transform',
+    layer: selectedLayer,
+    edits: edits,
+  });
+
+  for (const edit of edits) {
+    parser.lines[edit.lineIndex] = edit.newLine;
+  }
+
+  const count = edits.length;
+
+  editSelectedMoves = [];
+  editSelectionBounds = null;
+  editTransformState = null;
+  hideTransformPanel();
+
+  await reparseAndRender(selectedLayer, `Transformed ${count} move${count !== 1 ? 's' : ''}`);
+  if (skipped > 0) {
+    showToast(`Transformed ${count} moves (${skipped} skipped — no X/Y)`, 'success');
+  }
+}
+
 async function performEditUndo() {
   if (editUndoStack.index < 0) return false;
   const entry = editUndoStack.entries[editUndoStack.index];
@@ -7880,6 +8129,19 @@ async function performEditUndo() {
     hideEditInfoPanel();
     await reparseAndRender(selectedLayer, 'Undo: restored original line');
   }
+  else if (entry.type === 'multi-transform') {
+    for (const edit of entry.edits) {
+      parser.lines[edit.lineIndex] = edit.oldLine;
+    }
+    editSelectedMoves = [];
+    editSelectionBounds = null;
+    editTransformState = null;
+    hideTransformPanel();
+    editSelectedMove = null;
+    editHoveredMove = null;
+    hideEditInfoPanel();
+    await reparseAndRender(selectedLayer, 'Undo: restored transformed moves');
+  }
   return true;
 }
 
@@ -7916,6 +8178,19 @@ async function performEditRedo() {
     editPreviewParams = null;
     hideEditInfoPanel();
     await reparseAndRender(selectedLayer, 'Redo: re-applied edit');
+  }
+  else if (entry.type === 'multi-transform') {
+    for (const edit of entry.edits) {
+      parser.lines[edit.lineIndex] = edit.newLine;
+    }
+    editSelectedMoves = [];
+    editSelectionBounds = null;
+    editTransformState = null;
+    hideTransformPanel();
+    editSelectedMove = null;
+    editHoveredMove = null;
+    hideEditInfoPanel();
+    await reparseAndRender(selectedLayer, 'Redo: re-applied transform');
   }
   return true;
 }
@@ -10389,6 +10664,7 @@ function initDecodeTooltip() {
 
 
 
+
 let currentFirmware = 'bambu';
 
 // ===== APP STATE =====
@@ -10426,6 +10702,9 @@ let editHoveredMove = null;
 let editOriginalParams = null;
 let editCurrentParams = null;
 let editPreviewParams = null;
+let editSelectedMoves = [];
+let editSelectionBounds = null;
+let editTransformState = null;
 let crossSectionActive = false;
 let crossSectionFlipped = false;
 let reparsing = false;
@@ -10696,10 +10975,22 @@ window.addEventListener('keydown', e => {
 
   // Edit mode shortcuts
   if (editMode) {
-    if (e.key === 'Escape') { cancelEditSelection(); return; }
+    if (e.key === 'Escape') {
+      if (editSelectedMoves.length > 0) {
+        clearMultiSelection();
+      } else {
+        cancelEditSelection();
+      }
+      return;
+    }
     if ((e.key === 'Delete' || e.key === 'Backspace') && editSelectedMove) {
       e.preventDefault();
       deleteSelectedMove();
+      return;
+    }
+    if (e.key === 'Enter' && editSelectedMoves.length >= 2) {
+      e.preventDefault();
+      applyTransform();
       return;
     }
   }
