@@ -1183,16 +1183,24 @@ export class GcodeViewer3D {
     const editColor = [1.0, 0.3, 0.1, 1.0]; // red-orange
 
     // Hovered move (dimmer, thinner) — draw all segments sharing lineIndex for arcs
-    if (editHoveredMove && editHoveredMove !== editSelectedMove) {
+    if (editHoveredMove && editHoveredMove !== editSelectedMove && !editSelectedMoves.includes(editHoveredMove)) {
       const segments = this._getMovesWithSameLineIndex(editHoveredMove, this.currentLayer);
       for (const seg of segments) {
         this._drawMoveHighlight(mvp, seg, editColor, 0.5, 0.2, 1.0);
       }
     }
 
-    // Selected move (brighter, thicker)
+    // Single selected move (brighter, thicker)
     if (editSelectedMove) {
       const segments = this._getMovesWithSameLineIndex(editSelectedMove, this.currentLayer);
+      for (const seg of segments) {
+        this._drawMoveHighlight(mvp, seg, [1.0, 0.15, 0.05, 1.0], 1.0, 0.35, 1.5);
+      }
+    }
+
+    // Multi-selected moves
+    for (const move of editSelectedMoves) {
+      const segments = this._getMovesWithSameLineIndex(move, this.currentLayer);
       for (const seg of segments) {
         this._drawMoveHighlight(mvp, seg, [1.0, 0.15, 0.05, 1.0], 1.0, 0.35, 1.5);
       }
@@ -1200,24 +1208,38 @@ export class GcodeViewer3D {
   }
 
   _drawEditPreview(mvp) {
-    if (!editMode || !editSelectedMove || !editPreviewParams) return;
+    if (!editMode) return;
 
-    const layer = parser.getLayerByNumber(this.currentLayer);
-    const z = (layer?.zHeight || 0) + 0.15;
+    // Single-move edit preview (existing behavior)
+    if (editSelectedMove && editPreviewParams) {
+      const ghostColor = [0.5, 0.5, 0.5, 1.0];
+      this._drawMoveHighlight(mvp, editSelectedMove, ghostColor, 0.3, 0.15, 0.8);
+      const previewMove = {
+        x1: editSelectedMove.x1, y1: editSelectedMove.y1,
+        x2: editPreviewParams.x2, y2: editPreviewParams.y2,
+      };
+      const previewColor = [0.1, 0.9, 0.6, 1.0];
+      this._drawMoveHighlight(mvp, previewMove, previewColor, 0.9, 0.3, 1.2);
+    }
 
-    // Draw ghost of original (dimmed)
-    const ghostColor = [0.5, 0.5, 0.5, 1.0];
-    this._drawMoveHighlight(mvp, editSelectedMove, ghostColor, 0.3, 0.15, 0.8);
+    // Multi-move transform preview
+    if (editSelectedMoves.length >= 2 && editTransformState && editSelectionBounds) {
+      const isIdentity = editTransformState.translateX === 0 && editTransformState.translateY === 0 &&
+                         editTransformState.angle === 0 && editTransformState.scale === 1 &&
+                         !editTransformState.mirrorX && !editTransformState.mirrorY;
+      if (isIdentity) return;
 
-    // Draw preview at new position
-    const previewMove = {
-      x1: editSelectedMove.x1,
-      y1: editSelectedMove.y1,
-      x2: editPreviewParams.x2,
-      y2: editPreviewParams.y2,
-    };
-    const previewColor = [0.1, 0.9, 0.6, 1.0]; // green-cyan
-    this._drawMoveHighlight(mvp, previewMove, previewColor, 0.9, 0.3, 1.2);
+      const transformed = transformMoves(editSelectedMoves, editSelectionBounds, editTransformState);
+      const ghostColor = [0.5, 0.5, 0.5, 1.0];
+      const previewColor = [0.1, 0.9, 0.6, 1.0];
+
+      for (let i = 0; i < editSelectedMoves.length; i++) {
+        // Ghost original
+        this._drawMoveHighlight(mvp, editSelectedMoves[i], ghostColor, 0.3, 0.15, 0.8);
+        // Preview transformed
+        this._drawMoveHighlight(mvp, transformed[i], previewColor, 0.9, 0.3, 1.2);
+      }
+    }
   }
 
   _getMovesWithSameLineIndex(move, layerNum) {
@@ -1621,12 +1643,49 @@ export class GcodeViewer3D {
         const pt = this.screenToLayerPoint(sx, sy, z);
         if (!pt) return;
         const move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
-        if (move) {
+
+        if (e.shiftKey && move) {
+          // Multi-select: toggle move in/out of selection
+          const idx = editSelectedMoves.indexOf(move);
+          if (idx >= 0) {
+            editSelectedMoves.splice(idx, 1);
+          } else {
+            editSelectedMoves.push(move);
+          }
+          // If we have 2+ moves, show transform panel; otherwise revert to single-select behavior
+          if (editSelectedMoves.length >= 2) {
+            editSelectedMove = null;
+            hideEditInfoPanel();
+            editSelectionBounds = computeSelectionBounds(editSelectedMoves);
+            showTransformPanel();
+          } else if (editSelectedMoves.length === 1) {
+            // Only 1 in multi-select: treat as single select
+            editSelectedMove = editSelectedMoves[0];
+            editSelectedMoves = [];
+            editSelectionBounds = null;
+            hideTransformPanel();
+            showEditInfoPanel(editSelectedMove);
+          } else {
+            editSelectionBounds = null;
+            hideTransformPanel();
+          }
+          this.render(this.currentLayer);
+        } else if (move) {
+          // Single select (no shift): clear multi-selection
+          editSelectedMoves = [];
+          editSelectionBounds = null;
+          editTransformState = null;
+          hideTransformPanel();
           editSelectedMove = move;
           editHoveredMove = null;
           this.render(this.currentLayer);
           showEditInfoPanel(move);
         } else {
+          // Click on empty space: clear everything
+          editSelectedMoves = [];
+          editSelectionBounds = null;
+          editTransformState = null;
+          hideTransformPanel();
           editSelectedMove = null;
           hideEditInfoPanel();
           this.render(this.currentLayer);
