@@ -4361,6 +4361,9 @@ class AnalysisManager {
     this.engines = [];
     this._overlayMap = new Map();
     this._statsCache = {};
+    this._analyzed = new Set();
+    this._eagerEngines = new Set();
+    this._storedArgs = null;
   }
 
   register(engine) {
@@ -4370,14 +4373,57 @@ class AnalysisManager {
     }
   }
 
+  markEager(engineName) {
+    this._eagerEngines.add(engineName);
+  }
+
+  analyzeEager(layerMoves, profile) {
+    this._statsCache = {};
+    this._storedArgs = { layerMoves, profile };
+    for (const engine of this.engines) {
+      if (this._eagerEngines.has(engine.name)) {
+        engine.analyze(layerMoves, profile);
+        this._analyzed.add(engine.name);
+      }
+    }
+  }
+
+  ensureEngine(engineName) {
+    if (this._analyzed.has(engineName)) return;
+    if (!this._storedArgs) return;
+    const engine = this.engines.find(e => e.name === engineName);
+    if (!engine) return;
+    const { layerMoves, profile } = this._storedArgs;
+    engine.analyze(layerMoves, profile);
+    this._analyzed.add(engineName);
+  }
+
+  ensureAllAnalyzed() {
+    if (!this._storedArgs) return;
+    for (const engine of this.engines) {
+      if (!this._analyzed.has(engine.name)) {
+        const { layerMoves, profile } = this._storedArgs;
+        engine.analyze(layerMoves, profile);
+        this._analyzed.add(engine.name);
+      }
+    }
+  }
+
+  isAnalyzed(engineName) {
+    return this._analyzed.has(engineName);
+  }
+
   analyzeAll(layerMoves, profile) {
     this._statsCache = {};
+    this._storedArgs = { layerMoves, profile };
     for (const engine of this.engines) {
       engine.analyze(layerMoves, profile);
+      this._analyzed.add(engine.name);
     }
   }
 
   getAllFindings() {
+    this.ensureAllAnalyzed();
     const all = [];
     for (const engine of this.engines) {
       all.push(...engine.getFindings());
@@ -4387,6 +4433,7 @@ class AnalysisManager {
   }
 
   getFindingsByEngine(engineName) {
+    this.ensureEngine(engineName);
     const engine = this.engines.find(e => e.name === engineName);
     if (!engine) return [];
     const findings = engine.getFindings();
@@ -4405,6 +4452,7 @@ class AnalysisManager {
   getOverlayValue(overlayId, layerNum, moveIndex) {
     const engine = this._overlayMap.get(overlayId);
     if (!engine) return 0;
+    this.ensureEngine(engine.name);
     return engine.getOverlayData(overlayId, layerNum, moveIndex);
   }
 
@@ -4432,6 +4480,8 @@ class AnalysisManager {
 
   clear() {
     this._statsCache = {};
+    this._analyzed.clear();
+    this._storedArgs = null;
     for (const engine of this.engines) {
       engine.clear();
     }
@@ -9716,8 +9766,8 @@ function loadFile(file) {
     document.getElementById('profileJerk').value = motionAnalyzer.profile.jerk;
     document.getElementById('profileFirmware').value = motionAnalyzer.profile.firmwareType;
 
-    // Run structural analysis
-    runAnalysis();
+    // Run eager analysis (motion + flow only; others run on demand)
+    runEagerAnalysis();
 
     // Update analysis panel material dropdown
     const inferredMaterial = inferMaterial(parser.lines);
@@ -10685,6 +10735,7 @@ function switchTab(tabName) {
     renderReference();
   }
   if (tabName === 'analysis') {
+    analysisManager.ensureAllAnalyzed();
     renderAnalysisPanel();
     renderCustomMaterials();
   }
@@ -11946,6 +11997,8 @@ analysisManager.register(structuralAnalyzer);
 analysisManager.register(thermalAnalyzer);
 analysisManager.register(retractionAnalyzer);
 analysisManager.register(flowAnalyzer);
+analysisManager.markEager('motion');
+analysisManager.markEager('flow');
 
 let analysisProfile = {
   printer: {},
@@ -12114,6 +12167,9 @@ function resetMotionTypeState() {
 
 function setColorMode(mode) {
   colorMode = mode;
+  // Ensure the engine for this overlay has been analyzed
+  const engine = analysisManager._overlayMap.get(mode);
+  if (engine) analysisManager.ensureEngine(engine.name);
   heatmapLayerStats = {};
   resetSimulation();
   viewer.clearBuffers();
@@ -12168,6 +12224,17 @@ function getHeatmapLayerStats(layerNum) {
   const stats = { min, max, avg: sum / count };
   heatmapLayerStats[layerNum] = stats;
   return stats;
+}
+
+function runEagerAnalysis() {
+  const inferredMaterial = inferMaterial(parser.lines);
+  if (!analysisProfile._manualMaterial) {
+    analysisProfile.material = getMaterialProfile(inferredMaterial);
+  }
+  analysisProfile.printer = { ...motionAnalyzer.profile };
+  analysisProfile._parsedLines = parser.lines;
+  analysisManager.analyzeEager(parser.layerMoves, analysisProfile);
+  heatmapLayerStats = {};
 }
 
 function runAnalysis() {

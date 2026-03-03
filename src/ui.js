@@ -1020,8 +1020,8 @@ function loadFile(file) {
     document.getElementById('profileJerk').value = motionAnalyzer.profile.jerk;
     document.getElementById('profileFirmware').value = motionAnalyzer.profile.firmwareType;
 
-    // Run structural analysis
-    runAnalysis();
+    // Run eager analysis (motion + flow only; others run on demand)
+    runEagerAnalysis();
 
     // Update analysis panel material dropdown
     const inferredMaterial = inferMaterial(parser.lines);
@@ -1989,6 +1989,7 @@ function switchTab(tabName) {
     renderReference();
   }
   if (tabName === 'analysis') {
+    analysisManager.ensureAllAnalyzed();
     renderAnalysisPanel();
     renderCustomMaterials();
   }

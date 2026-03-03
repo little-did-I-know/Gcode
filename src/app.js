@@ -37,6 +37,8 @@ analysisManager.register(structuralAnalyzer);
 analysisManager.register(thermalAnalyzer);
 analysisManager.register(retractionAnalyzer);
 analysisManager.register(flowAnalyzer);
+analysisManager.markEager('motion');
+analysisManager.markEager('flow');
 
 let analysisProfile = {
   printer: {},
@@ -205,6 +207,9 @@ function resetMotionTypeState() {
 
 function setColorMode(mode) {
   colorMode = mode;
+  // Ensure the engine for this overlay has been analyzed
+  const engine = analysisManager._overlayMap.get(mode);
+  if (engine) analysisManager.ensureEngine(engine.name);
   heatmapLayerStats = {};
   resetSimulation();
   viewer.clearBuffers();
@@ -259,6 +264,17 @@ function getHeatmapLayerStats(layerNum) {
   const stats = { min, max, avg: sum / count };
   heatmapLayerStats[layerNum] = stats;
   return stats;
+}
+
+function runEagerAnalysis() {
+  const inferredMaterial = inferMaterial(parser.lines);
+  if (!analysisProfile._manualMaterial) {
+    analysisProfile.material = getMaterialProfile(inferredMaterial);
+  }
+  analysisProfile.printer = { ...motionAnalyzer.profile };
+  analysisProfile._parsedLines = parser.lines;
+  analysisManager.analyzeEager(parser.layerMoves, analysisProfile);
+  heatmapLayerStats = {};
 }
 
 function runAnalysis() {
