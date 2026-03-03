@@ -4,6 +4,7 @@ export class StructuralAnalyzer {
   constructor() {
     this.name = 'structural';
     this._bondResults = new Map();
+    this._overhangScores = new Map();
     this._findings = [];
     this._profile = null;
     this._thresholds = { ...DEFAULT_THRESHOLDS };
@@ -231,6 +232,7 @@ export class StructuralAnalyzer {
     this._mergeConsecutiveFindings('extrusion');
 
     this._analyzeWallIntegrity(layerMoves, thresholds);
+    this._analyzeOverhangs(layerMoves, thresholds);
   }
 
   _mergeConsecutiveFindings(category) {
@@ -479,6 +481,111 @@ export class StructuralAnalyzer {
     }
   }
 
+  // --- Overhang & Bridge Detection ---
+
+  _analyzeOverhangs(layerMoves, thresholds) {
+    const cellSize = 0.8;
+    const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
+    let prevGrid = null;
+
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves || moves.length === 0) continue;
+
+      const grid = this._buildSpatialGrid(moves, cellSize);
+
+      if (prevGrid === null) {
+        // First layer — no overhang possible
+        const scores = moves.map(() => 0);
+        this._overhangScores.set(layerNum, scores);
+        prevGrid = grid;
+        continue;
+      }
+
+      const overhangScores = [];
+      let worstOverhang = 0;
+      let worstOverhangMove = null;
+      let worstOverhangIdx = 0;
+      let highOverhangCount = 0;
+      const bridgeRun = []; // consecutive extrusion moves with overlap < 0.1
+
+      for (let i = 0; i < moves.length; i++) {
+        if (!moves[i].extrude) {
+          overhangScores.push(0);
+          // Flush bridge run on non-extrusion move
+          if (bridgeRun.length > 0) {
+            this._emitBridgeFinding(layerNum, bridgeRun);
+            bridgeRun.length = 0;
+          }
+          continue;
+        }
+
+        const overlap = this._calcOverlap(moves[i], prevGrid, cellSize);
+        const overhang = 1 - overlap;
+        overhangScores.push(overhang);
+
+        // Track bridge spans: consecutive extrusion moves with very low overlap
+        if (overlap < 0.2) {
+          bridgeRun.push({ move: moves[i], index: i });
+        } else {
+          if (bridgeRun.length > 0) {
+            this._emitBridgeFinding(layerNum, bridgeRun);
+            bridgeRun.length = 0;
+          }
+        }
+
+        // Track worst overhang for layer-level finding
+        if (overhang > 0.4) {
+          highOverhangCount++;
+          if (overhang > worstOverhang) {
+            worstOverhang = overhang;
+            worstOverhangMove = moves[i];
+            worstOverhangIdx = i;
+          }
+        }
+      }
+
+      // Flush any remaining bridge run
+      if (bridgeRun.length > 0) {
+        this._emitBridgeFinding(layerNum, bridgeRun);
+      }
+
+      this._overhangScores.set(layerNum, overhangScores);
+
+      // Emit aggregated per-layer overhang finding
+      if (worstOverhangMove && worstOverhang > 0.4) {
+        const severity = worstOverhang > 0.75 ? 'critical' : worstOverhang > 0.6 ? 'warning' : 'info';
+        this._addFinding(severity, 'overhang', layerNum, worstOverhangIdx, worstOverhangMove,
+          severity === 'critical' ? 'Severe overhang' : severity === 'warning' ? 'Significant overhang' : 'Moderate overhang',
+          `Layer ${layerNum}: ${highOverhangCount} moves with >${(0.4 * 100).toFixed(0)}% overhang (worst: ${(worstOverhang * 100).toFixed(0)}% unsupported).`,
+          worstOverhang > 0.6 ? 'Add supports or reorient the model to reduce overhang angle.' : 'Minor overhang — likely printable with adequate cooling.',
+          { worstOverhang, affectedMoves: highOverhangCount });
+      }
+
+      prevGrid = grid;
+    }
+
+    // Merge consecutive overhang and bridge findings
+    this._mergeConsecutiveFindings('overhang');
+    this._mergeConsecutiveFindings('bridge');
+  }
+
+  _emitBridgeFinding(layerNum, run) {
+    let totalSpan = 0;
+    for (const r of run) {
+      totalSpan += Math.hypot(r.move.x2 - r.move.x1, r.move.y2 - r.move.y1);
+    }
+    if (totalSpan < 2) return; // ignore tiny gaps
+
+    const severity = totalSpan > 50 ? 'critical' : totalSpan > 20 ? 'warning' : 'info';
+    const midRun = run[Math.floor(run.length / 2)];
+    this._addFinding(severity, 'bridge', layerNum, midRun.index, midRun.move,
+      `Bridge span: ${totalSpan.toFixed(1)}mm`,
+      `Layer ${layerNum}: ${run.length} unsupported moves spanning ${totalSpan.toFixed(1)}mm.`,
+      totalSpan > 20 ? 'Reduce bridge length, add supports, or increase cooling for bridge layers.' : 'Short bridge — likely printable with adequate cooling.',
+      { spanLength: totalSpan, moveCount: run.length });
+  }
+
   _clusterPoints(points, radius) {
     const visited = new Set();
     const clusters = [];
@@ -504,10 +611,16 @@ export class StructuralAnalyzer {
   getSupportedOverlays() {
     return [
       { id: 'layer-bond', label: 'Layer Bond Strength', unit: '%' },
+      { id: 'overhang-severity', label: 'Overhang Severity', unit: '%' },
     ];
   }
 
   getOverlayData(overlayId, layerNum, moveIndex) {
+    if (overlayId === 'overhang-severity') {
+      const scores = this._overhangScores.get(layerNum);
+      if (!scores || moveIndex >= scores.length) return 0;
+      return scores[moveIndex];
+    }
     if (overlayId !== 'layer-bond') return 0;
     const scores = this._bondResults.get(layerNum);
     if (!scores || moveIndex >= scores.length) return 0;
@@ -520,6 +633,7 @@ export class StructuralAnalyzer {
 
   clear() {
     this._bondResults.clear();
+    this._overhangScores.clear();
     this._findings = [];
   }
 }

@@ -13,6 +13,8 @@ import { MotionAnalyzer } from './motion-analyzer.js';
 import { AnalysisManager } from './analysis-manager.js';
 import { StructuralAnalyzer } from './structural-analyzer.js';
 import { ThermalAnalyzer } from './thermal-analyzer.js';
+import { RetractionAnalyzer } from './retraction-analyzer.js';
+import { FlowAnalyzer } from './flow-analyzer.js';
 import { MATERIAL_PROFILES, inferMaterial, getMaterialProfile, DEFAULT_THRESHOLDS } from './material-profiles.js';
 import { computeSelectionBounds, transformPoint, transformMoves, transformGcodeLine } from './transform.js';
 
@@ -27,10 +29,14 @@ const undoStack = new UndoStack();
 const motionAnalyzer = new MotionAnalyzer();
 const structuralAnalyzer = new StructuralAnalyzer();
 const thermalAnalyzer = new ThermalAnalyzer();
+const retractionAnalyzer = new RetractionAnalyzer();
+const flowAnalyzer = new FlowAnalyzer();
 const analysisManager = new AnalysisManager();
 analysisManager.register(motionAnalyzer);
 analysisManager.register(structuralAnalyzer);
 analysisManager.register(thermalAnalyzer);
+analysisManager.register(retractionAnalyzer);
+analysisManager.register(flowAnalyzer);
 
 let analysisProfile = {
   printer: {},

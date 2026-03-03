@@ -3309,6 +3309,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [190, 230],
     bedTempRange: [55, 65],
     maxPrintSpeed: 300,          // mm/s
+    maxVolumetricFlow: 15,       // mm³/s
     minLayerTime: 8,
     waterAbsorption: 0.43,       // % saturated
     needsDrying: false,
@@ -3331,6 +3332,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [230, 260],
     bedTempRange: [60, 80],
     maxPrintSpeed: 300,
+    maxVolumetricFlow: 12,       // mm³/s
     minLayerTime: 10,
     waterAbsorption: 0.40,
     needsDrying: true,
@@ -3353,6 +3355,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [240, 280],
     bedTempRange: [90, 100],
     maxPrintSpeed: 300,
+    maxVolumetricFlow: 11,       // mm³/s
     minLayerTime: 12,
     waterAbsorption: 0.65,
     needsDrying: false,
@@ -3375,6 +3378,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [240, 280],
     bedTempRange: [90, 100],
     maxPrintSpeed: 300,
+    maxVolumetricFlow: 11,       // mm³/s
     minLayerTime: 12,
     waterAbsorption: 0.45,
     needsDrying: false,
@@ -3397,6 +3401,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [220, 240],
     bedTempRange: [30, 45],
     maxPrintSpeed: 200,
+    maxVolumetricFlow: 5,        // mm³/s
     minLayerTime: 15,
     waterAbsorption: 1.08,
     needsDrying: true,
@@ -3419,6 +3424,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [260, 280],
     bedTempRange: [90, 110],
     maxPrintSpeed: 300,
+    maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 15,
     waterAbsorption: 0.25,
     needsDrying: true,
@@ -3443,6 +3449,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [210, 240],
     bedTempRange: [45, 65],
     maxPrintSpeed: 250,
+    maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 8,
     waterAbsorption: 0.42,
     needsDrying: false,
@@ -3466,6 +3473,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [240, 270],
     bedTempRange: [60, 80],
     maxPrintSpeed: 200,
+    maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 10,
     waterAbsorption: 0.30,
     needsDrying: false,
@@ -3489,6 +3497,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [240, 280],
     bedTempRange: [90, 100],
     maxPrintSpeed: 180,
+    maxVolumetricFlow: 9,        // mm³/s
     minLayerTime: 12,
     waterAbsorption: 0.53,
     needsDrying: false,
@@ -3512,6 +3521,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [250, 290],
     bedTempRange: [90, 100],
     maxPrintSpeed: 250,
+    maxVolumetricFlow: 9,        // mm³/s
     minLayerTime: 12,
     waterAbsorption: 0.33,
     needsDrying: false,
@@ -3535,6 +3545,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [260, 280],
     bedTempRange: [90, 110],
     maxPrintSpeed: 300,
+    maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 15,
     waterAbsorption: 0.12,
     needsDrying: true,
@@ -3559,6 +3570,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [260, 300],
     bedTempRange: [70, 100],
     maxPrintSpeed: 100,
+    maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
     waterAbsorption: 0.37,
     needsDrying: true,
@@ -3582,6 +3594,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [260, 300],
     bedTempRange: [100, 120],
     maxPrintSpeed: 100,
+    maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
     waterAbsorption: 0.88,
     needsDrying: true,
@@ -3605,6 +3618,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [260, 300],
     bedTempRange: [100, 120],
     maxPrintSpeed: 100,
+    maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
     waterAbsorption: 2.35,
     needsDrying: true,
@@ -3628,6 +3642,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [260, 290],
     bedTempRange: [100, 120],
     maxPrintSpeed: 130,
+    maxVolumetricFlow: 9,        // mm³/s
     minLayerTime: 15,
     waterAbsorption: 2.56,
     needsDrying: true,
@@ -3651,6 +3666,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [280, 310],
     bedTempRange: [100, 120],
     maxPrintSpeed: 100,
+    maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
     waterAbsorption: 1.30,
     needsDrying: true,
@@ -3674,6 +3690,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [310, 340],
     bedTempRange: [100, 120],
     maxPrintSpeed: 100,
+    maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
     waterAbsorption: 0.05,
     needsDrying: true,
@@ -3699,6 +3716,7 @@ const MATERIAL_PROFILES = {
     nozzleTempRange: [260, 300],
     bedTempRange: [100, 120],
     maxPrintSpeed: 100,
+    maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 15,
     waterAbsorption: 2.35,
     needsDrying: true,
@@ -3812,6 +3830,9 @@ class MotionAnalyzer {
       gantryType: profile.gantryType ?? 'cartesian',
     };
     this.results = new Map();
+    this._findings = [];
+    this._layerTimes = new Map();
+    this._timeSummary = null;
   }
 
   static inferProfile(lines) {
@@ -4072,6 +4093,8 @@ class MotionAnalyzer {
    */
   analyze(layerMoves, profile) {
     this.analyzeAllLayers(layerMoves);
+    this._computeTimeSummary(layerMoves);
+    this._generateFindings(layerMoves);
   }
 
   /**
@@ -4094,10 +4117,14 @@ class MotionAnalyzer {
     return [
       { id: 'actual-speed', label: 'Actual Speed', unit: 'mm/s' },
       { id: 'speed-delta', label: 'Speed Delta', unit: '%' },
+      { id: 'layer-time', label: 'Layer Time', unit: 's' },
     ];
   }
 
   getOverlayData(overlayId, layerNum, moveIndex) {
+    if (overlayId === 'layer-time') {
+      return this._layerTimes.get(layerNum) || 0;
+    }
     const result = this.getResult(layerNum, moveIndex);
     if (!result) return 0;
     if (overlayId === 'actual-speed') return result.actualPeakSpeed;
@@ -4109,11 +4136,221 @@ class MotionAnalyzer {
   }
 
   getFindings() {
-    return [];
+    return this._findings;
   }
 
   clear() {
     this.results.clear();
+    this._findings = [];
+    this._layerTimes.clear();
+    this._timeSummary = null;
+  }
+
+  // ===== Time Summary =====
+
+  _computeTimeSummary(layerMoves) {
+    this._layerTimes.clear();
+    const byType = { wall: 0, infill: 0, support: 0, travel: 0, other: 0 };
+    let totalTime = 0;
+    const layerTimeArray = [];
+
+    for (const [layerNum, layerResults] of this.results.entries()) {
+      let layerTime = 0;
+      for (const r of layerResults) {
+        const moveTime = r.timeAccel + r.timeCruise + r.timeDecel;
+        layerTime += moveTime;
+        const type = (r.move.type || '').toUpperCase();
+        if (!r.move.extrude) byType.travel += moveTime;
+        else if (type.includes('WALL') || type.includes('OUTER') || type.includes('INNER') || type.includes('PERIMETER')) byType.wall += moveTime;
+        else if (type.includes('FILL') || type.includes('SOLID') || type.includes('TOP') || type.includes('BOTTOM')) byType.infill += moveTime;
+        else if (type.includes('SUPPORT')) byType.support += moveTime;
+        else byType.other += moveTime;
+      }
+      this._layerTimes.set(layerNum, layerTime);
+      layerTimeArray.push({ layer: layerNum, time: layerTime });
+      totalTime += layerTime;
+    }
+
+    const sorted = [...layerTimeArray].sort((a, b) => b.time - a.time);
+    const slowest = sorted.slice(0, 5);
+
+    this._timeSummary = { totalTime, layerTimes: layerTimeArray, byType, slowest };
+  }
+
+  getTimeSummary() {
+    return this._timeSummary;
+  }
+
+  // ===== Findings Generation =====
+
+  _generateFindings(layerMoves) {
+    this._findings = [];
+
+    for (const [layerNum, layerResults] of this.results) {
+      // --- Speed-limited segments ---
+      // Collect consecutive runs of speed-limited moves
+      let run = [];
+      for (let i = 0; i < layerResults.length; i++) {
+        const r = layerResults[i];
+        if (r.distance > 0.1 && r.requestedSpeed > 0 &&
+            r.actualPeakSpeed < r.requestedSpeed * 0.5) {
+          run.push(r);
+        } else {
+          if (run.length >= 10) {
+            this._emitSpeedLimitedFinding(layerNum, run);
+          }
+          run = [];
+        }
+      }
+      // Flush trailing run
+      if (run.length >= 10) {
+        this._emitSpeedLimitedFinding(layerNum, run);
+      }
+
+      // --- Sharp corner speed drops ---
+      for (let i = 0; i < layerResults.length - 1; i++) {
+        const r = layerResults[i];
+        const rNext = layerResults[i + 1];
+        // Both moves must be extrusion moves
+        if (!r.move.extrude || !rNext.move.extrude) continue;
+        // Check conditions on the current move at the junction
+        if (r.actualPeakSpeed > 10 && r.distance >= 0.5 &&
+            r.exitSpeed < r.actualPeakSpeed * 0.3) {
+          const move = r.move;
+          this._addFinding('info', 'sharp-corner', layerNum, move,
+            'Sharp corner speed drop',
+            `Layer ${layerNum}: speed drops from ${r.actualPeakSpeed.toFixed(1)} to ${r.exitSpeed.toFixed(1)} mm/s at corner.`,
+            'Increase junction deviation or jerk to allow higher cornering speeds.',
+            { peakSpeed: r.actualPeakSpeed, exitSpeed: r.exitSpeed });
+        }
+      }
+
+      // --- Ringing risk ---
+      for (let i = 1; i < layerResults.length; i++) {
+        const rPrev = layerResults[i - 1];
+        const r = layerResults[i];
+        // Both must be extrusion moves
+        if (!rPrev.move.extrude || !r.move.extrude) continue;
+        // Current move must be high speed
+        if (r.actualPeakSpeed <= 150) continue;
+
+        // Compute angle between direction vectors via dot product
+        const dx1 = rPrev.move.x2 - rPrev.move.x1;
+        const dy1 = rPrev.move.y2 - rPrev.move.y1;
+        const dx2 = r.move.x2 - r.move.x1;
+        const dy2 = r.move.y2 - r.move.y1;
+        const len1 = Math.hypot(dx1, dy1);
+        const len2 = Math.hypot(dx2, dy2);
+        if (len1 < 0.001 || len2 < 0.001) continue;
+
+        const dot = (dx1 * dx2 + dy1 * dy2) / (len1 * len2);
+        const cosAngle = Math.max(-1, Math.min(1, dot));
+        const angleDeg = Math.acos(cosAngle) * 180 / Math.PI;
+
+        if (angleDeg > 90) {
+          const move = r.move;
+          this._addFinding('warning', 'ringing-risk', layerNum, move,
+            'Ringing risk after sharp corner',
+            `Layer ${layerNum}: ${r.actualPeakSpeed.toFixed(1)} mm/s after ${angleDeg.toFixed(0)}° direction change.`,
+            'Reduce speed or enable input shaping to minimize ringing artifacts.',
+            { actualPeakSpeed: r.actualPeakSpeed, angleDeg });
+        }
+      }
+    }
+
+    // Merge consecutive findings for each category
+    this._mergeConsecutiveFindings('speed-limited');
+    this._mergeConsecutiveFindings('sharp-corner');
+    this._mergeConsecutiveFindings('ringing-risk');
+  }
+
+  _emitSpeedLimitedFinding(layerNum, run) {
+    // Find worst ratio in the run
+    let worstRatio = 1;
+    let refMove = run[0].move;
+    for (const r of run) {
+      const ratio = r.actualPeakSpeed / r.requestedSpeed;
+      if (ratio < worstRatio) {
+        worstRatio = ratio;
+        refMove = r.move;
+      }
+    }
+
+    const severity = worstRatio < 0.25 ? 'warning' : 'info';
+    const pct = (worstRatio * 100).toFixed(0);
+
+    this._addFinding(severity, 'speed-limited', layerNum, refMove,
+      `${run.length} speed-limited moves`,
+      `Layer ${layerNum}: ${run.length} consecutive moves limited to ${pct}% of requested speed.`,
+      'Increase acceleration or reduce requested speed for short segments.',
+      { moveCount: run.length, worstRatio });
+  }
+
+  _addFinding(severity, category, layerNum, move, title, description, suggestion, metadata) {
+    const id = `mo-${category}-${this._findings.length}`;
+    const midX = (move.x1 + move.x2) / 2;
+    const midY = (move.y1 + move.y2) / 2;
+    this._findings.push({
+      id, engine: 'motion', severity, category, title, description, suggestion,
+      location: {
+        layer: layerNum,
+        lineStart: move.lineIndex,
+        lineEnd: move.lineIndex,
+        xyz: { x: midX, y: midY, z: 0 },
+      },
+      metadata: metadata || {},
+    });
+  }
+
+  _mergeConsecutiveFindings(category) {
+    const catFindings = this._findings.filter(f => f.category === category);
+    if (catFindings.length <= 3) return;
+
+    const other = this._findings.filter(f => f.category !== category);
+
+    // Sort by layer
+    catFindings.sort((a, b) => a.location.layer - b.location.layer);
+
+    // Group consecutive layers (within 2 layers)
+    const groups = [];
+    let group = [catFindings[0]];
+    for (let i = 1; i < catFindings.length; i++) {
+      const prevLayer = catFindings[i - 1].location.layer;
+      const currLayer = catFindings[i].location.layer;
+      if (currLayer - prevLayer <= 2) {
+        group.push(catFindings[i]);
+      } else {
+        groups.push(group);
+        group = [catFindings[i]];
+      }
+    }
+    groups.push(group);
+
+    // Create merged findings
+    const merged = [];
+    for (const g of groups) {
+      if (g.length === 1) {
+        merged.push(g[0]);
+        continue;
+      }
+      const worst = g.reduce((w, f) => {
+        if (f.severity === 'critical') return f;
+        if (f.severity === 'warning' && w.severity !== 'critical') return f;
+        return w;
+      }, g[0]);
+      const startLayer = g[0].location.layer;
+      const endLayer = g[g.length - 1].location.layer;
+      merged.push({
+        ...worst,
+        id: `mo-${category}-merged-${merged.length}`,
+        title: worst.title,
+        description: `Layers ${startLayer}\u2013${endLayer}: ${worst.description.replace(/^Layer \d+: /, '')}`,
+        location: { ...worst.location, layer: startLayer },
+        metadata: { ...worst.metadata, layerRange: [startLayer, endLayer], mergedCount: g.length },
+      });
+    }
+
+    this._findings = [...other, ...merged];
   }
 }
 
@@ -4207,6 +4444,7 @@ class StructuralAnalyzer {
   constructor() {
     this.name = 'structural';
     this._bondResults = new Map();
+    this._overhangScores = new Map();
     this._findings = [];
     this._profile = null;
     this._thresholds = { ...DEFAULT_THRESHOLDS };
@@ -4434,6 +4672,7 @@ class StructuralAnalyzer {
     this._mergeConsecutiveFindings('extrusion');
 
     this._analyzeWallIntegrity(layerMoves, thresholds);
+    this._analyzeOverhangs(layerMoves, thresholds);
   }
 
   _mergeConsecutiveFindings(category) {
@@ -4682,6 +4921,111 @@ class StructuralAnalyzer {
     }
   }
 
+  // --- Overhang & Bridge Detection ---
+
+  _analyzeOverhangs(layerMoves, thresholds) {
+    const cellSize = 0.8;
+    const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
+    let prevGrid = null;
+
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves || moves.length === 0) continue;
+
+      const grid = this._buildSpatialGrid(moves, cellSize);
+
+      if (prevGrid === null) {
+        // First layer — no overhang possible
+        const scores = moves.map(() => 0);
+        this._overhangScores.set(layerNum, scores);
+        prevGrid = grid;
+        continue;
+      }
+
+      const overhangScores = [];
+      let worstOverhang = 0;
+      let worstOverhangMove = null;
+      let worstOverhangIdx = 0;
+      let highOverhangCount = 0;
+      const bridgeRun = []; // consecutive extrusion moves with overlap < 0.1
+
+      for (let i = 0; i < moves.length; i++) {
+        if (!moves[i].extrude) {
+          overhangScores.push(0);
+          // Flush bridge run on non-extrusion move
+          if (bridgeRun.length > 0) {
+            this._emitBridgeFinding(layerNum, bridgeRun);
+            bridgeRun.length = 0;
+          }
+          continue;
+        }
+
+        const overlap = this._calcOverlap(moves[i], prevGrid, cellSize);
+        const overhang = 1 - overlap;
+        overhangScores.push(overhang);
+
+        // Track bridge spans: consecutive extrusion moves with very low overlap
+        if (overlap < 0.2) {
+          bridgeRun.push({ move: moves[i], index: i });
+        } else {
+          if (bridgeRun.length > 0) {
+            this._emitBridgeFinding(layerNum, bridgeRun);
+            bridgeRun.length = 0;
+          }
+        }
+
+        // Track worst overhang for layer-level finding
+        if (overhang > 0.4) {
+          highOverhangCount++;
+          if (overhang > worstOverhang) {
+            worstOverhang = overhang;
+            worstOverhangMove = moves[i];
+            worstOverhangIdx = i;
+          }
+        }
+      }
+
+      // Flush any remaining bridge run
+      if (bridgeRun.length > 0) {
+        this._emitBridgeFinding(layerNum, bridgeRun);
+      }
+
+      this._overhangScores.set(layerNum, overhangScores);
+
+      // Emit aggregated per-layer overhang finding
+      if (worstOverhangMove && worstOverhang > 0.4) {
+        const severity = worstOverhang > 0.75 ? 'critical' : worstOverhang > 0.6 ? 'warning' : 'info';
+        this._addFinding(severity, 'overhang', layerNum, worstOverhangIdx, worstOverhangMove,
+          severity === 'critical' ? 'Severe overhang' : severity === 'warning' ? 'Significant overhang' : 'Moderate overhang',
+          `Layer ${layerNum}: ${highOverhangCount} moves with >${(0.4 * 100).toFixed(0)}% overhang (worst: ${(worstOverhang * 100).toFixed(0)}% unsupported).`,
+          worstOverhang > 0.6 ? 'Add supports or reorient the model to reduce overhang angle.' : 'Minor overhang — likely printable with adequate cooling.',
+          { worstOverhang, affectedMoves: highOverhangCount });
+      }
+
+      prevGrid = grid;
+    }
+
+    // Merge consecutive overhang and bridge findings
+    this._mergeConsecutiveFindings('overhang');
+    this._mergeConsecutiveFindings('bridge');
+  }
+
+  _emitBridgeFinding(layerNum, run) {
+    let totalSpan = 0;
+    for (const r of run) {
+      totalSpan += Math.hypot(r.move.x2 - r.move.x1, r.move.y2 - r.move.y1);
+    }
+    if (totalSpan < 2) return; // ignore tiny gaps
+
+    const severity = totalSpan > 50 ? 'critical' : totalSpan > 20 ? 'warning' : 'info';
+    const midRun = run[Math.floor(run.length / 2)];
+    this._addFinding(severity, 'bridge', layerNum, midRun.index, midRun.move,
+      `Bridge span: ${totalSpan.toFixed(1)}mm`,
+      `Layer ${layerNum}: ${run.length} unsupported moves spanning ${totalSpan.toFixed(1)}mm.`,
+      totalSpan > 20 ? 'Reduce bridge length, add supports, or increase cooling for bridge layers.' : 'Short bridge — likely printable with adequate cooling.',
+      { spanLength: totalSpan, moveCount: run.length });
+  }
+
   _clusterPoints(points, radius) {
     const visited = new Set();
     const clusters = [];
@@ -4707,10 +5051,16 @@ class StructuralAnalyzer {
   getSupportedOverlays() {
     return [
       { id: 'layer-bond', label: 'Layer Bond Strength', unit: '%' },
+      { id: 'overhang-severity', label: 'Overhang Severity', unit: '%' },
     ];
   }
 
   getOverlayData(overlayId, layerNum, moveIndex) {
+    if (overlayId === 'overhang-severity') {
+      const scores = this._overhangScores.get(layerNum);
+      if (!scores || moveIndex >= scores.length) return 0;
+      return scores[moveIndex];
+    }
     if (overlayId !== 'layer-bond') return 0;
     const scores = this._bondResults.get(layerNum);
     if (!scores || moveIndex >= scores.length) return 0;
@@ -4723,6 +5073,7 @@ class StructuralAnalyzer {
 
   clear() {
     this._bondResults.clear();
+    this._overhangScores.clear();
     this._findings = [];
   }
 }
@@ -5728,6 +6079,894 @@ class ThermalAnalyzer {
       merged.push({
         ...worst,
         id: `th-${category}-merged-${merged.length}`,
+        title: worst.title,
+        description: `Layers ${startLayer}\u2013${endLayer}: ${worst.description.replace(/^Layer \d+: /, '')}`,
+        location: { ...worst.location, layer: startLayer },
+        metadata: { ...worst.metadata, layerRange: [startLayer, endLayer], mergedCount: g.length },
+      });
+    }
+
+    this._findings = [...other, ...merged];
+  }
+}
+
+class RetractionAnalyzer {
+  constructor() {
+    this.name = 'retraction';
+    this._findings = [];
+    this._overlayData = new Map(); // "layerNum:moveIndex" -> { retractionDensity, stringingRisk }
+    this._retractionEvents = [];   // { lineIndex, type: 'retract'|'deretract', x, y, e }
+  }
+
+  // --- Engine Interface ---
+
+  getSupportedOverlays() {
+    return [
+      { id: 'retraction-density', label: 'Retraction Density', unit: 'count' },
+      { id: 'stringing-risk', label: 'Stringing Risk', unit: '' },
+    ];
+  }
+
+  getOverlayData(overlayId, layerNum, moveIndex) {
+    const key = `${layerNum}:${moveIndex}`;
+    const data = this._overlayData.get(key);
+    if (!data) return 0;
+    switch (overlayId) {
+      case 'retraction-density': return data.retractionDensity ?? 0;
+      case 'stringing-risk': return data.stringingRisk ?? 0;
+      default: return 0;
+    }
+  }
+
+  getFindings() {
+    return this._findings;
+  }
+
+  clear() {
+    this._findings = [];
+    this._overlayData.clear();
+    this._retractionEvents = [];
+  }
+
+  // --- Retraction Event Parsing ---
+
+  /**
+   * Parse raw G-code lines to build retraction event timeline.
+   * Tracks E position, relative/absolute mode, and X/Y position.
+   */
+  _parseRetractionEvents(lines) {
+    const events = [];
+    let currentX = 0;
+    let currentY = 0;
+    let currentE = 0;
+    // Detect E mode: scan for M82/M83 to determine default
+    // If M83 found first, use relative. If M82 found first, use absolute.
+    // If neither found, default to relative (most slicers use M83).
+    let relativeE = true;
+    let modeExplicit = false;
+    for (const scanLine of lines) {
+      const trimScan = scanLine.trim();
+      if (trimScan.match(/^M83\b/i)) { relativeE = true; modeExplicit = true; break; }
+      if (trimScan.match(/^M82\b/i)) { relativeE = false; modeExplicit = true; break; }
+    }
+    // If no explicit mode, detect from E value patterns:
+    // If we see G1 moves without XY where E values don't follow a negative pattern,
+    // assume absolute mode (common in test data and some slicers)
+    if (!modeExplicit) {
+      let hasNegativeE = false;
+      for (const scanLine of lines) {
+        const trimScan = scanLine.trim().split(';')[0].trim();
+        if (!trimScan.match(/^G[01]\b/i)) continue;
+        const eMatch = trimScan.match(/E([-\d.]+)/i);
+        if (eMatch && parseFloat(eMatch[1]) < 0) {
+          hasNegativeE = true;
+          break;
+        }
+      }
+      // If negative E values are present, it's likely relative mode
+      // If no negative E values, it's likely absolute mode
+      relativeE = hasNegativeE;
+    }
+    let retracted = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      // Skip comments-only and empty lines
+      if (!line || line.startsWith(';')) continue;
+
+      // Strip inline comments
+      const cmd = line.split(';')[0].trim();
+      if (!cmd) continue;
+
+      // E mode switches
+      if (cmd.match(/^M83\b/i)) {
+        relativeE = true;
+        continue;
+      }
+      if (cmd.match(/^M82\b/i)) {
+        relativeE = false;
+        continue;
+      }
+
+      // Firmware retraction
+      if (cmd.match(/^G10\b/i)) {
+        if (!retracted) {
+          events.push({
+            lineIndex: i,
+            type: 'retract',
+            x: currentX,
+            y: currentY,
+          });
+          retracted = true;
+        }
+        continue;
+      }
+
+      // Firmware deretraction
+      if (cmd.match(/^G11\b/i)) {
+        if (retracted) {
+          events.push({
+            lineIndex: i,
+            type: 'deretract',
+            x: currentX,
+            y: currentY,
+          });
+          retracted = false;
+        }
+        continue;
+      }
+
+      // G0/G1 moves
+      const g01Match = cmd.match(/^G[01]\b/i);
+      if (!g01Match) continue;
+
+      // Parse parameters
+      const params = {};
+      const paramRegex = /([XYEF])([-\d.]+)/gi;
+      let m;
+      while ((m = paramRegex.exec(cmd)) !== null) {
+        params[m[1].toUpperCase()] = parseFloat(m[2]);
+      }
+
+      const hasX = 'X' in params;
+      const hasY = 'Y' in params;
+      const hasE = 'E' in params;
+
+      // Update position
+      if (hasX) currentX = params.X;
+      if (hasY) currentY = params.Y;
+
+      if (hasE) {
+        let eDelta;
+        if (relativeE) {
+          eDelta = params.E;
+          currentE += params.E;
+        } else {
+          eDelta = params.E - currentE;
+          currentE = params.E;
+        }
+
+        // Retraction: negative E, no XY movement
+        if (eDelta < -0.001 && !hasX && !hasY) {
+          if (!retracted) {
+            events.push({
+              lineIndex: i,
+              type: 'retract',
+              x: currentX,
+              y: currentY,
+            });
+            retracted = true;
+          }
+        }
+        // Deretraction: positive E, no XY movement (prime move)
+        else if (eDelta > 0.001 && !hasX && !hasY) {
+          if (retracted) {
+            events.push({
+              lineIndex: i,
+              type: 'deretract',
+              x: currentX,
+              y: currentY,
+            });
+            retracted = false;
+          }
+        }
+        // Extrusion with XY = normal printing move, clears retracted state
+        else if (eDelta > 0.001 && (hasX || hasY)) {
+          if (retracted) {
+            // Implicitly deretracted by extrusion move
+            retracted = false;
+          }
+        }
+      }
+    }
+
+    return events;
+  }
+
+  /**
+   * Build a Set of lineIndex values where retractions occur, and a Map from
+   * lineIndex range to retraction events for fast lookup.
+   */
+  _buildRetractionIndexMap(events) {
+    const retractionLineIndices = new Set();
+    for (const evt of events) {
+      if (evt.type === 'retract') {
+        retractionLineIndices.add(evt.lineIndex);
+      }
+    }
+    return retractionLineIndices;
+  }
+
+  /**
+   * Check if any retraction event exists between two line indices (exclusive).
+   */
+  _hasRetractionBetween(retractionLineIndices, startLine, endLine) {
+    for (const lineIdx of retractionLineIndices) {
+      if (lineIdx > startLine && lineIdx < endLine) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // --- Grid Helpers ---
+
+  _cellKey(x, y, cellSize) {
+    const cx = Math.floor(x / cellSize);
+    const cy = Math.floor(y / cellSize);
+    return `${cx},${cy}`;
+  }
+
+  // --- Main Analysis ---
+
+  analyze(layerMoves, profile) {
+    this.clear();
+
+    const lines = profile._parsedLines || [];
+    if (lines.length === 0) return;
+
+    // Step 1: Parse retraction events from raw G-code
+    const events = this._parseRetractionEvents(lines);
+    this._retractionEvents = events;
+
+    // Step 2: Build retraction index lookup
+    const retractionLineIndices = this._buildRetractionIndexMap(events);
+
+    // Build a map of deretraction events by lineIndex for blob detection
+    const deretractionLineIndices = new Set();
+    for (const evt of events) {
+      if (evt.type === 'deretract') {
+        deretractionLineIndices.add(evt.lineIndex);
+      }
+    }
+
+    // Step 3: Build retraction event grid for density overlay (cellSize 2mm)
+    const cellSize = 2;
+    const retractionGrid = new Map(); // cellKey -> count
+    for (const evt of events) {
+      if (evt.type === 'retract') {
+        const key = this._cellKey(evt.x, evt.y, cellSize);
+        retractionGrid.set(key, (retractionGrid.get(key) || 0) + 1);
+      }
+    }
+
+    // Step 4: Walk layerMoves, compute overlays, and detect findings
+    const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
+
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves || moves.length === 0) continue;
+
+      // Per-layer retraction clustering for excessive-retractions detection
+      const layerRetractionPositions = [];
+
+      for (let mi = 0; mi < moves.length; mi++) {
+        const move = moves[mi];
+        const travelDist = Math.hypot(move.x2 - move.x1, move.y2 - move.y1);
+
+        if (move.extrude) {
+          // Extrusion move: compute retraction density
+          const midX = (move.x1 + move.x2) / 2;
+          const midY = (move.y1 + move.y2) / 2;
+          const midKey = this._cellKey(midX, midY, cellSize);
+
+          // Count retractions in nearby cells (3x3 neighborhood)
+          const cx = Math.floor(midX / cellSize);
+          const cy = Math.floor(midY / cellSize);
+          let density = 0;
+          for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+              const neighborKey = `${cx + dx},${cy + dy}`;
+              density += retractionGrid.get(neighborKey) || 0;
+            }
+          }
+
+          this._overlayData.set(`${layerNum}:${mi}`, {
+            retractionDensity: density,
+            stringingRisk: 0, // extrusion moves have 0 stringing risk
+          });
+        } else {
+          // Travel move: compute stringing risk and check for missing retraction
+          // Find preceding extrusion move's lineIndex
+          let precedingExtrusionLineIndex = -1;
+          for (let pi = mi - 1; pi >= 0; pi--) {
+            if (moves[pi].extrude) {
+              precedingExtrusionLineIndex = moves[pi].lineIndex;
+              break;
+            }
+          }
+
+          // Check if retracted for this travel
+          const travelRetracted = precedingExtrusionLineIndex >= 0 &&
+            this._hasRetractionBetween(retractionLineIndices, precedingExtrusionLineIndex, move.lineIndex);
+
+          // Stringing risk: travelDistance * (1 if no retraction, 0.1 if retracted)
+          const riskMultiplier = travelRetracted ? 0.1 : 1;
+          const stringingRisk = travelDist * riskMultiplier;
+
+          this._overlayData.set(`${layerNum}:${mi}`, {
+            retractionDensity: 0,
+            stringingRisk,
+          });
+
+          // Missing retraction detection
+          if (travelDist > 2 && precedingExtrusionLineIndex >= 0 && !travelRetracted) {
+            const severity = travelDist > 10 ? 'critical' : 'warning';
+            this._addFinding(severity, 'missing-retraction', layerNum, mi, move,
+              'Missing retraction before travel move',
+              `Travel of ${travelDist.toFixed(1)}mm without retraction on layer ${layerNum}. This may cause stringing.`,
+              'Enable retraction in slicer settings or increase retraction trigger distance.',
+              { travelDistance: travelDist });
+          }
+        }
+
+        // Collect retraction positions for this layer's clustering
+        for (const evt of events) {
+          if (evt.type === 'retract') {
+            // Only include retractions that fall within moves on this layer
+            const firstLineIdx = moves[0].lineIndex;
+            const lastLineIdx = moves[moves.length - 1].lineIndex;
+            if (evt.lineIndex >= firstLineIdx && evt.lineIndex <= lastLineIdx) {
+              // Avoid duplicates by checking if we already added this event
+              if (!layerRetractionPositions.some(p => p.lineIndex === evt.lineIndex)) {
+                layerRetractionPositions.push(evt);
+              }
+            }
+          }
+        }
+      }
+
+      // Excessive retraction detection: cluster spatially within 5mm radius
+      this._detectExcessiveRetractions(layerRetractionPositions, layerNum, moves);
+
+      // Blob/zit prediction
+      this._detectBlobRisk(moves, layerNum, events, retractionLineIndices, deretractionLineIndices);
+    }
+  }
+
+  // --- Finding Detectors ---
+
+  /**
+   * Cluster retraction events spatially per layer (within 5mm radius)
+   * and flag clusters with > 5 retractions.
+   */
+  _detectExcessiveRetractions(retractionPositions, layerNum, moves) {
+    if (retractionPositions.length <= 5) return;
+
+    // Simple clustering: for each retraction, count others within 5mm
+    const radius = 5;
+    const visited = new Set();
+    const clusters = [];
+
+    for (let i = 0; i < retractionPositions.length; i++) {
+      if (visited.has(i)) continue;
+      const cluster = [i];
+      visited.add(i);
+
+      for (let j = i + 1; j < retractionPositions.length; j++) {
+        if (visited.has(j)) continue;
+        const dist = Math.hypot(
+          retractionPositions[j].x - retractionPositions[i].x,
+          retractionPositions[j].y - retractionPositions[i].y
+        );
+        if (dist <= radius) {
+          cluster.push(j);
+          visited.add(j);
+        }
+      }
+
+      if (cluster.length > 5) {
+        // Compute cluster center
+        let cx = 0, cy = 0;
+        for (const idx of cluster) {
+          cx += retractionPositions[idx].x;
+          cy += retractionPositions[idx].y;
+        }
+        cx /= cluster.length;
+        cy /= cluster.length;
+
+        clusters.push({ cx, cy, count: cluster.length });
+      }
+    }
+
+    for (const cluster of clusters) {
+      // Find nearest move for finding location
+      let refMove = moves[0];
+      let refMoveIdx = 0;
+      let bestDist = Infinity;
+      for (let mi = 0; mi < moves.length; mi++) {
+        const m = moves[mi];
+        const mx = (m.x1 + m.x2) / 2;
+        const my = (m.y1 + m.y2) / 2;
+        const d = Math.hypot(mx - cluster.cx, my - cluster.cy);
+        if (d < bestDist) {
+          bestDist = d;
+          refMove = m;
+          refMoveIdx = mi;
+        }
+      }
+
+      this._addFinding('warning', 'excessive-retractions', layerNum, refMoveIdx, refMove,
+        'Excessive retractions in small area',
+        `${cluster.count} retractions clustered within 5mm radius at (${cluster.cx.toFixed(1)}, ${cluster.cy.toFixed(1)}) on layer ${layerNum}. This can cause filament grinding.`,
+        'Reduce travel moves in this area or enable combing/avoid-crossing-perimeters in slicer.',
+        { count: cluster.count, centerX: cluster.cx, centerY: cluster.cy });
+    }
+  }
+
+  /**
+   * Find deretraction events followed by outer/inner wall extrusion moves.
+   * Outer wall = warning, inner wall = info, non-wall = skip.
+   */
+  _detectBlobRisk(moves, layerNum, events, retractionLineIndices, deretractionLineIndices) {
+    for (let mi = 0; mi < moves.length; mi++) {
+      const move = moves[mi];
+
+      // Only interested in extrusion moves that follow a travel
+      if (!move.extrude) continue;
+
+      // Check if there was a deretraction before this move
+      // Look for deretraction between this move's lineIndex and preceding move
+      let precedingLineIndex = -1;
+      if (mi > 0) {
+        precedingLineIndex = moves[mi - 1].lineIndex;
+      }
+
+      if (precedingLineIndex < 0) continue;
+
+      // Check if any deretraction event occurred between the preceding move and this one
+      let hasDeretraction = false;
+      for (const dLineIdx of deretractionLineIndices) {
+        if (dLineIdx > precedingLineIndex && dLineIdx <= move.lineIndex) {
+          hasDeretraction = true;
+          break;
+        }
+      }
+
+      if (!hasDeretraction) continue;
+
+      // Check move type for wall classification
+      const typeUpper = (move.type || '').toUpperCase();
+      const isOuterWall = typeUpper.includes('WALL-OUTER') || typeUpper.includes('OUTER');
+      const isInnerWall = typeUpper.includes('WALL-INNER') || typeUpper.includes('INNER');
+
+      if (isOuterWall) {
+        this._addFinding('warning', 'blob-risk', layerNum, mi, move,
+          'Potential blob/zit on outer wall',
+          `Deretraction before outer wall extrusion at (${move.x1.toFixed(1)}, ${move.y1.toFixed(1)}) on layer ${layerNum}. This can cause a visible surface defect.`,
+          'Use "retract on layer change" and adjust extra restart distance. Consider using z-seam alignment.',
+          { wallType: 'outer' });
+      } else if (isInnerWall) {
+        this._addFinding('info', 'blob-risk', layerNum, mi, move,
+          'Potential blob on inner wall',
+          `Deretraction before inner wall extrusion at (${move.x1.toFixed(1)}, ${move.y1.toFixed(1)}) on layer ${layerNum}.`,
+          'Usually not visible, but consider adjusting extra restart distance if quality issues appear.',
+          { wallType: 'inner' });
+      }
+      // Non-wall types: skip (no finding)
+    }
+  }
+
+  // --- Finding Helper ---
+
+  _addFinding(severity, category, layerNum, moveIndex, move, title, description, suggestion, metadata) {
+    const id = `rt-${category}-${this._findings.length}`;
+    const midX = (move.x1 + move.x2) / 2;
+    const midY = (move.y1 + move.y2) / 2;
+    this._findings.push({
+      id,
+      engine: 'retraction',
+      severity,
+      category,
+      title,
+      description,
+      suggestion,
+      location: {
+        layer: layerNum,
+        lineStart: move.lineIndex,
+        lineEnd: move.lineIndex,
+        xyz: { x: midX, y: midY, z: 0 },
+      },
+      metadata: metadata || {},
+    });
+  }
+}
+
+class FlowAnalyzer {
+  constructor() {
+    this.name = 'flow';
+    this._overlayData = new Map(); // "layerNum:moveIndex" -> { volumetricFlow, lineWidth, flowRatio }
+    this._findings = [];
+  }
+
+  // --- Engine Interface ---
+
+  getSupportedOverlays() {
+    return [
+      { id: 'volumetric-flow', label: 'Volumetric Flow', unit: 'mm\u00b3/s' },
+      { id: 'line-width', label: 'Line Width', unit: 'mm' },
+      { id: 'flow-ratio', label: 'Flow Ratio', unit: '%' },
+    ];
+  }
+
+  getOverlayData(overlayId, layerNum, moveIndex) {
+    const key = `${layerNum}:${moveIndex}`;
+    const data = this._overlayData.get(key);
+    if (!data) return 0;
+    switch (overlayId) {
+      case 'volumetric-flow': return data.volumetricFlow ?? 0;
+      case 'line-width': return data.lineWidth ?? 0;
+      case 'flow-ratio': return data.flowRatio ?? 0;
+      default: return 0;
+    }
+  }
+
+  getFindings() {
+    return this._findings;
+  }
+
+  clear() {
+    this._overlayData.clear();
+    this._findings = [];
+  }
+
+  // --- G-code Comment Inference ---
+
+  _inferSettings(profile) {
+    const lines = profile._parsedLines || [];
+
+    // Resolve filament diameter
+    let filamentDiameter = profile.filament?.diameter;
+    if (filamentDiameter == null) {
+      for (const line of lines) {
+        const match = line.match(/;\s*filament_diameter\s*=\s*([\d.]+)/i);
+        if (match) {
+          filamentDiameter = parseFloat(match[1]);
+          break;
+        }
+      }
+    }
+    if (filamentDiameter == null) filamentDiameter = 1.75;
+
+    // Resolve nozzle diameter
+    let nozzleDiameter = profile.nozzle?.diameter;
+    if (nozzleDiameter == null) {
+      for (const line of lines) {
+        const match = line.match(/;\s*nozzle_diameter\s*=\s*([\d.]+)/i);
+        if (match) {
+          nozzleDiameter = parseFloat(match[1]);
+          break;
+        }
+      }
+    }
+    if (nozzleDiameter == null) nozzleDiameter = 0.4;
+
+    // Resolve flow multiplier
+    let flowMultiplier = profile.nozzle?.flowMultiplier;
+    if (flowMultiplier == null) {
+      // Auto-detect Bambu slicer
+      let isBambu = false;
+      for (const line of lines) {
+        if (/bambu/i.test(line)) {
+          isBambu = true;
+          break;
+        }
+      }
+      flowMultiplier = isBambu ? 2.0 : 1.0;
+    }
+
+    // Resolve max volumetric flow from material profile
+    const maxVolumetricFlow = profile.material?.maxVolumetricFlow ?? 15;
+
+    return { filamentDiameter, nozzleDiameter, flowMultiplier, maxVolumetricFlow };
+  }
+
+  // --- Layer Height Helpers ---
+
+  _computeLayerHeights(layerMoves, layerNums, profile) {
+    // Use profile-provided layer heights if available
+    if (profile._layerHeights) return profile._layerHeights;
+
+    const heights = {};
+    const defaultHeight = 0.2;
+
+    // Attempt to compute from zHeight differences between consecutive layers
+    for (let i = 0; i < layerNums.length; i++) {
+      const layerNum = layerNums[i];
+      const moves = layerMoves[layerNum];
+      if (!moves || moves.length === 0) {
+        heights[layerNum] = defaultHeight;
+        continue;
+      }
+
+      // Try to get zHeight from first move of this layer
+      const thisZ = moves[0].z ?? moves[0].zHeight;
+      if (thisZ != null && i > 0) {
+        const prevLayerNum = layerNums[i - 1];
+        const prevMoves = layerMoves[prevLayerNum];
+        if (prevMoves && prevMoves.length > 0) {
+          const prevZ = prevMoves[0].z ?? prevMoves[0].zHeight;
+          if (prevZ != null) {
+            const diff = thisZ - prevZ;
+            if (diff > 0 && diff < 2) {
+              heights[layerNum] = diff;
+              continue;
+            }
+          }
+        }
+      }
+
+      heights[layerNum] = defaultHeight;
+    }
+
+    return heights;
+  }
+
+  // --- Main Analysis ---
+
+  analyze(layerMoves, profile) {
+    this.clear();
+
+    const { filamentDiameter, nozzleDiameter, flowMultiplier, maxVolumetricFlow } =
+      this._inferSettings(profile);
+
+    // Compute effective max flow
+    // effectiveMaxFlow = maxVolumetricFlow * flowMultiplier * (nozzleDiameter / 0.4)^2
+    const effectiveMaxFlow = maxVolumetricFlow * flowMultiplier *
+      (nozzleDiameter / 0.4) ** 2;
+
+    // Filament cross-section area
+    const filamentArea = Math.PI * (filamentDiameter / 2) ** 2;
+
+    const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
+    if (layerNums.length === 0) return;
+
+    // Compute layer heights
+    const layerHeights = this._computeLayerHeights(layerMoves, layerNums, profile);
+
+    // Per-layer analysis
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves || moves.length === 0) continue;
+
+      const layerHeight = layerHeights[layerNum] ?? 0.2;
+
+      // Track per-layer aggregates for findings
+      let worstFlow = 0;
+      let maxFlowExceededCount = 0;
+      let underExtrusionCount = 0;
+      let overExtrusionCount = 0;
+      let flowSpikeCount = 0;
+      let prevVolumetricFlow = null;
+      let worstFlowMove = null;
+      let worstFlowMoveIdx = 0;
+      let underExtrusionMove = null;
+      let underExtrusionMoveIdx = 0;
+      let overExtrusionMove = null;
+      let overExtrusionMoveIdx = 0;
+      let flowSpikeMove = null;
+      let flowSpikeMoveIdx = 0;
+      let worstSpikeRatio = 0;
+
+      for (let mi = 0; mi < moves.length; mi++) {
+        const move = moves[mi];
+
+        // Non-extrusion moves get zero overlay
+        if (!move.extrude || !move.eLength || move.eLength <= 0) {
+          this._overlayData.set(`${layerNum}:${mi}`, {
+            volumetricFlow: 0,
+            lineWidth: 0,
+            flowRatio: 0,
+          });
+          // Reset previous flow for spike detection (travel breaks the chain)
+          prevVolumetricFlow = null;
+          continue;
+        }
+
+        const eLength = move.eLength;
+        const moveDistance = Math.hypot(move.x2 - move.x1, move.y2 - move.y1);
+
+        if (moveDistance < 0.001) {
+          this._overlayData.set(`${layerNum}:${mi}`, {
+            volumetricFlow: 0,
+            lineWidth: 0,
+            flowRatio: 0,
+          });
+          prevVolumetricFlow = null;
+          continue;
+        }
+
+        const moveSpeed = (move.feedRate || 1500) / 60; // mm/min to mm/s
+        const moveTime = moveDistance / moveSpeed;
+
+        const volumetricFlow = eLength * filamentArea / moveTime; // mm^3/s
+        const lineWidth = eLength * filamentArea / (layerHeight * moveDistance); // mm
+        const flowRatio = volumetricFlow / effectiveMaxFlow; // 0..1+
+
+        this._overlayData.set(`${layerNum}:${mi}`, {
+          volumetricFlow,
+          lineWidth,
+          flowRatio,
+        });
+
+        // --- Finding detection (aggregate per layer) ---
+
+        // 1. Max flow exceeded
+        if (volumetricFlow > effectiveMaxFlow) {
+          maxFlowExceededCount++;
+          if (volumetricFlow > worstFlow) {
+            worstFlow = volumetricFlow;
+            worstFlowMove = move;
+            worstFlowMoveIdx = mi;
+          }
+        }
+
+        // 2. Under-extrusion risk
+        const thinThreshold = nozzleDiameter * 0.8;
+        if (lineWidth < thinThreshold || (flowRatio > 0.8 && flowRatio <= 1.0)) {
+          underExtrusionCount++;
+          if (!underExtrusionMove) {
+            underExtrusionMove = move;
+            underExtrusionMoveIdx = mi;
+          }
+        }
+
+        // 3. Over-extrusion
+        const wideThreshold = nozzleDiameter * 1.5;
+        if (lineWidth > wideThreshold) {
+          overExtrusionCount++;
+          if (!overExtrusionMove) {
+            overExtrusionMove = move;
+            overExtrusionMoveIdx = mi;
+          }
+        }
+
+        // 4. Flow rate spikes (between consecutive extrusion moves)
+        if (prevVolumetricFlow != null && prevVolumetricFlow > 0) {
+          const spikeRatio = volumetricFlow / prevVolumetricFlow;
+          if (spikeRatio > 1.5 || spikeRatio < 0.67) {
+            flowSpikeCount++;
+            if (Math.abs(spikeRatio - 1) > Math.abs(worstSpikeRatio - 1)) {
+              worstSpikeRatio = spikeRatio;
+              flowSpikeMove = move;
+              flowSpikeMoveIdx = mi;
+            }
+          }
+        }
+
+        prevVolumetricFlow = volumetricFlow;
+      }
+
+      // --- Emit aggregated findings for this layer ---
+
+      if (maxFlowExceededCount > 0 && worstFlowMove) {
+        this._addFinding('critical', 'max-flow-exceeded', layerNum, worstFlowMoveIdx, worstFlowMove,
+          'Volumetric flow exceeds material limit',
+          `Layer ${layerNum}: worst flow ${worstFlow.toFixed(1)} mm\u00b3/s exceeds limit of ${effectiveMaxFlow.toFixed(1)} mm\u00b3/s (${maxFlowExceededCount} moves affected). This will cause under-extrusion.`,
+          'Reduce print speed, lower flow rate, or use a high-flow hotend.',
+          { worstFlow, effectiveMaxFlow, affectedMoves: maxFlowExceededCount });
+      }
+
+      if (underExtrusionCount > 0 && underExtrusionMove) {
+        this._addFinding('warning', 'under-extrusion', layerNum, underExtrusionMoveIdx, underExtrusionMove,
+          'Under-extrusion risk detected',
+          `Layer ${layerNum}: ${underExtrusionCount} moves with thin extrusion or marginal flow rate.`,
+          'Check filament path for clogs, increase flow rate, or reduce speed.',
+          { affectedMoves: underExtrusionCount });
+      }
+
+      if (overExtrusionCount > 0 && overExtrusionMove) {
+        this._addFinding('info', 'over-extrusion', layerNum, overExtrusionMoveIdx, overExtrusionMove,
+          'Over-extrusion detected',
+          `Layer ${layerNum}: ${overExtrusionCount} moves with line width exceeding ${(nozzleDiameter * 1.5).toFixed(2)}mm.`,
+          'Reduce flow multiplier or extrusion width in slicer settings.',
+          { affectedMoves: overExtrusionCount });
+      }
+
+      if (flowSpikeCount > 0 && flowSpikeMove) {
+        this._addFinding('warning', 'flow-spike', layerNum, flowSpikeMoveIdx, flowSpikeMove,
+          'Abrupt flow rate change detected',
+          `Layer ${layerNum}: ${flowSpikeCount} flow rate spikes (>50% change between consecutive moves). Pressure advance may not compensate.`,
+          'Use gradual speed transitions in slicer or enable pressure advance tuning.',
+          { spikeCount: flowSpikeCount, worstSpikeRatio });
+      }
+    }
+
+    // Merge consecutive findings for each category
+    this._mergeConsecutiveFindings('max-flow-exceeded');
+    this._mergeConsecutiveFindings('under-extrusion');
+    this._mergeConsecutiveFindings('over-extrusion');
+    this._mergeConsecutiveFindings('flow-spike');
+  }
+
+  // --- Finding Helper ---
+
+  _addFinding(severity, category, layerNum, moveIndex, move, title, description, suggestion, metadata) {
+    const id = `fl-${category}-${this._findings.length}`;
+    const midX = (move.x1 + move.x2) / 2;
+    const midY = (move.y1 + move.y2) / 2;
+    this._findings.push({
+      id,
+      engine: 'flow',
+      severity,
+      category,
+      title,
+      description,
+      suggestion,
+      location: {
+        layer: layerNum,
+        lineStart: move.lineIndex,
+        lineEnd: move.lineIndex,
+        xyz: { x: midX, y: midY, z: 0 },
+      },
+      metadata: metadata || {},
+    });
+  }
+
+  // --- Merge Consecutive Findings ---
+
+  _mergeConsecutiveFindings(category) {
+    const catFindings = this._findings.filter(f => f.category === category);
+    if (catFindings.length <= 3) return;
+
+    const other = this._findings.filter(f => f.category !== category);
+
+    // Sort by layer
+    catFindings.sort((a, b) => a.location.layer - b.location.layer);
+
+    // Group consecutive layers (within 2 layers)
+    const groups = [];
+    let group = [catFindings[0]];
+    for (let i = 1; i < catFindings.length; i++) {
+      const prevLayer = catFindings[i - 1].location.layer;
+      const currLayer = catFindings[i].location.layer;
+      if (currLayer - prevLayer <= 2) {
+        group.push(catFindings[i]);
+      } else {
+        groups.push(group);
+        group = [catFindings[i]];
+      }
+    }
+    groups.push(group);
+
+    // Create merged findings
+    const merged = [];
+    for (const g of groups) {
+      if (g.length === 1) {
+        merged.push(g[0]);
+        continue;
+      }
+      const worst = g.reduce((w, f) => {
+        if (f.severity === 'critical') return f;
+        if (f.severity === 'warning' && w.severity !== 'critical') return f;
+        return w;
+      }, g[0]);
+      const startLayer = g[0].location.layer;
+      const endLayer = g[g.length - 1].location.layer;
+      merged.push({
+        ...worst,
+        id: `fl-${category}-merged-${merged.length}`,
         title: worst.title,
         description: `Layers ${startLayer}\u2013${endLayer}: ${worst.description.replace(/^Layer \d+: /, '')}`,
         location: { ...worst.location, layer: startLayer },
@@ -9187,11 +10426,32 @@ function renderAnalysisPanel() {
     grouped[f.engine].push(f);
   }
 
-  const ENGINE_LABELS = { motion: 'Motion Reality', structural: 'Structural Integrity', thermal: 'Thermal Dynamics' };
+  const ENGINE_LABELS = { motion: 'Motion Reality', structural: 'Structural Integrity', thermal: 'Thermal Dynamics', retraction: 'Retraction Quality', flow: 'Flow Rate' };
   const SEVERITY_ICON = { critical: '\u2B24', warning: '\u26A0', info: '\u2139' };
   const SEVERITY_CLASS = { critical: 'severity-critical', warning: 'severity-warning', info: 'severity-info' };
 
   let html = '';
+
+  // Print time summary
+  if (typeof motionAnalyzer !== 'undefined' && motionAnalyzer.getTimeSummary) {
+    const ts = motionAnalyzer.getTimeSummary();
+    if (ts && ts.totalTime > 0) {
+      const hours = Math.floor(ts.totalTime / 3600);
+      const mins = Math.floor((ts.totalTime % 3600) / 60);
+      const secs = Math.floor(ts.totalTime % 60);
+      const timeStr = hours > 0 ? hours + 'h ' + mins + 'm' : mins + 'm ' + secs + 's';
+      html += '<div class="analysis-time-summary">' +
+        '<strong>Estimated Print Time:</strong> ' + timeStr +
+        '<div class="time-breakdown">' +
+          '<span>Walls: ' + Math.floor(ts.byType.wall / 60) + 'm</span>' +
+          '<span>Infill: ' + Math.floor(ts.byType.infill / 60) + 'm</span>' +
+          '<span>Travel: ' + Math.floor(ts.byType.travel / 60) + 'm</span>' +
+          '<span>Support: ' + Math.floor(ts.byType.support / 60) + 'm</span>' +
+        '</div>' +
+      '</div>';
+    }
+  }
+
   for (const [engineName, engineFindings] of Object.entries(grouped)) {
     const label = ENGINE_LABELS[engineName] || engineName;
     html += '<div class="analysis-engine">' +
@@ -10665,6 +11925,8 @@ function initDecodeTooltip() {
 
 
 
+
+
 let currentFirmware = 'bambu';
 
 // ===== APP STATE =====
@@ -10676,10 +11938,14 @@ const undoStack = new UndoStack();
 const motionAnalyzer = new MotionAnalyzer();
 const structuralAnalyzer = new StructuralAnalyzer();
 const thermalAnalyzer = new ThermalAnalyzer();
+const retractionAnalyzer = new RetractionAnalyzer();
+const flowAnalyzer = new FlowAnalyzer();
 const analysisManager = new AnalysisManager();
 analysisManager.register(motionAnalyzer);
 analysisManager.register(structuralAnalyzer);
 analysisManager.register(thermalAnalyzer);
+analysisManager.register(retractionAnalyzer);
+analysisManager.register(flowAnalyzer);
 
 let analysisProfile = {
   printer: {},
