@@ -197,25 +197,32 @@ export class RetractionAnalyzer {
    * lineIndex range to retraction events for fast lookup.
    */
   _buildRetractionIndexMap(events) {
-    const retractionLineIndices = new Set();
+    // Build sorted array for binary search in _hasRetractionBetween
+    const indices = [];
     for (const evt of events) {
       if (evt.type === 'retract') {
-        retractionLineIndices.add(evt.lineIndex);
+        indices.push(evt.lineIndex);
       }
     }
-    return retractionLineIndices;
+    indices.sort((a, b) => a - b);
+    return indices;
   }
 
   /**
    * Check if any retraction event exists between two line indices (exclusive).
+   * Uses binary search on sorted array — O(log n) per call.
    */
   _hasRetractionBetween(retractionLineIndices, startLine, endLine) {
-    for (const lineIdx of retractionLineIndices) {
-      if (lineIdx > startLine && lineIdx < endLine) {
-        return true;
-      }
+    const arr = retractionLineIndices;
+    // Binary search for first index > startLine
+    let lo = 0, hi = arr.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[mid] <= startLine) lo = mid + 1;
+      else hi = mid;
     }
-    return false;
+    // Check if that index is < endLine
+    return lo < arr.length && arr[lo] < endLine;
   }
 
   // --- Grid Helpers ---
@@ -267,7 +274,15 @@ export class RetractionAnalyzer {
       if (!moves || moves.length === 0) continue;
 
       // Per-layer retraction clustering for excessive-retractions detection
+      // Collect retraction events that fall within this layer's line range (once per layer)
+      const firstLineIdx = moves[0].lineIndex;
+      const lastLineIdx = moves[moves.length - 1].lineIndex;
       const layerRetractionPositions = [];
+      for (const evt of events) {
+        if (evt.type === 'retract' && evt.lineIndex >= firstLineIdx && evt.lineIndex <= lastLineIdx) {
+          layerRetractionPositions.push(evt);
+        }
+      }
 
       for (let mi = 0; mi < moves.length; mi++) {
         const move = moves[mi];
@@ -329,20 +344,6 @@ export class RetractionAnalyzer {
           }
         }
 
-        // Collect retraction positions for this layer's clustering
-        for (const evt of events) {
-          if (evt.type === 'retract') {
-            // Only include retractions that fall within moves on this layer
-            const firstLineIdx = moves[0].lineIndex;
-            const lastLineIdx = moves[moves.length - 1].lineIndex;
-            if (evt.lineIndex >= firstLineIdx && evt.lineIndex <= lastLineIdx) {
-              // Avoid duplicates by checking if we already added this event
-              if (!layerRetractionPositions.some(p => p.lineIndex === evt.lineIndex)) {
-                layerRetractionPositions.push(evt);
-              }
-            }
-          }
-        }
       }
 
       // Excessive retraction detection: cluster spatially within 5mm radius

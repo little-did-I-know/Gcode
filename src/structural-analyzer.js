@@ -17,7 +17,7 @@ export class StructuralAnalyzer {
     for (let i = 0; i < moves.length; i++) {
       const move = moves[i];
       if (!move.extrude) continue;
-      const cells = this._rasterizeLine(move.x1, move.y1, move.x2, move.y2, cellSize);
+      const cells = this._rasterizeLineInt(move.x1, move.y1, move.x2, move.y2);
       for (const key of cells) {
         if (!grid.has(key)) grid.set(key, []);
         grid.get(key).push(i);
@@ -26,41 +26,51 @@ export class StructuralAnalyzer {
     return grid;
   }
 
-  _rasterizeLine(x1, y1, x2, y2, cellSize) {
-    const cells = new Set();
+  _rasterizeLineInt(x1, y1, x2, y2) {
+    const { minX, minY, cellSize, gridW, gridH } = this._gridParams;
+    const indices = [];
     const dx = x2 - x1, dy = y2 - y1;
     const len = Math.hypot(dx, dy);
     if (len < 0.001) {
-      cells.add(this._cellKey(x1, y1, cellSize));
-      return cells;
+      const idx = this._cellKeyInt(x1, y1);
+      if (idx >= 0) indices.push(idx);
+      return indices;
     }
     const steps = Math.max(1, Math.ceil(len / (cellSize * 0.5)));
+    let lastIdx = -1;
     for (let s = 0; s <= steps; s++) {
       const t = s / steps;
-      const x = x1 + dx * t;
-      const y = y1 + dy * t;
-      cells.add(this._cellKey(x, y, cellSize));
+      const gx = Math.floor((x1 + dx * t - minX) / cellSize);
+      const gy = Math.floor((y1 + dy * t - minY) / cellSize);
+      if (gx < 0 || gx >= gridW || gy < 0 || gy >= gridH) continue;
+      const idx = gy * gridW + gx;
+      if (idx !== lastIdx) {
+        indices.push(idx);
+        lastIdx = idx;
+      }
     }
-    return cells;
+    return indices;
   }
 
-  _cellKey(x, y, cellSize) {
-    const cx = Math.floor(x / cellSize);
-    const cy = Math.floor(y / cellSize);
-    return `${cx},${cy}`;
+  _cellKeyInt(x, y) {
+    const { minX, minY, cellSize, gridW, gridH } = this._gridParams;
+    const gx = Math.floor((x - minX) / cellSize);
+    const gy = Math.floor((y - minY) / cellSize);
+    if (gx < 0 || gx >= gridW || gy < 0 || gy >= gridH) return -1;
+    return gy * gridW + gx;
   }
 
   // --- Layer Overlap ---
 
   _calcOverlap(move, prevGrid, cellSize) {
     if (!move.extrude) return 1.0;
-    const cells = this._rasterizeLine(move.x1, move.y1, move.x2, move.y2, cellSize);
-    if (cells.size === 0) return 1.0;
+    const cells = this._rasterizeLineInt(move.x1, move.y1, move.x2, move.y2);
+    if (cells.length === 0) return 1.0;
     let overlapping = 0;
     for (const key of cells) {
       if (prevGrid.has(key)) overlapping++;
     }
-    return overlapping / cells.size;
+    return overlapping / cells.length;
   }
 
   // --- Extrusion Consistency ---
@@ -113,6 +123,7 @@ export class StructuralAnalyzer {
   analyze(layerMoves, profile) {
     this._bondResults.clear();
     this._findings = [];
+    this._gridCache = new Map();
     this._profile = profile;
 
     const materialType = profile.material?.type || 'PLA';
@@ -122,6 +133,27 @@ export class StructuralAnalyzer {
 
     const cellSize = 0.8;
     const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
+
+    // Compute global grid bounds for integer cell keys
+    let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves) continue;
+      for (const m of moves) {
+        if (!m.extrude) continue;
+        sMinX = Math.min(sMinX, m.x1, m.x2);
+        sMinY = Math.min(sMinY, m.y1, m.y2);
+        sMaxX = Math.max(sMaxX, m.x1, m.x2);
+        sMaxY = Math.max(sMaxY, m.y1, m.y2);
+      }
+    }
+    if (sMinX === Infinity) return; // no extrusions
+    const pad = cellSize * 2;
+    sMinX -= pad; sMinY -= pad; sMaxX += pad; sMaxY += pad;
+    const sGridW = Math.ceil((sMaxX - sMinX) / cellSize) + 1;
+    const sGridH = Math.ceil((sMaxY - sMinY) / cellSize) + 1;
+    this._gridParams = { minX: sMinX, minY: sMinY, cellSize, gridW: sGridW, gridH: sGridH };
+
     let prevGrid = null;
 
     for (const layerNum of layerNums) {
@@ -129,6 +161,7 @@ export class StructuralAnalyzer {
       if (!moves || moves.length === 0) continue;
 
       const grid = this._buildSpatialGrid(moves, cellSize);
+      this._gridCache.set(layerNum, grid);
       const consistency = this._calcExtrusionConsistency(moves);
       const layerTime = this._estimateLayerTime(moves);
       const coolScore = this._coolingScore(layerTime, material);
@@ -492,7 +525,7 @@ export class StructuralAnalyzer {
       const moves = layerMoves[layerNum];
       if (!moves || moves.length === 0) continue;
 
-      const grid = this._buildSpatialGrid(moves, cellSize);
+      const grid = this._gridCache.get(layerNum) || this._buildSpatialGrid(moves, cellSize);
 
       if (prevGrid === null) {
         // First layer — no overhang possible
@@ -635,5 +668,169 @@ export class StructuralAnalyzer {
     this._bondResults.clear();
     this._overhangScores.clear();
     this._findings = [];
+    this._gridCache = null;
+  }
+
+  // --- Async Analysis (non-blocking, yields between phases) ---
+
+  async analyzeAsync(layerMoves, profile, onProgress) {
+    this._bondResults.clear();
+    this._findings = [];
+    this._gridCache = new Map();
+    this._profile = profile;
+
+    const materialType = profile.material?.type || 'PLA';
+    const material = getMaterialProfile(materialType, profile.material || {});
+    const thresholds = { ...DEFAULT_THRESHOLDS, ...(profile.thresholds || {}) };
+    this._thresholds = thresholds;
+
+    const cellSize = 0.8;
+    const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
+
+    // Compute global grid bounds for integer cell keys
+    let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves) continue;
+      for (const m of moves) {
+        if (!m.extrude) continue;
+        sMinX = Math.min(sMinX, m.x1, m.x2);
+        sMinY = Math.min(sMinY, m.y1, m.y2);
+        sMaxX = Math.max(sMaxX, m.x1, m.x2);
+        sMaxY = Math.max(sMaxY, m.y1, m.y2);
+      }
+    }
+    if (sMinX === Infinity) return;
+    const pad = cellSize * 2;
+    sMinX -= pad; sMinY -= pad; sMaxX += pad; sMaxY += pad;
+    const sGridW = Math.ceil((sMaxX - sMinX) / cellSize) + 1;
+    const sGridH = Math.ceil((sMaxY - sMinY) / cellSize) + 1;
+    this._gridParams = { minX: sMinX, minY: sMinY, cellSize, gridW: sGridW, gridH: sGridH };
+
+    // Main bond analysis loop with yields
+    let prevGrid = null;
+    let layerIdx = 0;
+
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves || moves.length === 0) { layerIdx++; continue; }
+
+      const grid = this._buildSpatialGrid(moves, cellSize);
+      this._gridCache.set(layerNum, grid);
+      const consistency = this._calcExtrusionConsistency(moves);
+      const layerTime = this._estimateLayerTime(moves);
+      const coolScore = this._coolingScore(layerTime, material);
+
+      let worstOverlap = 1.0;
+      let worstOverlapMove = null;
+      let worstOverlapIdx = 0;
+      let lowOverlapCount = 0;
+      let inconsistentCount = 0;
+      let worstConsist = 1.0;
+      let worstConsistMove = null;
+
+      const scores = [];
+      for (let i = 0; i < moves.length; i++) {
+        if (!moves[i].extrude) {
+          scores.push(1.0);
+          continue;
+        }
+        if (prevGrid === null) {
+          scores.push(1.0);
+          continue;
+        }
+
+        const overlap = this._calcOverlap(moves[i], prevGrid, cellSize);
+        const consist = consistency.get(i) ?? 1.0;
+
+        const baseBond = overlap * 0.5 + consist * 0.25 + coolScore * 0.25;
+        const bond = baseBond * Math.min(1, overlap + 0.3);
+        scores.push(Math.max(0, Math.min(1, bond)));
+
+        const overlapThresh = thresholds['layer-bond-overlap'] || {};
+        if (overlap < (overlapThresh.warning ?? 0.60)) {
+          lowOverlapCount++;
+          if (overlap < worstOverlap) {
+            worstOverlap = overlap;
+            worstOverlapMove = moves[i];
+            worstOverlapIdx = i;
+          }
+        }
+
+        const consistThresh = thresholds['extrusion-consistency'] || {};
+        if (consist < (1 - (consistThresh.warning ?? 0.15))) {
+          inconsistentCount++;
+          if (consist < worstConsist) {
+            worstConsist = consist;
+            worstConsistMove = moves[i];
+          }
+        }
+      }
+
+      this._bondResults.set(layerNum, scores);
+
+      if (worstOverlapMove) {
+        const overlapThresh = thresholds['layer-bond-overlap'] || {};
+        const severity = worstOverlap < (overlapThresh.critical ?? 0.30) ? 'critical' : 'warning';
+        this._addFinding(severity, 'layer-bond', layerNum, worstOverlapIdx, worstOverlapMove,
+          severity === 'critical' ? 'Very weak layer bond' : 'Reduced layer bond',
+          `Layer ${layerNum}: ${lowOverlapCount} extrusions with low overlap (worst: ${(worstOverlap * 100).toFixed(0)}%).`,
+          'Increase extrusion width or adjust perimeter overlap in slicer settings.',
+          { overlapPercent: worstOverlap, affectedMoves: lowOverlapCount });
+      }
+
+      const coolThresh = thresholds['layer-bond-cooling'] || {};
+      if (layerTime < (coolThresh.critical ?? 1.0) && prevGrid !== null) {
+        const refMove = moves.find(m => m.extrude) || moves[0];
+        this._addFinding('critical', 'cooling', layerNum, 0, refMove,
+          'Insufficient layer cooling time',
+          `Layer ${layerNum} completes in ${layerTime.toFixed(1)}s — risk of deformation before material solidifies.`,
+          'Increase minimum layer time or enable "slow down for small layers" in slicer.',
+          { layerTime });
+      } else if (layerTime < (coolThresh.warning ?? 3.0) && prevGrid !== null) {
+        const refMove = moves.find(m => m.extrude) || moves[0];
+        this._addFinding('warning', 'cooling', layerNum, 0, refMove,
+          'Short layer cooling time',
+          `Layer ${layerNum} completes in ${layerTime.toFixed(1)}s.`,
+          'Consider increasing minimum layer time.',
+          { layerTime });
+      }
+
+      if (worstConsistMove && inconsistentCount > 0) {
+        this._addFinding('info', 'extrusion', layerNum, 0, worstConsistMove,
+          'Inconsistent extrusion',
+          `Layer ${layerNum}: ${inconsistentCount} moves with flow deviation >${((thresholds['extrusion-consistency']?.warning ?? 0.15) * 100).toFixed(0)}% (worst: ${((1 - worstConsist) * 100).toFixed(0)}%).`,
+          'Check for partial clog or inconsistent filament diameter.',
+          { worstConsistency: worstConsist, affectedMoves: inconsistentCount });
+      }
+
+      prevGrid = grid;
+
+      // Yield every 50 layers
+      if (layerIdx % 50 === 49) {
+        if (onProgress) onProgress(layerIdx / layerNums.length * 0.5);
+        await new Promise(r => setTimeout(r, 0));
+      }
+      layerIdx++;
+    }
+
+    // Merge findings
+    this._mergeConsecutiveFindings('layer-bond');
+    this._mergeConsecutiveFindings('cooling');
+    this._mergeConsecutiveFindings('extrusion');
+
+    if (onProgress) onProgress(0.6);
+    await new Promise(r => setTimeout(r, 0));
+
+    // Wall integrity (sync, fast)
+    this._analyzeWallIntegrity(layerMoves, thresholds);
+
+    if (onProgress) onProgress(0.7);
+    await new Promise(r => setTimeout(r, 0));
+
+    // Overhangs (uses cached grids, so fast)
+    this._analyzeOverhangs(layerMoves, thresholds);
+
+    if (onProgress) onProgress(1.0);
   }
 }

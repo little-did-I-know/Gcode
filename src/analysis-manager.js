@@ -57,12 +57,69 @@ export class AnalysisManager {
     return this._analyzed.has(engineName);
   }
 
+  isAllAnalyzed() {
+    return this.engines.every(e => this._analyzed.has(e.name));
+  }
+
+  async ensureEngineAsync(engineName, onProgress) {
+    if (this._analyzed.has(engineName)) return;
+    if (!this._storedArgs) return;
+    const engine = this.engines.find(e => e.name === engineName);
+    if (!engine) return;
+    const { layerMoves, profile } = this._storedArgs;
+    if (typeof engine.analyzeAsync === 'function') {
+      await engine.analyzeAsync(layerMoves, profile, onProgress);
+    } else {
+      engine.analyze(layerMoves, profile);
+    }
+    this._analyzed.add(engineName);
+  }
+
+  async ensureAllAnalyzedAsync(onProgress) {
+    if (!this._storedArgs) return;
+    const toRun = this.engines.filter(e => !this._analyzed.has(e.name));
+    if (toRun.length === 0) return;
+    for (let i = 0; i < toRun.length; i++) {
+      const engine = toRun[i];
+      const { layerMoves, profile } = this._storedArgs;
+      const engineProgress = (p) => {
+        if (onProgress) onProgress({ engine: engine.name, engineProgress: p, overall: (i + p) / toRun.length });
+      };
+      if (typeof engine.analyzeAsync === 'function') {
+        await engine.analyzeAsync(layerMoves, profile, engineProgress);
+      } else {
+        engine.analyze(layerMoves, profile);
+      }
+      this._analyzed.add(engine.name);
+      if (onProgress) onProgress({ engine: engine.name, engineProgress: 1, overall: (i + 1) / toRun.length });
+    }
+  }
+
   analyzeAll(layerMoves, profile) {
     this._statsCache = {};
     this._storedArgs = { layerMoves, profile };
     for (const engine of this.engines) {
       engine.analyze(layerMoves, profile);
       this._analyzed.add(engine.name);
+    }
+  }
+
+  async analyzeAllAsync(layerMoves, profile, onProgress) {
+    this._statsCache = {};
+    this._storedArgs = { layerMoves, profile };
+    this._analyzed.clear();
+    for (let i = 0; i < this.engines.length; i++) {
+      const engine = this.engines[i];
+      const engineProgress = (p) => {
+        if (onProgress) onProgress({ engine: engine.name, engineProgress: p, overall: (i + p) / this.engines.length });
+      };
+      if (typeof engine.analyzeAsync === 'function') {
+        await engine.analyzeAsync(layerMoves, profile, engineProgress);
+      } else {
+        engine.analyze(layerMoves, profile);
+      }
+      this._analyzed.add(engine.name);
+      if (onProgress) onProgress({ engine: engine.name, engineProgress: 1, overall: (i + 1) / this.engines.length });
     }
   }
 
