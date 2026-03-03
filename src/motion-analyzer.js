@@ -12,6 +12,7 @@ export class MotionAnalyzer {
       gantryType: profile.gantryType ?? 'cartesian',
     };
     this.results = new Map();
+    this._findings = [];
   }
 
   static inferProfile(lines) {
@@ -272,6 +273,7 @@ export class MotionAnalyzer {
    */
   analyze(layerMoves, profile) {
     this.analyzeAllLayers(layerMoves);
+    this._generateFindings(layerMoves);
   }
 
   /**
@@ -309,10 +311,183 @@ export class MotionAnalyzer {
   }
 
   getFindings() {
-    return [];
+    return this._findings;
   }
 
   clear() {
     this.results.clear();
+    this._findings = [];
+  }
+
+  // ===== Findings Generation =====
+
+  _generateFindings(layerMoves) {
+    this._findings = [];
+
+    for (const [layerNum, layerResults] of this.results) {
+      // --- Speed-limited segments ---
+      // Collect consecutive runs of speed-limited moves
+      let run = [];
+      for (let i = 0; i < layerResults.length; i++) {
+        const r = layerResults[i];
+        if (r.distance > 0.1 && r.requestedSpeed > 0 &&
+            r.actualPeakSpeed < r.requestedSpeed * 0.5) {
+          run.push(r);
+        } else {
+          if (run.length >= 10) {
+            this._emitSpeedLimitedFinding(layerNum, run);
+          }
+          run = [];
+        }
+      }
+      // Flush trailing run
+      if (run.length >= 10) {
+        this._emitSpeedLimitedFinding(layerNum, run);
+      }
+
+      // --- Sharp corner speed drops ---
+      for (let i = 0; i < layerResults.length - 1; i++) {
+        const r = layerResults[i];
+        const rNext = layerResults[i + 1];
+        // Both moves must be extrusion moves
+        if (!r.move.extrude || !rNext.move.extrude) continue;
+        // Check conditions on the current move at the junction
+        if (r.actualPeakSpeed > 10 && r.distance >= 0.5 &&
+            r.exitSpeed < r.actualPeakSpeed * 0.3) {
+          const move = r.move;
+          this._addFinding('info', 'sharp-corner', layerNum, move,
+            'Sharp corner speed drop',
+            `Layer ${layerNum}: speed drops from ${r.actualPeakSpeed.toFixed(1)} to ${r.exitSpeed.toFixed(1)} mm/s at corner.`,
+            'Increase junction deviation or jerk to allow higher cornering speeds.',
+            { peakSpeed: r.actualPeakSpeed, exitSpeed: r.exitSpeed });
+        }
+      }
+
+      // --- Ringing risk ---
+      for (let i = 1; i < layerResults.length; i++) {
+        const rPrev = layerResults[i - 1];
+        const r = layerResults[i];
+        // Both must be extrusion moves
+        if (!rPrev.move.extrude || !r.move.extrude) continue;
+        // Current move must be high speed
+        if (r.actualPeakSpeed <= 150) continue;
+
+        // Compute angle between direction vectors via dot product
+        const dx1 = rPrev.move.x2 - rPrev.move.x1;
+        const dy1 = rPrev.move.y2 - rPrev.move.y1;
+        const dx2 = r.move.x2 - r.move.x1;
+        const dy2 = r.move.y2 - r.move.y1;
+        const len1 = Math.hypot(dx1, dy1);
+        const len2 = Math.hypot(dx2, dy2);
+        if (len1 < 0.001 || len2 < 0.001) continue;
+
+        const dot = (dx1 * dx2 + dy1 * dy2) / (len1 * len2);
+        const cosAngle = Math.max(-1, Math.min(1, dot));
+        const angleDeg = Math.acos(cosAngle) * 180 / Math.PI;
+
+        if (angleDeg > 90) {
+          const move = r.move;
+          this._addFinding('warning', 'ringing-risk', layerNum, move,
+            'Ringing risk after sharp corner',
+            `Layer ${layerNum}: ${r.actualPeakSpeed.toFixed(1)} mm/s after ${angleDeg.toFixed(0)}° direction change.`,
+            'Reduce speed or enable input shaping to minimize ringing artifacts.',
+            { actualPeakSpeed: r.actualPeakSpeed, angleDeg });
+        }
+      }
+    }
+
+    // Merge consecutive findings for each category
+    this._mergeConsecutiveFindings('speed-limited');
+    this._mergeConsecutiveFindings('sharp-corner');
+    this._mergeConsecutiveFindings('ringing-risk');
+  }
+
+  _emitSpeedLimitedFinding(layerNum, run) {
+    // Find worst ratio in the run
+    let worstRatio = 1;
+    let refMove = run[0].move;
+    for (const r of run) {
+      const ratio = r.actualPeakSpeed / r.requestedSpeed;
+      if (ratio < worstRatio) {
+        worstRatio = ratio;
+        refMove = r.move;
+      }
+    }
+
+    const severity = worstRatio < 0.25 ? 'warning' : 'info';
+    const pct = (worstRatio * 100).toFixed(0);
+
+    this._addFinding(severity, 'speed-limited', layerNum, refMove,
+      `${run.length} speed-limited moves`,
+      `Layer ${layerNum}: ${run.length} consecutive moves limited to ${pct}% of requested speed.`,
+      'Increase acceleration or reduce requested speed for short segments.',
+      { moveCount: run.length, worstRatio });
+  }
+
+  _addFinding(severity, category, layerNum, move, title, description, suggestion, metadata) {
+    const id = `mo-${category}-${this._findings.length}`;
+    const midX = (move.x1 + move.x2) / 2;
+    const midY = (move.y1 + move.y2) / 2;
+    this._findings.push({
+      id, engine: 'motion', severity, category, title, description, suggestion,
+      location: {
+        layer: layerNum,
+        lineStart: move.lineIndex,
+        lineEnd: move.lineIndex,
+        xyz: { x: midX, y: midY, z: 0 },
+      },
+      metadata: metadata || {},
+    });
+  }
+
+  _mergeConsecutiveFindings(category) {
+    const catFindings = this._findings.filter(f => f.category === category);
+    if (catFindings.length <= 3) return;
+
+    const other = this._findings.filter(f => f.category !== category);
+
+    // Sort by layer
+    catFindings.sort((a, b) => a.location.layer - b.location.layer);
+
+    // Group consecutive layers (within 2 layers)
+    const groups = [];
+    let group = [catFindings[0]];
+    for (let i = 1; i < catFindings.length; i++) {
+      const prevLayer = catFindings[i - 1].location.layer;
+      const currLayer = catFindings[i].location.layer;
+      if (currLayer - prevLayer <= 2) {
+        group.push(catFindings[i]);
+      } else {
+        groups.push(group);
+        group = [catFindings[i]];
+      }
+    }
+    groups.push(group);
+
+    // Create merged findings
+    const merged = [];
+    for (const g of groups) {
+      if (g.length === 1) {
+        merged.push(g[0]);
+        continue;
+      }
+      const worst = g.reduce((w, f) => {
+        if (f.severity === 'critical') return f;
+        if (f.severity === 'warning' && w.severity !== 'critical') return f;
+        return w;
+      }, g[0]);
+      const startLayer = g[0].location.layer;
+      const endLayer = g[g.length - 1].location.layer;
+      merged.push({
+        ...worst,
+        id: `mo-${category}-merged-${merged.length}`,
+        title: worst.title,
+        description: `Layers ${startLayer}\u2013${endLayer}: ${worst.description.replace(/^Layer \d+: /, '')}`,
+        location: { ...worst.location, layer: startLayer },
+        metadata: { ...worst.metadata, layerRange: [startLayer, endLayer], mergedCount: g.length },
+      });
+    }
+
+    this._findings = [...other, ...merged];
   }
 }

@@ -15,6 +15,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [190, 230],
     bedTempRange: [55, 65],
     maxPrintSpeed: 300,          // mm/s
+    maxVolumetricFlow: 15,       // mm³/s
     minLayerTime: 8,
     waterAbsorption: 0.43,       // % saturated
     needsDrying: false,
@@ -37,6 +38,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [230, 260],
     bedTempRange: [60, 80],
     maxPrintSpeed: 300,
+    maxVolumetricFlow: 12,       // mm³/s
     minLayerTime: 10,
     waterAbsorption: 0.40,
     needsDrying: true,
@@ -59,6 +61,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [240, 280],
     bedTempRange: [90, 100],
     maxPrintSpeed: 300,
+    maxVolumetricFlow: 11,       // mm³/s
     minLayerTime: 12,
     waterAbsorption: 0.65,
     needsDrying: false,
@@ -81,6 +84,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [240, 280],
     bedTempRange: [90, 100],
     maxPrintSpeed: 300,
+    maxVolumetricFlow: 11,       // mm³/s
     minLayerTime: 12,
     waterAbsorption: 0.45,
     needsDrying: false,
@@ -103,6 +107,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [220, 240],
     bedTempRange: [30, 45],
     maxPrintSpeed: 200,
+    maxVolumetricFlow: 5,        // mm³/s
     minLayerTime: 15,
     waterAbsorption: 1.08,
     needsDrying: true,
@@ -125,6 +130,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [260, 280],
     bedTempRange: [90, 110],
     maxPrintSpeed: 300,
+    maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 15,
     waterAbsorption: 0.25,
     needsDrying: true,
@@ -149,6 +155,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [210, 240],
     bedTempRange: [45, 65],
     maxPrintSpeed: 250,
+    maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 8,
     waterAbsorption: 0.42,
     needsDrying: false,
@@ -172,6 +179,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [240, 270],
     bedTempRange: [60, 80],
     maxPrintSpeed: 200,
+    maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 10,
     waterAbsorption: 0.30,
     needsDrying: false,
@@ -195,6 +203,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [240, 280],
     bedTempRange: [90, 100],
     maxPrintSpeed: 180,
+    maxVolumetricFlow: 9,        // mm³/s
     minLayerTime: 12,
     waterAbsorption: 0.53,
     needsDrying: false,
@@ -218,6 +227,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [250, 290],
     bedTempRange: [90, 100],
     maxPrintSpeed: 250,
+    maxVolumetricFlow: 9,        // mm³/s
     minLayerTime: 12,
     waterAbsorption: 0.33,
     needsDrying: false,
@@ -241,6 +251,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [260, 280],
     bedTempRange: [90, 110],
     maxPrintSpeed: 300,
+    maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 15,
     waterAbsorption: 0.12,
     needsDrying: true,
@@ -265,6 +276,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [260, 300],
     bedTempRange: [70, 100],
     maxPrintSpeed: 100,
+    maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
     waterAbsorption: 0.37,
     needsDrying: true,
@@ -288,6 +300,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [260, 300],
     bedTempRange: [100, 120],
     maxPrintSpeed: 100,
+    maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
     waterAbsorption: 0.88,
     needsDrying: true,
@@ -311,6 +324,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [260, 300],
     bedTempRange: [100, 120],
     maxPrintSpeed: 100,
+    maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
     waterAbsorption: 2.35,
     needsDrying: true,
@@ -334,6 +348,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [260, 290],
     bedTempRange: [100, 120],
     maxPrintSpeed: 130,
+    maxVolumetricFlow: 9,        // mm³/s
     minLayerTime: 15,
     waterAbsorption: 2.56,
     needsDrying: true,
@@ -357,6 +372,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [280, 310],
     bedTempRange: [100, 120],
     maxPrintSpeed: 100,
+    maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
     waterAbsorption: 1.30,
     needsDrying: true,
@@ -380,6 +396,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [310, 340],
     bedTempRange: [100, 120],
     maxPrintSpeed: 100,
+    maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
     waterAbsorption: 0.05,
     needsDrying: true,
@@ -405,6 +422,7 @@ export const MATERIAL_PROFILES = {
     nozzleTempRange: [260, 300],
     bedTempRange: [100, 120],
     maxPrintSpeed: 100,
+    maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 15,
     waterAbsorption: 2.35,
     needsDrying: true,
