@@ -93,6 +93,81 @@ describe('StructuralAnalyzer — Wall Integrity', () => {
   });
 });
 
+describe('StructuralAnalyzer - Overhang Detection', () => {
+  it('reports overhang-severity overlay', () => {
+    const analyzer = new StructuralAnalyzer();
+    const overlays = analyzer.getSupportedOverlays();
+    assert.ok(overlays.some(o => o.id === 'overhang-severity'));
+  });
+
+  it('no overhang findings for fully supported layers', () => {
+    const analyzer = new StructuralAnalyzer();
+    const moves = [
+      { x1: 0, y1: 0, x2: 20, y2: 0, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 1 },
+      { x1: 20, y1: 0, x2: 20, y2: 20, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 2 },
+    ];
+    const layerMoves = { 0: [...moves], 1: [...moves] };
+    analyzer.analyze(layerMoves, { material: { type: 'PLA' }, thresholds: {} });
+    const overhangFindings = analyzer.getFindings().filter(f => f.category === 'overhang');
+    assert.strictEqual(overhangFindings.length, 0);
+  });
+
+  it('detects unsupported overhang moves', () => {
+    const analyzer = new StructuralAnalyzer();
+    const layerMoves = {
+      0: [{ x1: 0, y1: 0, x2: 20, y2: 0, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 1 }],
+      1: [{ x1: 0, y1: 50, x2: 20, y2: 50, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 2 }],
+    };
+    analyzer.analyze(layerMoves, { material: { type: 'PLA' }, thresholds: {} });
+    const overhangFindings = analyzer.getFindings().filter(f => f.category === 'overhang');
+    assert.ok(overhangFindings.length > 0, 'should detect overhang');
+  });
+
+  it('overhang-severity overlay returns values', () => {
+    const analyzer = new StructuralAnalyzer();
+    const layerMoves = {
+      0: [{ x1: 0, y1: 0, x2: 20, y2: 0, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 1 }],
+      1: [{ x1: 0, y1: 50, x2: 20, y2: 50, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 2 }],
+    };
+    analyzer.analyze(layerMoves, { material: { type: 'PLA' }, thresholds: {} });
+    const severity = analyzer.getOverlayData('overhang-severity', 1, 0);
+    assert.ok(severity > 0, 'should have non-zero overhang severity for unsupported move');
+  });
+});
+
+describe('StructuralAnalyzer - Bridge Detection', () => {
+  it('detects bridge spans', () => {
+    const analyzer = new StructuralAnalyzer();
+    const layerMoves = {
+      0: [
+        { x1: 0, y1: 0, x2: 5, y2: 0, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 1 },
+        { x1: 60, y1: 0, x2: 65, y2: 0, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 2 },
+      ],
+      1: [
+        { x1: 0, y1: 0, x2: 65, y2: 0, type: 'BRIDGE', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 3 },
+      ],
+    };
+    analyzer.analyze(layerMoves, { material: { type: 'PLA' }, thresholds: {} });
+    const bridgeFindings = analyzer.getFindings().filter(f => f.category === 'bridge');
+    assert.ok(bridgeFindings.length > 0, 'should detect bridge');
+  });
+
+  it('ignores tiny gaps under 2mm', () => {
+    const analyzer = new StructuralAnalyzer();
+    const layerMoves = {
+      0: [
+        { x1: 0, y1: 0, x2: 10, y2: 0, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 1 },
+      ],
+      1: [
+        { x1: 0, y1: 0, x2: 1, y2: 0, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 0.1, lineIndex: 2 },
+      ],
+    };
+    analyzer.analyze(layerMoves, { material: { type: 'PLA' }, thresholds: {} });
+    const bridgeFindings = analyzer.getFindings().filter(f => f.category === 'bridge');
+    assert.strictEqual(bridgeFindings.length, 0, 'should not flag tiny gap as bridge');
+  });
+});
+
 describe('StructuralAnalyzer — Engine Interface', () => {
   it('has correct name', () => {
     const analyzer = new StructuralAnalyzer();

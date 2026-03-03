@@ -21,6 +21,8 @@ const FILES = [
   'analysis-manager.js',        // NEW - no deps
   'structural-analyzer.js',     // NEW - depends on material-profiles
   'thermal-analyzer.js',        // NEW - depends on material-profiles
+  'retraction-analyzer.js',
+  'flow-analyzer.js',
   'viewer3d.js',
   'ui.js',
   'app.js',

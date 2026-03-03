@@ -13,6 +13,8 @@ export class MotionAnalyzer {
     };
     this.results = new Map();
     this._findings = [];
+    this._layerTimes = new Map();
+    this._timeSummary = null;
   }
 
   static inferProfile(lines) {
@@ -273,6 +275,7 @@ export class MotionAnalyzer {
    */
   analyze(layerMoves, profile) {
     this.analyzeAllLayers(layerMoves);
+    this._computeTimeSummary(layerMoves);
     this._generateFindings(layerMoves);
   }
 
@@ -296,10 +299,14 @@ export class MotionAnalyzer {
     return [
       { id: 'actual-speed', label: 'Actual Speed', unit: 'mm/s' },
       { id: 'speed-delta', label: 'Speed Delta', unit: '%' },
+      { id: 'layer-time', label: 'Layer Time', unit: 's' },
     ];
   }
 
   getOverlayData(overlayId, layerNum, moveIndex) {
+    if (overlayId === 'layer-time') {
+      return this._layerTimes.get(layerNum) || 0;
+    }
     const result = this.getResult(layerNum, moveIndex);
     if (!result) return 0;
     if (overlayId === 'actual-speed') return result.actualPeakSpeed;
@@ -317,6 +324,43 @@ export class MotionAnalyzer {
   clear() {
     this.results.clear();
     this._findings = [];
+    this._layerTimes.clear();
+    this._timeSummary = null;
+  }
+
+  // ===== Time Summary =====
+
+  _computeTimeSummary(layerMoves) {
+    this._layerTimes.clear();
+    const byType = { wall: 0, infill: 0, support: 0, travel: 0, other: 0 };
+    let totalTime = 0;
+    const layerTimeArray = [];
+
+    for (const [layerNum, layerResults] of this.results.entries()) {
+      let layerTime = 0;
+      for (const r of layerResults) {
+        const moveTime = r.timeAccel + r.timeCruise + r.timeDecel;
+        layerTime += moveTime;
+        const type = (r.move.type || '').toUpperCase();
+        if (!r.move.extrude) byType.travel += moveTime;
+        else if (type.includes('WALL') || type.includes('OUTER') || type.includes('INNER') || type.includes('PERIMETER')) byType.wall += moveTime;
+        else if (type.includes('FILL') || type.includes('SOLID') || type.includes('TOP') || type.includes('BOTTOM')) byType.infill += moveTime;
+        else if (type.includes('SUPPORT')) byType.support += moveTime;
+        else byType.other += moveTime;
+      }
+      this._layerTimes.set(layerNum, layerTime);
+      layerTimeArray.push({ layer: layerNum, time: layerTime });
+      totalTime += layerTime;
+    }
+
+    const sorted = [...layerTimeArray].sort((a, b) => b.time - a.time);
+    const slowest = sorted.slice(0, 5);
+
+    this._timeSummary = { totalTime, layerTimes: layerTimeArray, byType, slowest };
+  }
+
+  getTimeSummary() {
+    return this._timeSummary;
   }
 
   // ===== Findings Generation =====

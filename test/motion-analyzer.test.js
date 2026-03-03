@@ -309,3 +309,62 @@ describe('MotionAnalyzer - Findings', () => {
     }
   });
 });
+
+describe('MotionAnalyzer - Print Time', () => {
+  it('reports layer-time overlay', () => {
+    const analyzer = new MotionAnalyzer();
+    const overlays = analyzer.getSupportedOverlays();
+    assert.ok(overlays.some(o => o.id === 'layer-time'), 'should have layer-time overlay');
+  });
+
+  it('layer-time returns positive time for extrusion layers', () => {
+    const analyzer = new MotionAnalyzer({ acceleration: 500 });
+    const layerMoves = {
+      0: [
+        { x1: 0, y1: 0, x2: 50, y2: 0, feedRate: 3000, extrude: true, type: 'WALL-OUTER', lineIndex: 1, eLength: 1 },
+        { x1: 50, y1: 0, x2: 50, y2: 50, feedRate: 3000, extrude: true, type: 'WALL-OUTER', lineIndex: 2, eLength: 1 },
+      ]
+    };
+    analyzer.analyze(layerMoves, {});
+    const time = analyzer.getOverlayData('layer-time', 0, 0);
+    assert.ok(time > 0, 'layer time should be positive');
+  });
+
+  it('layer-time returns same value for all moves on a layer', () => {
+    const analyzer = new MotionAnalyzer({ acceleration: 500 });
+    const layerMoves = {
+      0: [
+        { x1: 0, y1: 0, x2: 50, y2: 0, feedRate: 3000, extrude: true, type: 'WALL-OUTER', lineIndex: 1, eLength: 1 },
+        { x1: 50, y1: 0, x2: 50, y2: 50, feedRate: 3000, extrude: true, type: 'WALL-OUTER', lineIndex: 2, eLength: 1 },
+      ]
+    };
+    analyzer.analyze(layerMoves, {});
+    const t0 = analyzer.getOverlayData('layer-time', 0, 0);
+    const t1 = analyzer.getOverlayData('layer-time', 0, 1);
+    assert.strictEqual(t0, t1, 'all moves on same layer should have same time');
+  });
+
+  it('getTimeSummary returns total and per-layer times', () => {
+    const analyzer = new MotionAnalyzer({ acceleration: 500 });
+    const layerMoves = {
+      0: [
+        { x1: 0, y1: 0, x2: 50, y2: 0, feedRate: 3000, extrude: true, type: 'WALL-OUTER', lineIndex: 1, eLength: 1 },
+      ],
+      1: [
+        { x1: 0, y1: 0, x2: 100, y2: 0, feedRate: 6000, extrude: true, type: 'FILL', lineIndex: 2, eLength: 1 },
+      ]
+    };
+    analyzer.analyze(layerMoves, {});
+    const summary = analyzer.getTimeSummary();
+    assert.ok(summary.totalTime > 0, 'totalTime should be positive');
+    assert.strictEqual(summary.layerTimes.length, 2, 'should have 2 layer times');
+    assert.ok(summary.byType.wall > 0, 'wall time should be positive');
+    assert.ok(summary.byType.infill > 0, 'infill time should be positive');
+    assert.ok(Array.isArray(summary.slowest), 'should have slowest array');
+  });
+
+  it('getTimeSummary returns null before analysis', () => {
+    const analyzer = new MotionAnalyzer();
+    assert.strictEqual(analyzer.getTimeSummary(), null);
+  });
+});

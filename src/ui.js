@@ -1730,11 +1730,32 @@ function renderAnalysisPanel() {
     grouped[f.engine].push(f);
   }
 
-  const ENGINE_LABELS = { motion: 'Motion Reality', structural: 'Structural Integrity', thermal: 'Thermal Dynamics' };
+  const ENGINE_LABELS = { motion: 'Motion Reality', structural: 'Structural Integrity', thermal: 'Thermal Dynamics', retraction: 'Retraction Quality', flow: 'Flow Rate' };
   const SEVERITY_ICON = { critical: '\u2B24', warning: '\u26A0', info: '\u2139' };
   const SEVERITY_CLASS = { critical: 'severity-critical', warning: 'severity-warning', info: 'severity-info' };
 
   let html = '';
+
+  // Print time summary
+  if (typeof motionAnalyzer !== 'undefined' && motionAnalyzer.getTimeSummary) {
+    const ts = motionAnalyzer.getTimeSummary();
+    if (ts && ts.totalTime > 0) {
+      const hours = Math.floor(ts.totalTime / 3600);
+      const mins = Math.floor((ts.totalTime % 3600) / 60);
+      const secs = Math.floor(ts.totalTime % 60);
+      const timeStr = hours > 0 ? hours + 'h ' + mins + 'm' : mins + 'm ' + secs + 's';
+      html += '<div class="analysis-time-summary">' +
+        '<strong>Estimated Print Time:</strong> ' + timeStr +
+        '<div class="time-breakdown">' +
+          '<span>Walls: ' + Math.floor(ts.byType.wall / 60) + 'm</span>' +
+          '<span>Infill: ' + Math.floor(ts.byType.infill / 60) + 'm</span>' +
+          '<span>Travel: ' + Math.floor(ts.byType.travel / 60) + 'm</span>' +
+          '<span>Support: ' + Math.floor(ts.byType.support / 60) + 'm</span>' +
+        '</div>' +
+      '</div>';
+    }
+  }
+
   for (const [engineName, engineFindings] of Object.entries(grouped)) {
     const label = ENGINE_LABELS[engineName] || engineName;
     html += '<div class="analysis-engine">' +
