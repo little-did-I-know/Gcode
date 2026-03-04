@@ -23,6 +23,7 @@ const FILES = [
   'thermal-analyzer.js',        // NEW - depends on material-profiles
   'retraction-analyzer.js',
   'flow-analyzer.js',
+  'fan-profile.js',
   'viewer3d.js',
   'ui.js',
   'app.js',
