@@ -175,8 +175,9 @@ export class GcodeParser {
       if (currentLayer) {
         const typeMatch = line.match(/^;TYPE:(.+)/i) || line.match(/^; FEATURE:\s*(.+)/i);
         if (typeMatch) {
-          // Normalize PrusaSlicer/SuperSlicer type names
+          // Normalize slicer type names (PrusaSlicer, BambuStudio, SuperSlicer)
           const typeNormalize = {
+            // PrusaSlicer / SuperSlicer
             'External perimeter': 'WALL-OUTER',
             'Perimeter': 'WALL-INNER',
             'Solid infill': 'SOLID',
@@ -191,6 +192,18 @@ export class GcodeParser {
             'Skirt/Brim': 'SKIRT',
             'Support material': 'SUPPORT',
             'Support material interface': 'SUPPORT-INTERFACE',
+            // BambuStudio
+            'Inner wall': 'WALL-INNER',
+            'Outer wall': 'WALL-OUTER',
+            'Overhang wall': 'OVERHANG',
+            'Internal solid infill': 'SOLID',
+            'Bottom surface': 'BOTTOM',
+            'Top surface': 'TOP',
+            'Bridge': 'BRIDGE',
+            'Sparse infill': 'FILL',
+            'Brim': 'BRIM',
+            'Support': 'SUPPORT',
+            'Support interface': 'SUPPORT-INTERFACE',
           };
           const rawType = typeMatch[1].trim();
           currentType = typeNormalize[rawType] || rawType.toUpperCase();
