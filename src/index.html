@@ -474,6 +474,16 @@ main { display: flex; flex: 1; overflow: hidden; }
 .ref-card-firmware { font-size: 11px; padding: 4px 8px; border-radius: 4px; margin-bottom: 6px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg-secondary)); color: var(--text-primary); }
 .ref-card-insert { font-size: 11px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; float: right; }
 .ref-card-insert:hover { background: var(--accent); color: #fff; }
+.ref-fw-badges { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
+.ref-fw-badge { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 8px; line-height: 1.4; white-space: nowrap; }
+.ref-fw-badge[data-fw="bambu"] { background: #2d7a3a22; color: #2d7a3a; border: 1px solid #2d7a3a44; }
+.ref-fw-badge[data-fw="klipper"] { background: #c4640022; color: #c46400; border: 1px solid #c4640044; }
+.ref-fw-badge[data-fw="marlin"] { background: #2563eb22; color: #2563eb; border: 1px solid #2563eb44; }
+.ref-fw-badge[data-fw="rrf"] { background: #7c3aed22; color: #7c3aed; border: 1px solid #7c3aed44; }
+[data-theme="dark"] .ref-fw-badge[data-fw="bambu"] { background: #4ade8022; color: #4ade80; border-color: #4ade8044; }
+[data-theme="dark"] .ref-fw-badge[data-fw="klipper"] { background: #fb923c22; color: #fb923c; border-color: #fb923c44; }
+[data-theme="dark"] .ref-fw-badge[data-fw="marlin"] { background: #60a5fa22; color: #60a5fa; border-color: #60a5fa44; }
+[data-theme="dark"] .ref-fw-badge[data-fw="rrf"] { background: #a78bfa22; color: #a78bfa; border-color: #a78bfa44; }
 .ref-no-results { text-align: center; color: var(--text-secondary); padding: 20px 0; font-size: 13px; }
 
 /* PRINTER PROFILE PANEL */

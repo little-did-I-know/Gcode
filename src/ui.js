@@ -2031,8 +2031,18 @@ function renderReference() {
     html += '<div class="ref-category-cards">';
     catMap[cat].forEach(cmd => {
       const fwNote = cmd.firmware[fw];
-      html += '<div class="ref-card" data-search="' + (cmd.code + ' ' + cmd.name + ' ' + cmd.description).toLowerCase().replace(/"/g, '&quot;') + '">';
-      html += '<div class="ref-card-head"><span class="ref-card-code">' + cmd.code + '</span><span class="ref-card-name">' + cmd.name + '</span>';
+      const searchFw = cmd.supportedBy ? ' ' + cmd.supportedBy.join(' ') : '';
+      html += '<div class="ref-card" data-search="' + (cmd.code + ' ' + cmd.name + ' ' + cmd.description + searchFw).toLowerCase().replace(/"/g, '&quot;') + '">';
+      let badgeHtml = '';
+      if (cmd.supportedBy) {
+        badgeHtml = '<span class="ref-fw-badges">';
+        const FW_NAMES = { bambu: 'Bambu', klipper: 'Klipper', marlin: 'Marlin', rrf: 'RRF' };
+        cmd.supportedBy.forEach(fw => {
+          badgeHtml += '<span class="ref-fw-badge" data-fw="' + fw + '">' + (FW_NAMES[fw] || fw) + '</span>';
+        });
+        badgeHtml += '</span>';
+      }
+      html += '<div class="ref-card-head"><span class="ref-card-code">' + cmd.code + '</span><span class="ref-card-name">' + cmd.name + '</span>' + badgeHtml;
       html += '<button class="ref-card-insert" onclick="insertRefCommand(\'' + cmd.code.replace(/'/g, "\\'") + '\');event.stopPropagation()">Insert</button></div>';
       html += '<div class="ref-card-desc">' + cmd.description + '</div>';
       if (cmd.params.length > 0) {

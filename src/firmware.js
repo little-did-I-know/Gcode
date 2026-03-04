@@ -141,6 +141,75 @@ export const GCODE_REFERENCE = [
     template: 'G3 X__ Y__ I__ J__ F1200',
     firmware: { bambu: null, klipper: 'Enable arc support with [gcode_arcs] in printer.cfg.', marlin: 'Enable ARC_SUPPORT in Configuration_adv.h.', reprap: null }
   },
+  { code: 'G4', name: 'Dwell (Pause)', category: 'Movement',
+    description: 'Pause the printer for a set amount of time without moving. Useful for letting the nozzle heat stabilize, waiting for a fan to spin up, or adding a brief pause between moves for cooling.',
+    params: [
+      { letter: 'P', name: 'Time to wait in milliseconds. P1000 = 1 second pause', example: '1000' },
+      { letter: 'S', name: 'Time to wait in seconds. S2 = 2 second pause (not supported on Klipper)', example: '2' },
+    ],
+    example: 'G4 P500 ; Pause for 0.5 seconds\nG4 S2 ; Pause for 2 seconds\n; Wait for fan to reach speed after turning on:\nM106 S255 ; Fan to 100%\nG4 P1500 ; Wait 1.5 seconds for fan spin-up',
+    template: 'G4 P1000',
+    firmware: { bambu: null, klipper: 'Klipper only supports P (milliseconds). The S parameter is not recognized.', marlin: 'Marlin supports both P (milliseconds) and S (seconds).', reprap: null }
+  },
+  { code: 'G5', name: 'Bézier Spline', category: 'Movement', supportedBy: ['marlin'],
+    description: 'Move using a cubic Bézier curve for smoother paths than arc moves (G2/G3). The curve is defined by the current position, two control points (specified as offsets), and the endpoint. Produces very smooth toolpaths for decorative or organic shapes.',
+    params: [
+      { letter: 'X', name: 'End X position of the curve in mm', example: '20' },
+      { letter: 'Y', name: 'End Y position of the curve in mm', example: '20' },
+      { letter: 'I', name: 'X offset from start to first control point, in mm', example: '5' },
+      { letter: 'J', name: 'Y offset from start to first control point, in mm', example: '10' },
+      { letter: 'P', name: 'X offset from end to second control point, in mm', example: '-5' },
+      { letter: 'Q', name: 'Y offset from end to second control point, in mm', example: '-10' },
+      { letter: 'E', name: 'Extruder position in mm (filament to extrude over the curve)', example: '1.5' },
+      { letter: 'F', name: 'Speed in mm/min', example: '1200' },
+    ],
+    example: '; Draw an S-curve from current position to X20 Y20:\nG5 X20 Y20 I5 J10 P-5 Q-10 E1.5 F1200',
+    template: 'G5 X__ Y__ I__ J__ P__ Q__ F1200',
+    firmware: { bambu: null, klipper: null, marlin: 'Requires BEZIER_CURVE_SUPPORT to be enabled in Configuration_adv.h.', reprap: null }
+  },
+  { code: 'G10', name: 'Firmware Retract', category: 'Movement', supportedBy: ['marlin', 'klipper', 'rrf'],
+    description: 'Retract filament using firmware-configured length and speed instead of explicit E moves. Paired with G11 (recover). This is useful because the slicer does not need to know retraction settings — the firmware handles it, making it easy to tune retraction without reslicing.',
+    params: [
+      { letter: 'S', name: 'Optional retract length override in mm. If omitted, uses firmware-configured value', example: '1.0' },
+    ],
+    example: '; Retract before travel move:\nG10 ; Retract filament (firmware settings)\nG0 X100 Y100 ; Travel to new position\nG11 ; Recover filament\n; With override:\nG10 S0.8 ; Retract 0.8mm instead of configured default',
+    template: 'G10',
+    firmware: { bambu: null, klipper: 'Requires [firmware_retraction] section in printer.cfg. Retract/recover lengths set via SET_RETRACTION.', marlin: 'Requires FWRETRACT to be enabled. Configure lengths with M207/M208.', reprap: 'Uses retraction settings configured via M207.' }
+  },
+  { code: 'G11', name: 'Firmware Recover (Unretract)', category: 'Movement', supportedBy: ['marlin', 'klipper', 'rrf'],
+    description: 'Push filament back after a G10 retraction using firmware-configured recovery length and speed. Always use G11 after G10 — do not mix firmware retraction with manual E moves.',
+    params: [],
+    example: '; Standard retract/recover sequence:\nG10 ; Retract filament\nG0 X50 Y50 ; Travel move\nG11 ; Recover filament\nG1 X60 Y50 E0.5 F1500 ; Resume printing',
+    template: 'G11',
+    firmware: { bambu: null, klipper: 'Requires [firmware_retraction] section in printer.cfg.', marlin: 'Requires FWRETRACT to be enabled. Recovery settings configured with M208.', reprap: 'Uses recovery settings configured via M207.' }
+  },
+  { code: 'G12', name: 'Nozzle Clean', category: 'Movement', supportedBy: ['marlin'],
+    description: 'Run the nozzle cleaning sequence. Moves the nozzle across a cleaning brush or wiper pad using a configured pattern. Helps remove oozing filament before printing to improve first-layer adhesion.',
+    params: [
+      { letter: 'P', name: 'Cleaning pattern: 0 = straight stroke, 1 = zig-zag, 2 = circular', example: '0' },
+      { letter: 'S', name: 'Number of strokes (repetitions of the cleaning pattern)', example: '3' },
+      { letter: 'T', name: 'Number of triangles for zig-zag pattern (P1 only)', example: '5' },
+    ],
+    example: '; Clean nozzle with 3 straight strokes:\nG12 P0 S3\n; Zig-zag clean with 5 triangles, 2 strokes:\nG12 P1 S2 T5',
+    template: 'G12 P0 S3',
+    firmware: { bambu: null, klipper: null, marlin: 'Requires NOZZLE_CLEAN_FEATURE to be enabled. Brush position configured in Configuration.h.', reprap: null }
+  },
+  { code: 'G20', name: 'Set Units to Inches', category: 'Movement',
+    description: 'Switch coordinate interpretation to inches. After G20, a command like G1 X1 means move to 1 inch (25.4mm). Most 3D printers use millimeters (G21) by default. Use with caution — nearly all slicers output millimeters.',
+    params: [],
+    example: 'G20 ; Switch to inches\nG1 X1 Y1 F60 ; Move to 1 inch, 1 inch at 1 inch/min\nG21 ; Switch back to millimeters (recommended)',
+    template: 'G20',
+    firmware: { bambu: null, klipper: null, marlin: 'Supported, but G21 (millimeters) is the standard for 3D printing.', reprap: 'Supported, but G21 (millimeters) is the standard for 3D printing.' }
+  },
+  { code: 'G27', name: 'Park Toolhead', category: 'Movement', supportedBy: ['marlin', 'klipper'],
+    description: 'Move the print head to a predefined parking position. Useful during filament changes, mid-print pauses, or when you need the nozzle out of the way. The parking position is configured in firmware.',
+    params: [
+      { letter: 'P', name: 'Park mode: 0 = move to XY park position only, 1 = move to XYZ park position, 2 = raise Z first then move to XY', example: '0' },
+    ],
+    example: '; Park for filament change:\nG27 P2 ; Raise Z then park at XY position\n; Simple XY park:\nG27 P0 ; Move to park XY, leave Z alone',
+    template: 'G27 P2',
+    firmware: { bambu: null, klipper: 'Typically implemented as a custom [gcode_macro G27] or using toolhead_park configuration.', marlin: 'Requires NOZZLE_PARK_FEATURE to be enabled. Park position set in Configuration.h.', reprap: null }
+  },
   { code: 'G28', name: 'Home Axes', category: 'Movement',
     description: 'Move the print head to the home position (0,0,0) using the endstop switches. With no parameters, homes all three axes. You can home individual axes by specifying them.',
     params: [
@@ -236,8 +305,36 @@ export const GCODE_REFERENCE = [
     template: 'M107',
     firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
   },
+  { code: 'M105', name: 'Report Temperatures', category: 'Temperature',
+    description: 'Request current temperatures of all heaters. Printer responds with a line like "ok T:205.3 /210.0 B:59.8 /60.0". T=hotend, B=bed. Most host software (OctoPrint, etc.) polls this automatically.',
+    params: [],
+    example: 'M105 ; Report current temperatures\n; Response: ok T:205.3 /210.0 B:59.8 /60.0',
+    template: 'M105',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M141', name: 'Set Chamber Temp', category: 'Temperature',
+    supportedBy: ['marlin', 'klipper', 'rrf'],
+    description: 'Set the heated chamber/enclosure temperature. Does not wait. Useful for ABS and other materials that benefit from a heated chamber. Not all printers have a chamber heater.',
+    params: [
+      { letter: 'S', name: 'Target temperature in °C', example: '50' },
+    ],
+    example: 'M141 S50 ; Set chamber temperature to 50°C',
+    template: 'M141 S__',
+    firmware: { bambu: null, klipper: 'Requires [heater_generic chamber] or similar in printer.cfg.', marlin: 'Requires TEMP_SENSOR_CHAMBER.', reprap: null }
+  },
+  { code: 'M191', name: 'Wait for Chamber Temp', category: 'Temperature',
+    supportedBy: ['marlin', 'klipper', 'rrf'],
+    description: 'Set chamber temperature and wait until reached. Can take a long time since chambers heat slowly.',
+    params: [
+      { letter: 'S', name: 'Target temperature in °C (wait for heating only)', example: '50' },
+      { letter: 'R', name: 'Target temperature in °C (wait for exact — heating or cooling)', example: '45' },
+    ],
+    example: 'M191 S50 ; Set chamber to 50°C and wait\nM191 R45 ; Wait for chamber to reach exactly 45°C',
+    template: 'M191 S__',
+    firmware: { bambu: null, klipper: 'Requires [heater_generic chamber] or similar in printer.cfg.', marlin: 'Requires TEMP_SENSOR_CHAMBER.', reprap: null }
+  },
 
-  // \u2500\u2500 Extrusion \u2500\u2500
+  //\u2500\u2500 Extrusion \u2500\u2500
   { code: 'M82', name: 'Absolute Extrusion', category: 'Extrusion',
     description: 'Set the extruder to absolute mode. The E value in G1 commands is the total filament pushed since the last G92 E0 reset. Most slicers use this mode. Example: E10 means "10mm total extruded so far".',
     params: [],
@@ -254,7 +351,7 @@ export const GCODE_REFERENCE = [
   },
 
   // \u2500\u2500 Print Control \u2500\u2500
-  { code: 'M0', name: 'Unconditional Stop', category: 'Print Control',
+  { code: 'M0', name: 'Unconditional Stop', category: 'Print Control', supportedBy: ['marlin', 'klipper', 'rrf'],
     description: 'Pause the print and wait for user to press a button on the LCD/touchscreen. The printer stops all movement and waits indefinitely (or until timeout).',
     params: [
       { letter: 'S', name: 'Optional timeout in seconds. After this many seconds, the print resumes automatically. Omit for indefinite pause', example: '30' },
@@ -263,14 +360,14 @@ export const GCODE_REFERENCE = [
     template: 'M0',
     firmware: { bambu: 'Not recommended for Bambu Lab \u2014 use M400 U1 instead.', klipper: 'M0 is supported but PAUSE macro is preferred.', marlin: 'Requires LCD or host connection to resume.', reprap: null }
   },
-  { code: 'M25', name: 'Pause SD Print', category: 'Print Control',
+  { code: 'M25', name: 'Pause SD Print', category: 'Print Control', supportedBy: ['marlin'],
     description: 'Pause a print that is running from the SD card or USB drive. Has no effect on prints streamed from a host computer (OctoPrint, etc.).',
     params: [],
     example: 'M25 ; Pause the SD card print',
     template: 'M25',
     firmware: { bambu: null, klipper: 'Not commonly used in Klipper \u2014 use PAUSE macro instead.', marlin: 'Only works for SD prints. For host prints, use M0 or M600.', reprap: null }
   },
-  { code: 'M226', name: 'Wait for Pin / Pause', category: 'Print Control',
+  { code: 'M226', name: 'Wait for Pin / Pause', category: 'Print Control', supportedBy: ['rrf', 'marlin'],
     description: 'In RepRapFirmware, pauses the print (like pressing Pause in the web interface). In Marlin, waits for a specific pin to change state (different behavior!).',
     params: [],
     example: '; RepRapFirmware: Pause for manual intervention\nM226 ; Pauses print, runs pause.g macro',
@@ -297,14 +394,14 @@ export const GCODE_REFERENCE = [
     template: 'M400',
     firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
   },
-  { code: 'M400 U1', name: 'Bambu Lab Pause', category: 'Print Control',
+  { code: 'M400 U1', name: 'Bambu Lab Pause', category: 'Print Control', supportedBy: ['bambu'],
     description: 'Bambu Lab-specific pause. Shows a pop-up dialog on the touchscreen with an audio alert. This is the recommended pause method for all Bambu Lab printers (X1, P1, A1 series).',
     params: [],
     example: '; Pause for insert placement on Bambu Lab:\nG91 ; Relative mode\nG1 Z5 F600 ; Lift nozzle 5mm\nG90 ; Absolute mode\nG1 X5 Y5 F6000 ; Move to front corner\nM400 U1 ; Show pause dialog on touchscreen',
     template: 'M400 U1',
     firmware: { bambu: 'Recommended pause command for all Bambu Lab printers.', klipper: 'Not supported \u2014 use PAUSE macro instead.', marlin: 'Not supported \u2014 use M0 or M600.', reprap: 'Not supported \u2014 use M226.' }
   },
-  { code: 'PAUSE', name: 'Klipper Pause Macro', category: 'Print Control',
+  { code: 'PAUSE', name: 'Klipper Pause Macro', category: 'Print Control', supportedBy: ['klipper'],
     description: 'Klipper-specific pause macro. Behavior (park position, retraction amount, speed) is defined in your printer.cfg. Much more customizable than M0.',
     params: [],
     example: '; Simple Klipper pause:\nPAUSE ; Runs your configured pause sequence\n; To resume, use RESUME command or UI button',
@@ -320,7 +417,7 @@ export const GCODE_REFERENCE = [
     template: 'G28\nG29',
     firmware: { bambu: 'Bambu Lab printers auto-level before each print. Manual G29 is not typically needed.', klipper: 'Use BED_MESH_CALIBRATE instead. G29 is not a native Klipper command.', marlin: 'Requires a probe (BLTouch, inductive, etc.) and AUTO_BED_LEVELING enabled.', reprap: 'Runs the bed.g macro to probe the bed.' }
   },
-  { code: 'M48', name: 'Probe Repeatability Test', category: 'Calibration & Leveling',
+  { code: 'M48', name: 'Probe Repeatability Test', category: 'Calibration & Leveling', supportedBy: ['marlin'],
     description: 'Test your Z-probe accuracy by probing the same spot multiple times. Reports the standard deviation \u2014 lower is better. A good probe should be under 0.01mm.',
     params: [
       { letter: 'P', name: 'Number of times to probe (more = more accurate test). Default is usually 10', example: '10' },
@@ -349,6 +446,126 @@ export const GCODE_REFERENCE = [
     example: 'M503 ; Dump all settings to console\n; Look for lines like:\n;   M92 X80 Y80 Z400 E93 (steps/mm)\n;   M301 P22.2 I1.08 D114 (PID values)',
     template: 'M503',
     firmware: { bambu: null, klipper: 'Not applicable \u2014 settings are in printer.cfg.', marlin: null, reprap: null }
+  },
+  { code: 'G30', name: 'Single Z-Probe', category: 'Calibration & Leveling', supportedBy: ['marlin', 'klipper', 'rrf'],
+    description: 'Probe a single point to measure Z height. Reports the Z value where the probe triggers. Useful for checking individual bed spots or setting Z offset.',
+    params: [
+      { letter: 'X', name: 'X position to probe (moves to this X before probing)', example: '100' },
+      { letter: 'Y', name: 'Y position to probe (moves to this Y before probing)', example: '100' },
+    ],
+    example: '; Probe the center of a 220mm bed:\nG28 ; Home first\nG30 X110 Y110 ; Probe center and report Z height\n; Probe current position:\nG30 ; Probe right where the nozzle is now',
+    template: 'G30 X110 Y110',
+    firmware: { bambu: null, klipper: 'Use PROBE command instead. G30 is not a native Klipper command.', marlin: 'Requires a Z probe configured (BLTouch, inductive, etc.).', reprap: 'Fully supported. Can also be used in bed.g for manual mesh probing.' }
+  },
+  { code: 'G33', name: 'Delta Auto Calibration', category: 'Calibration & Leveling', supportedBy: ['marlin'],
+    description: 'Calibrate delta printer geometry by probing multiple points. Adjusts endstop offsets, delta radius, and tower angles automatically. Only relevant for delta-style printers (not cartesian or CoreXY).',
+    params: [
+      { letter: 'C', name: 'Calibration precision level (1-10, higher = more probe points and better accuracy but slower)', example: '5' },
+      { letter: 'V', name: 'Verbose level (0=quiet, 1=summary, 2=details, 3=full debug output)', example: '1' },
+    ],
+    example: '; Run delta calibration with medium precision:\nG28 ; Home first\nG33 C5 V1 ; Calibrate with precision 5, show summary\n; Quick calibration:\nG33 C1 ; Fastest, fewest probe points',
+    template: 'G33 C5 V1',
+    firmware: { bambu: null, klipper: 'Use DELTA_CALIBRATE command instead.', marlin: 'Requires DELTA_AUTO_CALIBRATION enabled in Configuration.h. Delta printers only.', reprap: null }
+  },
+  { code: 'G34', name: 'Z Stepper Alignment', category: 'Calibration & Leveling', supportedBy: ['marlin'],
+    description: 'Automatically align multiple Z steppers by probing near each Z motor and adjusting until they match. For printers with 2 or more independent Z motors (dual Z, triple Z). Eliminates bed tilt caused by misaligned Z screws.',
+    params: [
+      { letter: 'I', name: 'Maximum number of alignment iterations (default 3)', example: '5' },
+      { letter: 'T', name: 'Target accuracy in mm \u2014 stops early if achieved (default 0.02)', example: '0.01' },
+      { letter: 'A', name: 'Amplification factor for corrections (increase if convergence is slow)', example: '2' },
+    ],
+    example: '; Align dual Z steppers:\nG28 ; Home first\nG34 I5 T0.01 ; Up to 5 iterations, target 0.01mm accuracy\n; Quick alignment with defaults:\nG34',
+    template: 'G34',
+    firmware: { bambu: null, klipper: 'Use Z_TILT_ADJUST command instead.', marlin: 'Requires Z_STEPPER_AUTO_ALIGN enabled. Needs 2+ independent Z motors.', reprap: null }
+  },
+  { code: 'G35', name: 'Tramming Assistant', category: 'Calibration & Leveling', supportedBy: ['marlin'],
+    description: 'Probe bed screw locations and report how much to turn each adjustment knob. Tells you exactly how far and which direction to turn each screw (e.g. "front-left: 1.5 turns clockwise"). Much easier than manual paper-test tramming.',
+    params: [
+      { letter: 'S', name: 'Screw thread pitch in mm (2 for M3 screws, 2.5 for M4 screws \u2014 must match your bed screws)', example: '2' },
+    ],
+    example: '; Tram the bed with M3 adjustment screws:\nG28 ; Home first\nG35 S2 ; Probe screw locations, report adjustments\n; Follow the on-screen instructions to turn each knob',
+    template: 'G35 S2',
+    firmware: { bambu: null, klipper: 'Use SCREWS_TILT_CALCULATE command instead.', marlin: 'Requires ASSISTED_TRAMMING enabled and screw positions defined in Configuration.h.', reprap: null }
+  },
+  { code: 'G38.2', name: 'Probe Toward Target', category: 'Calibration & Leveling', supportedBy: ['marlin', 'klipper'],
+    description: 'Move toward a target position until the probe triggers (makes contact). Stops immediately on contact and reports the exact position. Errors if the target is reached without triggering. CNC-style probing for tool setting and workpiece measurement.',
+    params: [
+      { letter: 'X', name: 'Target X position to probe toward', example: '100' },
+      { letter: 'Y', name: 'Target Y position to probe toward', example: '100' },
+      { letter: 'Z', name: 'Target Z position to probe toward', example: '0' },
+      { letter: 'F', name: 'Feed rate in mm/min (slower = more accurate)', example: '60' },
+    ],
+    example: '; Probe downward toward the bed:\nG38.2 Z0 F60 ; Move Z down until probe triggers\n; Probe toward a workpiece in X:\nG38.2 X50 F120 ; Move toward X50 until contact',
+    template: 'G38.2 Z0 F60',
+    firmware: { bambu: null, klipper: 'Supported via the probe pin configuration.', marlin: 'Requires G38_PROBE_TARGET enabled in Configuration_adv.h.', reprap: null }
+  },
+  { code: 'G38.3', name: 'Probe Toward (No Error)', category: 'Calibration & Leveling', supportedBy: ['marlin', 'klipper'],
+    description: 'Same as G38.2 \u2014 move toward target until probe triggers \u2014 but does NOT error if the probe never triggers before reaching the target position. Useful for optional probing or scanning where contact is not guaranteed.',
+    params: [
+      { letter: 'X', name: 'Target X position to probe toward', example: '100' },
+      { letter: 'Y', name: 'Target Y position to probe toward', example: '100' },
+      { letter: 'Z', name: 'Target Z position to probe toward', example: '0' },
+      { letter: 'F', name: 'Feed rate in mm/min (slower = more accurate)', example: '60' },
+    ],
+    example: '; Probe downward, no error if nothing is hit:\nG38.3 Z0 F60 ; Move Z down, stop on contact or at Z0\n; Use in a scanning loop where contact is optional:\nG38.3 X100 F120',
+    template: 'G38.3 Z0 F60',
+    firmware: { bambu: null, klipper: 'Supported via the probe pin configuration.', marlin: 'Requires G38_PROBE_TARGET enabled in Configuration_adv.h.', reprap: null }
+  },
+  { code: 'G38.4', name: 'Probe Away from Target', category: 'Calibration & Leveling', supportedBy: ['marlin'],
+    description: 'Move away from the target position until the probe releases (loses contact). Errors if the probe does not release before reaching the target. Used for finding exact edges by backing off after initial contact.',
+    params: [
+      { letter: 'X', name: 'Target X position to move away toward', example: '100' },
+      { letter: 'Y', name: 'Target Y position to move away toward', example: '100' },
+      { letter: 'Z', name: 'Target Z position to move away toward', example: '10' },
+      { letter: 'F', name: 'Feed rate in mm/min', example: '60' },
+    ],
+    example: '; After G38.2 contact, back off to find exact edge:\nG38.2 Z0 F60 ; Probe down until contact\nG38.4 Z10 F30 ; Back off slowly until probe releases',
+    template: 'G38.4 Z10 F30',
+    firmware: { bambu: null, klipper: null, marlin: 'Requires G38_PROBE_TARGET and G38_PROBE_AWAY enabled.', reprap: null }
+  },
+  { code: 'G38.5', name: 'Probe Away (No Error)', category: 'Calibration & Leveling', supportedBy: ['marlin'],
+    description: 'Same as G38.4 \u2014 move away from target until probe releases \u2014 but does NOT error if the probe never releases before reaching the target. Silent failure version for scripted probing sequences.',
+    params: [
+      { letter: 'X', name: 'Target X position to move away toward', example: '100' },
+      { letter: 'Y', name: 'Target Y position to move away toward', example: '100' },
+      { letter: 'Z', name: 'Target Z position to move away toward', example: '10' },
+      { letter: 'F', name: 'Feed rate in mm/min', example: '60' },
+    ],
+    example: '; Back off without erroring if probe stays triggered:\nG38.5 Z10 F30 ; Move up, stop when probe releases or at Z10',
+    template: 'G38.5 Z10 F30',
+    firmware: { bambu: null, klipper: null, marlin: 'Requires G38_PROBE_TARGET and G38_PROBE_AWAY enabled.', reprap: null }
+  },
+  { code: 'M290', name: 'Babystepping', category: 'Calibration & Leveling', supportedBy: ['marlin', 'klipper'],
+    description: 'Make tiny Z adjustments during printing without pausing. Positive values move the nozzle up (away from bed), negative values move it down (closer to bed). Typical adjustments are 0.01\u20130.1mm. Great for fine-tuning first layer squish in real time.',
+    params: [
+      { letter: 'Z', name: 'Z offset adjustment in mm (positive = up, negative = down)', example: '-0.05' },
+      { letter: 'P', name: 'Persistent \u2014 save the offset (0=temporary, 1=persistent). Marlin only', example: '1' },
+    ],
+    example: '; Bring nozzle 0.05mm closer to bed (better squish):\nM290 Z-0.05 ; Babystep down 0.05mm\n; Move nozzle up slightly (less squish):\nM290 Z0.02 ; Babystep up 0.02mm\n; Save the adjustment permanently (Marlin):\nM290 Z-0.05 P1',
+    template: 'M290 Z-0.05',
+    firmware: { bambu: null, klipper: 'Use SET_GCODE_OFFSET Z_ADJUST=value MOVE=1 instead of M290.', marlin: 'Requires BABYSTEPPING enabled in Configuration_adv.h.', reprap: null }
+  },
+  { code: 'M420', name: 'Bed Leveling State', category: 'Calibration & Leveling', supportedBy: ['marlin'],
+    description: 'Turn bed leveling compensation on or off, or set the fade height. Fade gradually reduces the leveling correction as Z increases \u2014 at the fade height, correction becomes zero. Typical fade height is 10mm. Requires mesh data from a previous G29.',
+    params: [
+      { letter: 'S', name: 'Enable or disable leveling (1=enable, 0=disable)', example: '1' },
+      { letter: 'Z', name: 'Fade height in mm \u2014 correction fades to zero at this Z height (0 = no fade)', example: '10' },
+    ],
+    example: '; Enable leveling with 10mm fade:\nM420 S1 Z10 ; Turn on mesh compensation, fade over 10mm\n; Disable leveling:\nM420 S0\n; Re-enable saved mesh after G28 (G28 disables leveling):\nG28\nM420 S1 ; Restore mesh without re-probing',
+    template: 'M420 S1 Z10',
+    firmware: { bambu: null, klipper: 'Use BED_MESH_PROFILE LOAD=default to reload a saved mesh.', marlin: 'Requires mesh bed leveling data. G28 disables leveling \u2014 use M420 S1 after homing to re-enable.', reprap: null }
+  },
+  { code: 'M421', name: 'Set Mesh Point', category: 'Calibration & Leveling', supportedBy: ['marlin'],
+    description: 'Manually set or adjust a single point in the bed leveling mesh. Use after G29 to fine-tune specific spots that are consistently off. You can set an absolute Z value or add a relative offset to the existing value.',
+    params: [
+      { letter: 'I', name: 'X index in the mesh grid (0 = first column)', example: '2' },
+      { letter: 'J', name: 'Y index in the mesh grid (0 = first row)', example: '3' },
+      { letter: 'Z', name: 'Absolute Z offset in mm for this mesh point', example: '0.05' },
+      { letter: 'Q', name: 'Relative offset \u2014 added to the current mesh value at this point', example: '-0.02' },
+    ],
+    example: '; Set mesh point (2,3) to 0.05mm:\nM421 I2 J3 Z0.05\n; Nudge mesh point (1,1) down by 0.02mm:\nM421 I1 J1 Q-0.02\n; After adjustments, save to EEPROM:\nM500',
+    template: 'M421 I2 J3 Z0.05',
+    firmware: { bambu: null, klipper: 'Not directly supported \u2014 edit the mesh via BED_MESH_PROFILE or Mainsail/Fluidd UI.', marlin: 'Requires a valid mesh from G29. Use M420 V to view current mesh values.', reprap: null }
   },
 
   // \u2500\u2500 Stepper & Motion \u2500\u2500
@@ -427,9 +644,106 @@ export const GCODE_REFERENCE = [
     template: 'M221 S100',
     firmware: { bambu: null, klipper: 'Use SET_PRESSURE_ADVANCE for flow tuning instead.', marlin: null, reprap: null }
   },
+  { code: 'M206', name: 'Set Home Offset', category: 'Stepper & Motion', supportedBy: ['marlin'],
+    description: 'Apply a persistent offset to the home position. After homing, the printer adds these offsets. Most commonly used for Z offset \u2014 if your first layer is too high, M206 Z-0.1 brings it 0.1mm closer. Save with M500.',
+    params: [
+      { letter: 'X', name: 'X axis home offset in mm', example: '0' },
+      { letter: 'Y', name: 'Y axis home offset in mm', example: '0' },
+      { letter: 'Z', name: 'Z axis home offset in mm', example: '-0.1' },
+    ],
+    example: 'M206 Z-0.1 ; Move Z home 0.1mm closer to bed\nM206 X0 Y0 Z0 ; Clear all home offsets\nM500 ; Save to EEPROM',
+    template: 'M206 Z-0.1',
+    firmware: { bambu: null, klipper: 'Use [homing_override] or SET_GCODE_OFFSET.', marlin: null, reprap: 'Use G10 P0 Z-offset.' }
+  },
+  { code: 'M211', name: 'Software Endstops', category: 'Stepper & Motion', supportedBy: ['marlin'],
+    description: 'Enable or disable software endstop limits. When enabled, the printer won\'t move beyond its defined boundaries. Disable temporarily for maintenance or if you need to move past a limit. Re-enable after!',
+    params: [
+      { letter: 'S', name: '1 = enable software endstops, 0 = disable', example: '1' },
+    ],
+    example: 'M211 S0 ; Disable software endstops (allow out-of-bounds moves)\nM211 S1 ; Re-enable software endstops',
+    template: 'M211 S1',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M350', name: 'Set Microstepping', category: 'Stepper & Motion', supportedBy: ['marlin', 'rrf'],
+    description: 'Set stepper driver microstepping resolution. Common values: 16, 32, 64, 128, 256. Higher values = smoother motion but less torque. Changing this requires recalculating M92 steps/mm.',
+    params: [
+      { letter: 'X', name: 'X axis microsteps (e.g. 16, 32, 64, 128, 256)', example: '16' },
+      { letter: 'Y', name: 'Y axis microsteps', example: '16' },
+      { letter: 'Z', name: 'Z axis microsteps', example: '16' },
+      { letter: 'E', name: 'Extruder microsteps', example: '16' },
+      { letter: 'I', name: 'Interpolation (0 = off, 1 = on). Marlin TMC drivers only', example: '1' },
+    ],
+    example: 'M350 X16 Y16 Z16 E16 ; Set all axes to 16x microstepping\nM350 X32 Y32 I1 ; 32x microstepping with interpolation on X and Y',
+    template: 'M350 X16 Y16 Z16 E16',
+    firmware: { bambu: null, klipper: 'Microstepping is set in printer.cfg under each [stepper] section.', marlin: null, reprap: null }
+  },
+  { code: 'M906', name: 'Set Motor Current', category: 'Stepper & Motion', supportedBy: ['marlin', 'rrf'],
+    description: 'Set stepper motor current in milliamps. Higher current = more torque but more heat. Lower current = quieter and cooler but may skip steps. Typical values: 400-1200mA depending on motor.',
+    params: [
+      { letter: 'X', name: 'X motor current in mA', example: '800' },
+      { letter: 'Y', name: 'Y motor current in mA', example: '800' },
+      { letter: 'Z', name: 'Z motor current in mA', example: '800' },
+      { letter: 'E', name: 'Extruder motor current in mA', example: '600' },
+      { letter: 'I', name: 'Hold current multiplier (0-1). Marlin TMC drivers only', example: '0.5' },
+    ],
+    example: 'M906 X800 Y800 Z800 E600 ; Set typical motor currents\nM906 X1000 Y1000 ; Increase X/Y for faster printing',
+    template: 'M906 X800 Y800 Z800 E600',
+    firmware: { bambu: null, klipper: 'Set run_current in printer.cfg under [tmc2209 stepper_x] etc.', marlin: 'Requires TMC driver support.', reprap: null }
+  },
 
   // \u2500\u2500 Filament & Material \u2500\u2500
-  { code: 'M1020', name: 'Bambu AMS Filament Change', category: 'Filament & Material',
+  { code: 'M200', name: 'Set Filament Diameter', category: 'Filament & Material', supportedBy: ['marlin', 'rrf'],
+    description: 'Enable volumetric extrusion by specifying filament diameter. When enabled, E values represent cubic mm of plastic instead of linear mm of filament. Set D0 to go back to linear mode.',
+    params: [
+      { letter: 'D', name: 'Filament diameter in mm. Use D0 to disable volumetric', example: '1.75' },
+      { letter: 'T', name: 'Extruder index (for multi-extruder setups)', example: '0' },
+    ],
+    example: 'M200 D1.75 ; Enable volumetric mode for 1.75mm filament\nM200 D0 ; Disable volumetric mode (back to linear)',
+    template: 'M200 D1.75',
+    firmware: { bambu: null, klipper: 'Not supported \u2014 Klipper handles volumetric in the slicer.', marlin: null, reprap: null }
+  },
+  { code: 'M207', name: 'Set Retract Length', category: 'Filament & Material', supportedBy: ['marlin', 'rrf'],
+    description: 'Configure firmware retraction settings used by G10. Set how much filament to pull back, how fast, and how much to lift Z during retraction. Used with firmware retraction (G10/G11).',
+    params: [
+      { letter: 'S', name: 'Retract length in mm', example: '1.0' },
+      { letter: 'F', name: 'Retract speed in mm/min', example: '2700' },
+      { letter: 'Z', name: 'Z lift during retraction in mm', example: '0.2' },
+      { letter: 'W', name: 'Retract length for filament swap in mm (optional)', example: '10' },
+    ],
+    example: 'M207 S1.0 F2700 Z0.2 ; 1mm retract at 45mm/s with 0.2mm Z-lift\nM207 S0.8 F3000 ; Quick 0.8mm retract at 50mm/s',
+    template: 'M207 S1.0 F2700 Z0.2',
+    firmware: { bambu: null, klipper: 'Use SET_RETRACTION RETRACT_LENGTH=x RETRACT_SPEED=x.', marlin: null, reprap: null }
+  },
+  { code: 'M208', name: 'Set Recover Length', category: 'Filament & Material', supportedBy: ['marlin', 'rrf'],
+    description: 'Configure the unretract (recover) settings for G11. The recover length is the retract length (from M207) plus this extra amount. Extra length compensates for oozing during retraction.',
+    params: [
+      { letter: 'S', name: 'Extra recover length in mm (added to retract length)', example: '0' },
+      { letter: 'F', name: 'Recover speed in mm/min', example: '2700' },
+    ],
+    example: 'M208 S0 F2700 ; No extra recover length, recover at 45mm/s\nM208 S0.1 F2400 ; Add 0.1mm extra on recover',
+    template: 'M208 S0 F2700',
+    firmware: { bambu: null, klipper: 'Use SET_RETRACTION UNRETRACT_EXTRA_LENGTH=x UNRETRACT_SPEED=x.', marlin: null, reprap: null }
+  },
+  { code: 'M412', name: 'Filament Runout', category: 'Filament & Material', supportedBy: ['marlin'],
+    description: 'Enable or disable the filament runout sensor. When enabled and filament runs out, the printer automatically pauses so you can load new filament. Requires a runout sensor wired to the board.',
+    params: [
+      { letter: 'S', name: '1 = enable runout sensor, 0 = disable', example: '1' },
+    ],
+    example: 'M412 S1 ; Enable filament runout detection\nM412 S0 ; Disable runout detection',
+    template: 'M412 S1',
+    firmware: { bambu: null, klipper: 'Configure [filament_switch_sensor] in printer.cfg.', marlin: 'Requires FILAMENT_RUNOUT_SENSOR.', reprap: null }
+  },
+  { code: 'M702', name: 'Unload Filament', category: 'Filament & Material', supportedBy: ['marlin'],
+    description: 'Automatically unload filament from the extruder. Heats the nozzle if needed, then retracts filament. Reverse of loading filament.',
+    params: [
+      { letter: 'T', name: 'Extruder index (for multi-extruder setups)', example: '0' },
+      { letter: 'U', name: 'Unload length in mm', example: '100' },
+    ],
+    example: 'M702 ; Unload filament from current extruder\nM702 T0 U100 ; Unload 100mm from extruder 0',
+    template: 'M702',
+    firmware: { bambu: null, klipper: null, marlin: 'Requires FILAMENT_LOAD_UNLOAD_GCODES.', reprap: null }
+  },
+  { code: 'M1020', name: 'Bambu AMS Filament Change', category: 'Filament & Material', supportedBy: ['bambu'],
     description: 'Bambu Lab-specific command to switch which filament the AMS (Automatic Material System) feeds. The AMS has 4 slots numbered 0-3. Plays an audio notification when changing.',
     params: [
       { letter: 'S', name: 'AMS slot number (0-3). S0 = Slot 1, S1 = Slot 2, S2 = Slot 3, S3 = Slot 4', example: '1' },
@@ -509,5 +823,239 @@ export const GCODE_REFERENCE = [
     example: '; Apply bed PID values from M303 autotune:\nM304 P70.3 I1.6 D350.0\nM500 ; Save to EEPROM',
     template: 'M304 P__ I__ D__',
     firmware: { bambu: 'Not user-configurable on Bambu Lab.', klipper: 'PID values are set in printer.cfg under [heater_bed] section.', marlin: null, reprap: 'Use M307 for heater model tuning instead.' }
+  },
+
+  // ── System & Info ──
+  { code: 'M17', name: 'Enable Steppers', category: 'System & Info',
+    description: 'Re-enable stepper motors after they were disabled by M84. With no parameters, enables all axes. You can also enable specific axes.',
+    params: [
+      { letter: 'X', name: 'Enable X stepper', example: '' },
+      { letter: 'Y', name: 'Enable Y stepper', example: '' },
+      { letter: 'Z', name: 'Enable Z stepper', example: '' },
+      { letter: 'E', name: 'Enable E stepper', example: '' },
+    ],
+    example: 'M17 ; Enable all steppers\nM17 X Y ; Enable only X and Y steppers',
+    template: 'M17',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M80', name: 'ATX Power On', category: 'System & Info',
+    supportedBy: ['marlin', 'rrf'],
+    description: 'Turn on the printer\'s ATX power supply via the PS_ON pin. Some printers can be powered on remotely with this command.',
+    params: [],
+    example: 'M80 ; Turn on ATX power supply',
+    template: 'M80',
+    firmware: { bambu: null, klipper: null, marlin: 'Requires PSU_CONTROL.', reprap: null }
+  },
+  { code: 'M81', name: 'ATX Power Off', category: 'System & Info',
+    supportedBy: ['marlin', 'rrf'],
+    description: 'Turn off the ATX power supply. The printer will lose power. Make sure everything is cooled down and parked first.',
+    params: [],
+    example: 'M81 ; Turn off ATX power supply',
+    template: 'M81',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M85', name: 'Inactivity Shutdown', category: 'System & Info',
+    supportedBy: ['marlin', 'rrf'],
+    description: 'Set the inactivity timeout. If no commands are received for this many seconds, the printer disables steppers and heaters. Safety feature to prevent unattended heating.',
+    params: [
+      { letter: 'S', name: 'Timeout in seconds (0 to disable)', example: '120' },
+    ],
+    example: 'M85 S120 ; Shut down after 2 minutes of inactivity\nM85 S0 ; Disable inactivity timeout',
+    template: 'M85 S__',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M92', name: 'Set Steps Per Unit', category: 'System & Info',
+    supportedBy: ['marlin', 'rrf'],
+    description: 'Set how many stepper motor steps equal 1mm of movement for each axis. Critical for dimensional accuracy. Calculate from: steps = (motor steps × microstepping) / (belt pitch × pulley teeth) for belt-driven axes.',
+    params: [
+      { letter: 'X', name: 'Steps per mm for X axis', example: '80' },
+      { letter: 'Y', name: 'Steps per mm for Y axis', example: '80' },
+      { letter: 'Z', name: 'Steps per mm for Z axis', example: '400' },
+      { letter: 'E', name: 'Steps per mm for extruder', example: '93' },
+    ],
+    example: 'M92 X80 Y80 Z400 E93 ; Set steps/mm for all axes\nM500 ; Save to EEPROM',
+    template: 'M92 X__ Y__ Z__ E__',
+    firmware: { bambu: null, klipper: 'Steps are set in printer.cfg under [stepper_x] rotation_distance.', marlin: null, reprap: null }
+  },
+  { code: 'M112', name: 'Emergency Stop', category: 'System & Info',
+    description: 'Immediately halt everything. All heaters off, all motors off, all movement stopped. This is the panic button. The printer will need to be reset/restarted after M112.',
+    params: [],
+    example: 'M112 ; EMERGENCY STOP — halts everything immediately',
+    template: 'M112',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M114', name: 'Get Current Position', category: 'System & Info',
+    description: 'Report the current position of all axes. Response looks like "X:100.00 Y:50.00 Z:5.20 E:150.30". Useful for debugging position issues.',
+    params: [],
+    example: 'M114 ; Report current position\n; Response: X:100.00 Y:50.00 Z:5.20 E:150.30',
+    template: 'M114',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M115', name: 'Firmware Info', category: 'System & Info',
+    description: 'Report firmware name, version, and capabilities. Response includes machine UUID and supported features. Useful for identifying what firmware a printer runs.',
+    params: [],
+    example: 'M115 ; Report firmware info\n; Response: FIRMWARE_NAME:Marlin ...',
+    template: 'M115',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M119', name: 'Endstop Status', category: 'System & Info',
+    description: 'Report the current state of all endstop switches. Shows "TRIGGERED" or "open" for each. Essential for diagnosing homing problems — if an endstop shows triggered when it shouldn\'t be (or vice versa), check wiring.',
+    params: [],
+    example: 'M119 ; Report endstop status\n; Response: x_min: open, y_min: open, z_min: TRIGGERED',
+    template: 'M119',
+    firmware: { bambu: null, klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M155', name: 'Auto-Report Temperatures', category: 'System & Info',
+    supportedBy: ['marlin'],
+    description: 'Tell the printer to automatically send temperature reports every S seconds without being asked. Reduces serial traffic vs constantly polling with M105.',
+    params: [
+      { letter: 'S', name: 'Reporting interval in seconds (0 to disable)', example: '2' },
+    ],
+    example: 'M155 S2 ; Report temperatures every 2 seconds\nM155 S0 ; Disable auto-reporting',
+    template: 'M155 S__',
+    firmware: { bambu: null, klipper: null, marlin: 'Requires AUTO_REPORT_TEMPERATURES.', reprap: null }
+  },
+
+  // ── Hardware & Misc ──
+
+  { code: 'M42', name: 'Switch I/O Pin', category: 'Hardware & Misc',
+    supportedBy: ['marlin', 'rrf'],
+    description: 'Control a specific I/O pin on the board. Set it HIGH (255), LOW (0), or PWM (1-254). Used to control LEDs, cameras, relays, or other custom hardware connected to spare pins.',
+    params: [
+      { letter: 'P', name: 'Pin number', example: '4' },
+      { letter: 'S', name: 'Pin value (0-255)', example: '255' },
+    ],
+    example: 'M42 P4 S255 ; Set pin 4 HIGH\nM42 P4 S0 ; Set pin 4 LOW\nM42 P4 S128 ; Set pin 4 to 50% PWM',
+    template: 'M42 P__ S__',
+    firmware: { bambu: null, klipper: null, marlin: 'Pin must not be in use by another feature.', reprap: 'Use M42 P(pin) S(value).' }
+  },
+  { code: 'M125', name: 'Park Head', category: 'Hardware & Misc',
+    supportedBy: ['marlin'],
+    description: 'Pause the print and park the nozzle. Retracts filament, lifts Z, and moves to park position. Similar to M600 but without the filament change workflow — just a clean pause.',
+    params: [
+      { letter: 'L', name: 'Retract length (mm)', example: '2' },
+      { letter: 'X', name: 'Park X position', example: '10' },
+      { letter: 'Y', name: 'Park Y position', example: '10' },
+      { letter: 'Z', name: 'Z lift (mm)', example: '5' },
+      { letter: 'P', name: 'Purge length on resume (mm)', example: '1' },
+    ],
+    example: 'M125 L2 X10 Y10 Z5 ; Park head with 2mm retract and 5mm Z lift',
+    template: 'M125 L__ X__ Y__ Z__',
+    firmware: { bambu: null, klipper: null, marlin: 'Requires PARK_HEAD_ON_PAUSE.', reprap: null }
+  },
+  { code: 'M280', name: 'Set Servo Position', category: 'Hardware & Misc',
+    supportedBy: ['marlin', 'rrf'],
+    description: 'Move a servo motor to a specific angle. Most commonly used for deploying/stowing a mechanical Z-probe (like a servo-mounted switch). S-1 detaches the servo to save power and reduce jitter.',
+    params: [
+      { letter: 'P', name: 'Servo index (0-3)', example: '0' },
+      { letter: 'S', name: 'Angle (0-180, or -1 to detach)', example: '90' },
+    ],
+    example: 'M280 P0 S10 ; Deploy probe (move servo 0 to 10°)\nM280 P0 S90 ; Stow probe (move servo 0 to 90°)\nM280 P0 S-1 ; Detach servo to save power',
+    template: 'M280 P__ S__',
+    firmware: { bambu: null, klipper: null, marlin: 'Requires NUM_SERVOS configured.', reprap: null }
+  },
+  { code: 'M355', name: 'Case Light', category: 'Hardware & Misc',
+    supportedBy: ['marlin'],
+    description: 'Control the printer\'s case/enclosure LED light. Turn it on/off or adjust brightness if connected to a PWM-capable pin.',
+    params: [
+      { letter: 'S', name: 'State (1=on, 0=off)', example: '1' },
+      { letter: 'P', name: 'Brightness (0-255)', example: '200' },
+    ],
+    example: 'M355 S1 ; Turn case light on\nM355 S1 P128 ; Turn on at 50% brightness\nM355 S0 ; Turn case light off',
+    template: 'M355 S__ P__',
+    firmware: { bambu: null, klipper: null, marlin: 'Requires CASE_LIGHT_ENABLE.', reprap: null }
+  },
+  { code: 'M911', name: 'Power Loss Recovery', category: 'Hardware & Misc',
+    supportedBy: ['marlin'],
+    description: 'Configure automatic power loss recovery. If enabled and power is lost mid-print, the printer saves its state. On restart, it can resume from where it left off. The print surface must not be disturbed.',
+    params: [
+      { letter: 'S', name: 'Threshold voltage (optional)', example: '1.8' },
+    ],
+    example: 'M911 ; Enable/check power loss recovery\nM911 S1.8 ; Set voltage threshold',
+    template: 'M911',
+    firmware: { bambu: null, klipper: null, marlin: 'Requires POWER_LOSS_RECOVERY.', reprap: null }
+  },
+
+  // ── Klipper Extended ──
+
+  { code: 'BED_MESH_CALIBRATE', name: 'Bed Mesh Calibrate', category: 'Klipper Extended',
+    supportedBy: ['klipper'],
+    description: 'Probe the bed and create a mesh compensation map. Klipper\'s equivalent of G29. The mesh corrects for uneven bed surfaces during printing. Results can be saved with SAVE_CONFIG. Accepts optional PROFILE=name parameter to name the mesh.',
+    params: [],
+    example: 'BED_MESH_CALIBRATE ; Probe bed and generate mesh\nBED_MESH_CALIBRATE PROFILE=default ; Save mesh with a profile name',
+    template: 'BED_MESH_CALIBRATE',
+    firmware: { bambu: 'Not supported — Klipper specific.', klipper: 'Requires [bed_mesh] in printer.cfg. Use BED_MESH_PROFILE to manage saved meshes.', marlin: 'Not supported — Klipper specific.', reprap: 'Not supported — Klipper specific.' }
+  },
+  { code: 'PROBE_CALIBRATE', name: 'Probe Calibrate', category: 'Klipper Extended',
+    supportedBy: ['klipper'],
+    description: 'Start the interactive probe calibration wizard. Probes the bed, then lets you use TESTZ Z=-0.1 (or similar) to paper-test the nozzle height. When satisfied, use ACCEPT to save the Z offset.',
+    params: [],
+    example: 'PROBE_CALIBRATE ; Start probe Z offset calibration\n; Use TESTZ Z=-0.1 to adjust, then ACCEPT to save',
+    template: 'PROBE_CALIBRATE',
+    firmware: { bambu: 'Not supported — Klipper specific.', klipper: 'Requires [probe] or [bltouch] in printer.cfg.', marlin: 'Not supported — Klipper specific.', reprap: 'Not supported — Klipper specific.' }
+  },
+  { code: 'PID_CALIBRATE', name: 'PID Calibrate', category: 'Klipper Extended',
+    supportedBy: ['klipper'],
+    description: 'Run PID autotune for a heater. Specify which heater with HEATER= and target temperature with TARGET=. Klipper\'s equivalent of M303. Save results with SAVE_CONFIG.',
+    params: [],
+    example: 'PID_CALIBRATE HEATER=extruder TARGET=200 ; Tune extruder PID at 200°C\nPID_CALIBRATE HEATER=heater_bed TARGET=60 ; Tune bed PID at 60°C',
+    template: 'PID_CALIBRATE HEATER=extruder TARGET=200',
+    firmware: { bambu: 'Not supported — Klipper specific.', klipper: 'Specify HEATER= and TARGET= parameters.', marlin: 'Not supported — Klipper specific.', reprap: 'Not supported — Klipper specific.' }
+  },
+  { code: 'SET_HEATER_TEMPERATURE', name: 'Set Heater Temperature', category: 'Klipper Extended',
+    supportedBy: ['klipper'],
+    description: 'Set temperature for any heater by name. Works for extruder, heater_bed, or any custom heater. More explicit than M104/M140 since you specify the heater by name. Use HEATER= and TARGET= parameters.',
+    params: [],
+    example: 'SET_HEATER_TEMPERATURE HEATER=extruder TARGET=200 ; Heat extruder to 200°C\nSET_HEATER_TEMPERATURE HEATER=heater_bed TARGET=60 ; Heat bed to 60°C\nSET_HEATER_TEMPERATURE HEATER=extruder TARGET=0 ; Turn off extruder heater',
+    template: 'SET_HEATER_TEMPERATURE HEATER=extruder TARGET=200',
+    firmware: { bambu: 'Not supported — Klipper specific.', klipper: 'Works with any configured heater name.', marlin: 'Not supported — Klipper specific.', reprap: 'Not supported — Klipper specific.' }
+  },
+  { code: 'SET_VELOCITY_LIMIT', name: 'Set Velocity Limit', category: 'Klipper Extended',
+    supportedBy: ['klipper'],
+    description: 'Override motion limits at runtime. Klipper\'s equivalent of M201/M203/M204/M205 combined. Useful for slowing down for specific sections or speeding up for infill. Accepts VELOCITY=, ACCEL=, and SQUARE_CORNER_VELOCITY= parameters.',
+    params: [],
+    example: 'SET_VELOCITY_LIMIT ACCEL=3000 ; Set acceleration to 3000 mm/s²\nSET_VELOCITY_LIMIT VELOCITY=100 ACCEL=2000 ; Limit speed and accel',
+    template: 'SET_VELOCITY_LIMIT ACCEL=3000',
+    firmware: { bambu: 'Not supported — Klipper specific.', klipper: 'Overrides [printer] limits at runtime.', marlin: 'Not supported — Klipper specific.', reprap: 'Not supported — Klipper specific.' }
+  },
+  { code: 'SET_GCODE_OFFSET', name: 'Set G-code Offset', category: 'Klipper Extended',
+    supportedBy: ['klipper'],
+    description: 'Apply offsets to all future G-code coordinates. Z_ADJUST is the most common use — equivalent to babystepping. Positive Z = nozzle further from bed. Use MOVE=1 to apply immediately. Accepts X=, Y=, Z=, X_ADJUST=, Y_ADJUST=, Z_ADJUST= parameters.',
+    params: [],
+    example: 'SET_GCODE_OFFSET Z_ADJUST=-0.05 MOVE=1 ; Babystep Z down 0.05mm\nSET_GCODE_OFFSET Z=0.1 ; Set absolute Z offset\nSET_GCODE_OFFSET X=0 Y=0 Z=0 ; Reset all offsets',
+    template: 'SET_GCODE_OFFSET Z_ADJUST=-0.05 MOVE=1',
+    firmware: { bambu: 'Not supported — Klipper specific.', klipper: 'Use MOVE=1 to apply offset to current position immediately.', marlin: 'Not supported — Klipper specific.', reprap: 'Not supported — Klipper specific.' }
+  },
+  { code: 'SAVE_CONFIG', name: 'Save Config', category: 'Klipper Extended',
+    supportedBy: ['klipper'],
+    description: 'Save calibration results (PID values, Z offset, bed mesh, etc.) to printer.cfg. Klipper\'s equivalent of M500. The printer will restart after saving.',
+    params: [],
+    example: 'SAVE_CONFIG ; Save all pending calibration data and restart',
+    template: 'SAVE_CONFIG',
+    firmware: { bambu: 'Not supported — Klipper specific.', klipper: 'Saves to printer.cfg and restarts Klipper.', marlin: 'Not supported — Klipper specific.', reprap: 'Not supported — Klipper specific.' }
+  },
+  { code: 'FIRMWARE_RESTART', name: 'Firmware Restart', category: 'Klipper Extended',
+    supportedBy: ['klipper'],
+    description: 'Restart the Klipper firmware without rebooting the host computer. Use after editing printer.cfg or when Klipper enters a shutdown state. Faster than a full reboot.',
+    params: [],
+    example: 'FIRMWARE_RESTART ; Restart Klipper firmware',
+    template: 'FIRMWARE_RESTART',
+    firmware: { bambu: 'Not supported — Klipper specific.', klipper: 'Restarts MCU firmware connection without host reboot.', marlin: 'Not supported — Klipper specific.', reprap: 'Not supported — Klipper specific.' }
+  },
+  { code: 'SET_PRESSURE_ADVANCE', name: 'Set Pressure Advance', category: 'Klipper Extended',
+    supportedBy: ['klipper'],
+    description: 'Configure pressure advance (linear advance equivalent). Compensates for pressure buildup in the nozzle during speed changes. Higher values = more compensation. Typical range: 0.01-0.1. Tune with a test print. Marlin equivalent: M900 K-factor. Accepts ADVANCE= and SMOOTH_TIME= parameters.',
+    params: [],
+    example: 'SET_PRESSURE_ADVANCE ADVANCE=0.05 ; Set pressure advance factor\nSET_PRESSURE_ADVANCE ADVANCE=0.04 SMOOTH_TIME=0.04 ; With smooth time',
+    template: 'SET_PRESSURE_ADVANCE ADVANCE=0.05',
+    firmware: { bambu: 'Not supported — Klipper specific.', klipper: 'Equivalent to Marlin M900. Tune with pressure advance test print.', marlin: 'Not supported — Klipper specific.', reprap: 'Not supported — Klipper specific.' }
+  },
+  { code: 'SET_LED', name: 'Set LED', category: 'Klipper Extended',
+    supportedBy: ['klipper'],
+    description: 'Control addressable LEDs (NeoPixel, dotstar, etc.) connected to the printer. Set individual colors per LED or all at once. Values 0.0-1.0 for each channel. Accepts LED=, RED=, GREEN=, BLUE=, WHITE=, INDEX=, and TRANSMIT= parameters.',
+    params: [],
+    example: 'SET_LED LED=my_neopixel RED=1.0 GREEN=0.0 BLUE=0.0 ; Set all LEDs red\nSET_LED LED=my_neopixel RED=0.0 GREEN=1.0 BLUE=0.0 INDEX=1 ; Set first LED green',
+    template: 'SET_LED LED=my_neopixel RED=1.0 GREEN=0.0 BLUE=0.0',
+    firmware: { bambu: 'Not supported — Klipper specific.', klipper: 'Requires [neopixel] or [dotstar] section in printer.cfg.', marlin: 'Not supported — Klipper specific.', reprap: 'Not supported — Klipper specific.' }
   },
 ];
