@@ -805,6 +805,7 @@ function renderMotionLegend() {
   for (const overlay of analysisManager.getSupportedOverlays()) {
     modeOptions.push([overlay.id, overlay.label + (overlay.unit ? ' (' + overlay.unit + ')' : '')]);
   }
+  modeOptions.sort((a, b) => a[1].localeCompare(b[1]));
   const modeSelect = modeOptions.map(([val, label]) =>
     `<option value="${val}"${colorMode === val ? ' selected' : ''}>${label}</option>`
   ).join('');
