@@ -291,6 +291,14 @@ main { display: flex; flex: 1; overflow: hidden; }
 .parse-progress .bar-wrap { width: 300px; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin-top: 8px; }
 .parse-progress .bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.1s; }
 .parse-progress .bar-label { font-size: 12px; color: var(--text-dim); }
+.analysis-progress { padding: 24px 16px; text-align: center; }
+.analysis-progress .bar-wrap { width: 100%; max-width: 300px; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin: 8px auto 0; }
+.analysis-progress .bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.1s; }
+.analysis-progress .bar-label { font-size: 12px; color: var(--text-dim); }
+.viewer-analysis-loading { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); z-index: 20; pointer-events: none; }
+.viewer-analysis-loading .bar-wrap { width: 220px; height: 6px; background: rgba(255,255,255,.15); border-radius: 3px; overflow: hidden; margin: 6px auto 0; }
+.viewer-analysis-loading .bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.1s; }
+.viewer-analysis-loading .bar-label { font-size: 13px; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
 
 /* RIGHT PANEL — TOOLS */
 .panel-right { width: 400px; min-width: 280px; max-width: 60vw; display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--border); position: relative; }
@@ -2587,8 +2595,9 @@ class GcodeParser {
       if (currentLayer) {
         const typeMatch = line.match(/^;TYPE:(.+)/i) || line.match(/^; FEATURE:\s*(.+)/i);
         if (typeMatch) {
-          // Normalize PrusaSlicer/SuperSlicer type names
+          // Normalize slicer type names (PrusaSlicer, BambuStudio, SuperSlicer)
           const typeNormalize = {
+            // PrusaSlicer / SuperSlicer
             'External perimeter': 'WALL-OUTER',
             'Perimeter': 'WALL-INNER',
             'Solid infill': 'SOLID',
@@ -2603,6 +2612,18 @@ class GcodeParser {
             'Skirt/Brim': 'SKIRT',
             'Support material': 'SUPPORT',
             'Support material interface': 'SUPPORT-INTERFACE',
+            // BambuStudio
+            'Inner wall': 'WALL-INNER',
+            'Outer wall': 'WALL-OUTER',
+            'Overhang wall': 'OVERHANG',
+            'Internal solid infill': 'SOLID',
+            'Bottom surface': 'BOTTOM',
+            'Top surface': 'TOP',
+            'Bridge': 'BRIDGE',
+            'Sparse infill': 'FILL',
+            'Brim': 'BRIM',
+            'Support': 'SUPPORT',
+            'Support interface': 'SUPPORT-INTERFACE',
           };
           const rawType = typeMatch[1].trim();
           currentType = typeNormalize[rawType] || rawType.toUpperCase();
@@ -3311,6 +3332,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 300,          // mm/s
     maxVolumetricFlow: 15,       // mm³/s
     minLayerTime: 8,
+    optimalBridgeSpeed: 25,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.43,       // % saturated
     needsDrying: false,
     needsEnclosure: false,
@@ -3334,6 +3356,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 300,
     maxVolumetricFlow: 12,       // mm³/s
     minLayerTime: 10,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.40,
     needsDrying: true,
     needsEnclosure: false,
@@ -3357,6 +3380,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 300,
     maxVolumetricFlow: 11,       // mm³/s
     minLayerTime: 12,
+    optimalBridgeSpeed: 15,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.65,
     needsDrying: false,
     needsEnclosure: true,
@@ -3380,6 +3404,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 300,
     maxVolumetricFlow: 11,       // mm³/s
     minLayerTime: 12,
+    optimalBridgeSpeed: 15,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.45,
     needsDrying: false,
     needsEnclosure: true,
@@ -3403,6 +3428,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 200,
     maxVolumetricFlow: 5,        // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 15,     // mm/s — ideal bridge print speed
     waterAbsorption: 1.08,
     needsDrying: true,
     needsEnclosure: false,
@@ -3426,6 +3452,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 300,
     maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 15,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.25,
     needsDrying: true,
     needsEnclosure: true,
@@ -3451,6 +3478,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 250,
     maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 8,
+    optimalBridgeSpeed: 25,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.42,
     needsDrying: false,
     needsEnclosure: false,
@@ -3475,6 +3503,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 200,
     maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 10,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.30,
     needsDrying: false,
     needsEnclosure: false,
@@ -3499,6 +3528,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 180,
     maxVolumetricFlow: 9,        // mm³/s
     minLayerTime: 12,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.53,
     needsDrying: false,
     needsEnclosure: true,
@@ -3523,6 +3553,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 250,
     maxVolumetricFlow: 9,        // mm³/s
     minLayerTime: 12,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.33,
     needsDrying: false,
     needsEnclosure: true,
@@ -3547,6 +3578,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 300,
     maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.12,
     needsDrying: true,
     needsEnclosure: true,
@@ -3572,6 +3604,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 100,
     maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.37,
     needsDrying: true,
     needsEnclosure: false,
@@ -3596,6 +3629,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 100,
     maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.88,
     needsDrying: true,
     needsEnclosure: true,
@@ -3620,6 +3654,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 100,
     maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 2.35,
     needsDrying: true,
     needsEnclosure: true,
@@ -3644,6 +3679,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 130,
     maxVolumetricFlow: 9,        // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 2.56,
     needsDrying: true,
     needsEnclosure: true,
@@ -3668,6 +3704,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 100,
     maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 1.30,
     needsDrying: true,
     needsEnclosure: true,
@@ -3692,6 +3729,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 100,
     maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 15,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.05,
     needsDrying: true,
     needsEnclosure: true,
@@ -3718,6 +3756,7 @@ const MATERIAL_PROFILES = {
     maxPrintSpeed: 100,
     maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 2.35,
     needsDrying: true,
     needsEnclosure: true,
@@ -4361,6 +4400,9 @@ class AnalysisManager {
     this.engines = [];
     this._overlayMap = new Map();
     this._statsCache = {};
+    this._analyzed = new Set();
+    this._eagerEngines = new Set();
+    this._storedArgs = null;
   }
 
   register(engine) {
@@ -4370,14 +4412,114 @@ class AnalysisManager {
     }
   }
 
+  markEager(engineName) {
+    this._eagerEngines.add(engineName);
+  }
+
+  analyzeEager(layerMoves, profile) {
+    this._statsCache = {};
+    this._storedArgs = { layerMoves, profile };
+    for (const engine of this.engines) {
+      if (this._eagerEngines.has(engine.name)) {
+        engine.analyze(layerMoves, profile);
+        this._analyzed.add(engine.name);
+      }
+    }
+  }
+
+  ensureEngine(engineName) {
+    if (this._analyzed.has(engineName)) return;
+    if (!this._storedArgs) return;
+    const engine = this.engines.find(e => e.name === engineName);
+    if (!engine) return;
+    const { layerMoves, profile } = this._storedArgs;
+    engine.analyze(layerMoves, profile);
+    this._analyzed.add(engineName);
+  }
+
+  ensureAllAnalyzed() {
+    if (!this._storedArgs) return;
+    for (const engine of this.engines) {
+      if (!this._analyzed.has(engine.name)) {
+        const { layerMoves, profile } = this._storedArgs;
+        engine.analyze(layerMoves, profile);
+        this._analyzed.add(engine.name);
+      }
+    }
+  }
+
+  isAnalyzed(engineName) {
+    return this._analyzed.has(engineName);
+  }
+
+  isAllAnalyzed() {
+    return this.engines.every(e => this._analyzed.has(e.name));
+  }
+
+  async ensureEngineAsync(engineName, onProgress) {
+    if (this._analyzed.has(engineName)) return;
+    if (!this._storedArgs) return;
+    const engine = this.engines.find(e => e.name === engineName);
+    if (!engine) return;
+    const { layerMoves, profile } = this._storedArgs;
+    if (typeof engine.analyzeAsync === 'function') {
+      await engine.analyzeAsync(layerMoves, profile, onProgress);
+    } else {
+      engine.analyze(layerMoves, profile);
+    }
+    this._analyzed.add(engineName);
+  }
+
+  async ensureAllAnalyzedAsync(onProgress) {
+    if (!this._storedArgs) return;
+    const toRun = this.engines.filter(e => !this._analyzed.has(e.name));
+    if (toRun.length === 0) return;
+    for (let i = 0; i < toRun.length; i++) {
+      const engine = toRun[i];
+      const { layerMoves, profile } = this._storedArgs;
+      const engineProgress = (p) => {
+        if (onProgress) onProgress({ engine: engine.name, engineProgress: p, overall: (i + p) / toRun.length });
+      };
+      if (typeof engine.analyzeAsync === 'function') {
+        await engine.analyzeAsync(layerMoves, profile, engineProgress);
+      } else {
+        engine.analyze(layerMoves, profile);
+      }
+      this._analyzed.add(engine.name);
+      if (onProgress) onProgress({ engine: engine.name, engineProgress: 1, overall: (i + 1) / toRun.length });
+    }
+  }
+
   analyzeAll(layerMoves, profile) {
     this._statsCache = {};
+    this._storedArgs = { layerMoves, profile };
     for (const engine of this.engines) {
       engine.analyze(layerMoves, profile);
+      this._analyzed.add(engine.name);
+    }
+  }
+
+  async analyzeAllAsync(layerMoves, profile, onProgress) {
+    this._statsCache = {};
+    this._storedArgs = { layerMoves, profile };
+    this._analyzed.clear();
+    for (let i = 0; i < this.engines.length; i++) {
+      const engine = this.engines[i];
+      const engineProgress = (p) => {
+        if (onProgress) onProgress({ engine: engine.name, engineProgress: p, overall: (i + p) / this.engines.length });
+      };
+      if (typeof engine.analyzeAsync === 'function') {
+        await engine.analyzeAsync(layerMoves, profile, engineProgress);
+      } else {
+        engine.analyze(layerMoves, profile);
+      }
+      this._analyzed.add(engine.name);
+      if (onProgress) onProgress({ engine: engine.name, engineProgress: 1, overall: (i + 1) / this.engines.length });
     }
   }
 
   getAllFindings() {
+    this.ensureAllAnalyzed();
     const all = [];
     for (const engine of this.engines) {
       all.push(...engine.getFindings());
@@ -4387,6 +4529,7 @@ class AnalysisManager {
   }
 
   getFindingsByEngine(engineName) {
+    this.ensureEngine(engineName);
     const engine = this.engines.find(e => e.name === engineName);
     if (!engine) return [];
     const findings = engine.getFindings();
@@ -4405,6 +4548,7 @@ class AnalysisManager {
   getOverlayValue(overlayId, layerNum, moveIndex) {
     const engine = this._overlayMap.get(overlayId);
     if (!engine) return 0;
+    this.ensureEngine(engine.name);
     return engine.getOverlayData(overlayId, layerNum, moveIndex);
   }
 
@@ -4432,6 +4576,8 @@ class AnalysisManager {
 
   clear() {
     this._statsCache = {};
+    this._analyzed.clear();
+    this._storedArgs = null;
     for (const engine of this.engines) {
       engine.clear();
     }
@@ -4445,6 +4591,7 @@ class StructuralAnalyzer {
     this.name = 'structural';
     this._bondResults = new Map();
     this._overhangScores = new Map();
+    this._bridgeScores = new Map();
     this._findings = [];
     this._profile = null;
     this._thresholds = { ...DEFAULT_THRESHOLDS };
@@ -4457,7 +4604,7 @@ class StructuralAnalyzer {
     for (let i = 0; i < moves.length; i++) {
       const move = moves[i];
       if (!move.extrude) continue;
-      const cells = this._rasterizeLine(move.x1, move.y1, move.x2, move.y2, cellSize);
+      const cells = this._rasterizeLineInt(move.x1, move.y1, move.x2, move.y2);
       for (const key of cells) {
         if (!grid.has(key)) grid.set(key, []);
         grid.get(key).push(i);
@@ -4466,41 +4613,51 @@ class StructuralAnalyzer {
     return grid;
   }
 
-  _rasterizeLine(x1, y1, x2, y2, cellSize) {
-    const cells = new Set();
+  _rasterizeLineInt(x1, y1, x2, y2) {
+    const { minX, minY, cellSize, gridW, gridH } = this._gridParams;
+    const indices = [];
     const dx = x2 - x1, dy = y2 - y1;
     const len = Math.hypot(dx, dy);
     if (len < 0.001) {
-      cells.add(this._cellKey(x1, y1, cellSize));
-      return cells;
+      const idx = this._cellKeyInt(x1, y1);
+      if (idx >= 0) indices.push(idx);
+      return indices;
     }
     const steps = Math.max(1, Math.ceil(len / (cellSize * 0.5)));
+    let lastIdx = -1;
     for (let s = 0; s <= steps; s++) {
       const t = s / steps;
-      const x = x1 + dx * t;
-      const y = y1 + dy * t;
-      cells.add(this._cellKey(x, y, cellSize));
+      const gx = Math.floor((x1 + dx * t - minX) / cellSize);
+      const gy = Math.floor((y1 + dy * t - minY) / cellSize);
+      if (gx < 0 || gx >= gridW || gy < 0 || gy >= gridH) continue;
+      const idx = gy * gridW + gx;
+      if (idx !== lastIdx) {
+        indices.push(idx);
+        lastIdx = idx;
+      }
     }
-    return cells;
+    return indices;
   }
 
-  _cellKey(x, y, cellSize) {
-    const cx = Math.floor(x / cellSize);
-    const cy = Math.floor(y / cellSize);
-    return `${cx},${cy}`;
+  _cellKeyInt(x, y) {
+    const { minX, minY, cellSize, gridW, gridH } = this._gridParams;
+    const gx = Math.floor((x - minX) / cellSize);
+    const gy = Math.floor((y - minY) / cellSize);
+    if (gx < 0 || gx >= gridW || gy < 0 || gy >= gridH) return -1;
+    return gy * gridW + gx;
   }
 
   // --- Layer Overlap ---
 
   _calcOverlap(move, prevGrid, cellSize) {
     if (!move.extrude) return 1.0;
-    const cells = this._rasterizeLine(move.x1, move.y1, move.x2, move.y2, cellSize);
-    if (cells.size === 0) return 1.0;
+    const cells = this._rasterizeLineInt(move.x1, move.y1, move.x2, move.y2);
+    if (cells.length === 0) return 1.0;
     let overlapping = 0;
     for (const key of cells) {
       if (prevGrid.has(key)) overlapping++;
     }
-    return overlapping / cells.size;
+    return overlapping / cells.length;
   }
 
   // --- Extrusion Consistency ---
@@ -4548,11 +4705,50 @@ class StructuralAnalyzer {
     return 0.5 + 0.5 * (layerTime - minTime * 0.5) / (minTime * 0.5);
   }
 
+  // --- Fan State Tracking ---
+
+  _parseFanStates(lines) {
+    const states = {};
+    let currentLayer = -1;
+    let currentSpeed = 0;
+    let hasFanCommand = false;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const layerMatch = trimmed.match(/^;LAYER:(\d+)/);
+      if (layerMatch) {
+        currentLayer = parseInt(layerMatch[1], 10);
+        if (hasFanCommand) {
+          states[currentLayer] = currentSpeed;
+        }
+        continue;
+      }
+      const m106 = trimmed.match(/^M106\s+S([\d.]+)/i);
+      if (m106) {
+        currentSpeed = parseFloat(m106[1]) / 255;
+        hasFanCommand = true;
+        if (currentLayer >= 0) {
+          states[currentLayer] = currentSpeed;
+        }
+        continue;
+      }
+      if (trimmed.match(/^M107/i)) {
+        currentSpeed = 0;
+        hasFanCommand = true;
+        if (currentLayer >= 0) {
+          states[currentLayer] = 0;
+        }
+      }
+    }
+    return states;
+  }
+
   // --- Main Analysis ---
 
   analyze(layerMoves, profile) {
     this._bondResults.clear();
     this._findings = [];
+    this._gridCache = new Map();
     this._profile = profile;
 
     const materialType = profile.material?.type || 'PLA';
@@ -4562,6 +4758,27 @@ class StructuralAnalyzer {
 
     const cellSize = 0.8;
     const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
+
+    // Compute global grid bounds for integer cell keys
+    let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves) continue;
+      for (const m of moves) {
+        if (!m.extrude) continue;
+        sMinX = Math.min(sMinX, m.x1, m.x2);
+        sMinY = Math.min(sMinY, m.y1, m.y2);
+        sMaxX = Math.max(sMaxX, m.x1, m.x2);
+        sMaxY = Math.max(sMaxY, m.y1, m.y2);
+      }
+    }
+    if (sMinX === Infinity) return; // no extrusions
+    const pad = cellSize * 2;
+    sMinX -= pad; sMinY -= pad; sMaxX += pad; sMaxY += pad;
+    const sGridW = Math.ceil((sMaxX - sMinX) / cellSize) + 1;
+    const sGridH = Math.ceil((sMaxY - sMinY) / cellSize) + 1;
+    this._gridParams = { minX: sMinX, minY: sMinY, cellSize, gridW: sGridW, gridH: sGridH };
+
     let prevGrid = null;
 
     for (const layerNum of layerNums) {
@@ -4569,6 +4786,7 @@ class StructuralAnalyzer {
       if (!moves || moves.length === 0) continue;
 
       const grid = this._buildSpatialGrid(moves, cellSize);
+      this._gridCache.set(layerNum, grid);
       const consistency = this._calcExtrusionConsistency(moves);
       const layerTime = this._estimateLayerTime(moves);
       const coolScore = this._coolingScore(layerTime, material);
@@ -4672,7 +4890,7 @@ class StructuralAnalyzer {
     this._mergeConsecutiveFindings('extrusion');
 
     this._analyzeWallIntegrity(layerMoves, thresholds);
-    this._analyzeOverhangs(layerMoves, thresholds);
+    this._analyzeOverhangs(layerMoves, thresholds, profile);
   }
 
   _mergeConsecutiveFindings(category) {
@@ -4923,36 +5141,59 @@ class StructuralAnalyzer {
 
   // --- Overhang & Bridge Detection ---
 
-  _analyzeOverhangs(layerMoves, thresholds) {
+  _analyzeOverhangs(layerMoves, thresholds, profile) {
     const cellSize = 0.8;
     const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
     let prevGrid = null;
+    let prevGapDepth = new Map();
+
+    // Parse fan states and material for risk formula
+    let fanStates = {};
+    if (profile && profile._parsedLines) {
+      fanStates = this._parseFanStates(profile._parsedLines);
+    }
+    const materialType = profile?.material?.type || 'PLA';
+    const material = getMaterialProfile(materialType, profile?.material || {});
+    const MAX_GAP_DEPTH = 8;
+    const MAX_SAFE_SPAN = 50;
+    const optimalSpeed = material.optimalBridgeSpeed || 20;
 
     for (const layerNum of layerNums) {
       const moves = layerMoves[layerNum];
       if (!moves || moves.length === 0) continue;
 
-      const grid = this._buildSpatialGrid(moves, cellSize);
+      const grid = this._gridCache.get(layerNum) || this._buildSpatialGrid(moves, cellSize);
 
       if (prevGrid === null) {
-        // First layer — no overhang possible
-        const scores = moves.map(() => 0);
-        this._overhangScores.set(layerNum, scores);
+        const zeros = moves.map(() => 0);
+        this._overhangScores.set(layerNum, zeros);
+        this._bridgeScores.set(layerNum, zeros);
         prevGrid = grid;
         continue;
       }
 
       const overhangScores = [];
+      const bridgeScores = [];
+      const currentGapDepth = new Map();
       let worstOverhang = 0;
       let worstOverhangMove = null;
       let worstOverhangIdx = 0;
       let highOverhangCount = 0;
-      const bridgeRun = []; // consecutive extrusion moves with overlap < 0.1
+      const bridgeRun = [];
+
+      // Fan speed for this layer (walk back to find most recent setting)
+      let fanSpeed = 0;
+      for (let l = layerNum; l >= 0; l--) {
+        if (fanStates[l] !== undefined) { fanSpeed = fanStates[l]; break; }
+      }
+
+      const coolingFactor = fanSpeed * (material.coolingSensitivity || 0.5);
+      const materialPenalty = 1 - (material.adhesionCoefficient || 0.7);
 
       for (let i = 0; i < moves.length; i++) {
         if (!moves[i].extrude) {
           overhangScores.push(0);
-          // Flush bridge run on non-extrusion move
+          bridgeScores.push(0);
           if (bridgeRun.length > 0) {
             this._emitBridgeFinding(layerNum, bridgeRun);
             bridgeRun.length = 0;
@@ -4960,21 +5201,68 @@ class StructuralAnalyzer {
           continue;
         }
 
-        const overlap = this._calcOverlap(moves[i], prevGrid, cellSize);
+        const cells = this._rasterizeLineInt(moves[i].x1, moves[i].y1, moves[i].x2, moves[i].y2);
+
+        let overlapping = 0;
+        if (cells.length > 0) {
+          for (const key of cells) {
+            if (prevGrid.has(key)) overlapping++;
+          }
+        }
+        const overlap = cells.length > 0 ? overlapping / cells.length : 1.0;
         const overhang = 1 - overlap;
         overhangScores.push(overhang);
 
-        // Track bridge spans: consecutive extrusion moves with very low overlap
-        if (overlap < 0.2) {
-          bridgeRun.push({ move: moves[i], index: i });
-        } else {
+        // Per-cell gap depth
+        for (const cell of cells) {
+          const hasBelow = prevGrid.has(cell);
+          const prevDepth = prevGapDepth.get(cell) || 0;
+          let depth;
+          if (hasBelow && prevDepth === 0) {
+            depth = 0;
+          } else if (!hasBelow) {
+            depth = Math.min(prevDepth + 1, MAX_GAP_DEPTH);
+          } else {
+            depth = Math.min(prevDepth + 1, MAX_GAP_DEPTH);
+          }
+          currentGapDepth.set(cell, depth);
+        }
+
+        // Compute unsupported span along this move's path
+        const { spanMm, avgRunDepth } = this._unsupportedSpan(cells, currentGapDepth);
+
+        if (spanMm < 2) {
+          bridgeScores.push(0);
           if (bridgeRun.length > 0) {
             this._emitBridgeFinding(layerNum, bridgeRun);
             bridgeRun.length = 0;
           }
+        } else {
+          const moveSpeed = (moves[i].feedRate || 1500) / 60;
+          const speedRatio = moveSpeed / optimalSpeed;
+          const speedPenalty = Math.min(1, Math.abs(speedRatio - 1) * 0.8);
+
+          const spanFactor = Math.min(1, spanMm / MAX_SAFE_SPAN);
+          const depthFactor = Math.min(1, avgRunDepth / MAX_GAP_DEPTH);
+
+          const risk = spanFactor * 0.35
+                     + depthFactor * 0.25
+                     + (1 - coolingFactor) * 0.20
+                     + materialPenalty * 0.10
+                     + speedPenalty * 0.10;
+
+          bridgeScores.push(Math.min(1, risk));
+
+          if (spanMm > 5) {
+            bridgeRun.push({ move: moves[i], index: i });
+          } else {
+            if (bridgeRun.length > 0) {
+              this._emitBridgeFinding(layerNum, bridgeRun);
+              bridgeRun.length = 0;
+            }
+          }
         }
 
-        // Track worst overhang for layer-level finding
         if (overhang > 0.4) {
           highOverhangCount++;
           if (overhang > worstOverhang) {
@@ -4985,14 +5273,13 @@ class StructuralAnalyzer {
         }
       }
 
-      // Flush any remaining bridge run
       if (bridgeRun.length > 0) {
         this._emitBridgeFinding(layerNum, bridgeRun);
       }
 
       this._overhangScores.set(layerNum, overhangScores);
+      this._bridgeScores.set(layerNum, bridgeScores);
 
-      // Emit aggregated per-layer overhang finding
       if (worstOverhangMove && worstOverhang > 0.4) {
         const severity = worstOverhang > 0.75 ? 'critical' : worstOverhang > 0.6 ? 'warning' : 'info';
         this._addFinding(severity, 'overhang', layerNum, worstOverhangIdx, worstOverhangMove,
@@ -5003,11 +5290,85 @@ class StructuralAnalyzer {
       }
 
       prevGrid = grid;
+      prevGapDepth = currentGapDepth;
     }
 
-    // Merge consecutive overhang and bridge findings
     this._mergeConsecutiveFindings('overhang');
     this._mergeConsecutiveFindings('bridge');
+  }
+
+  _nearestSupportDist(x, y, gapDepthMap) {
+    const { minX, minY, cellSize, gridW, gridH } = this._gridParams;
+    const startGx = Math.floor((x - minX) / cellSize);
+    const startGy = Math.floor((y - minY) / cellSize);
+    if (startGx < 0 || startGx >= gridW || startGy < 0 || startGy >= gridH) return 0;
+
+    const startIdx = startGy * gridW + startGx;
+    if (!gapDepthMap.has(startIdx) || gapDepthMap.get(startIdx) === 0) return 0;
+
+    const maxSteps = Math.ceil(60 / cellSize);
+    const visited = new Set();
+    visited.add(startIdx);
+    let queue = [startIdx];
+    let dist = 0;
+
+    while (queue.length > 0 && dist < maxSteps) {
+      dist++;
+      const next = [];
+      for (const idx of queue) {
+        const gy = Math.floor(idx / gridW);
+        const gx = idx - gy * gridW;
+        const neighbors = [
+          gx > 0 ? idx - 1 : -1,
+          gx < gridW - 1 ? idx + 1 : -1,
+          gy > 0 ? idx - gridW : -1,
+          gy < gridH - 1 ? idx + gridW : -1,
+        ];
+        for (const nIdx of neighbors) {
+          if (nIdx < 0 || visited.has(nIdx)) continue;
+          visited.add(nIdx);
+          if (!gapDepthMap.has(nIdx) || gapDepthMap.get(nIdx) === 0) {
+            return dist * cellSize;
+          }
+          next.push(nIdx);
+        }
+      }
+      queue = next;
+    }
+
+    return maxSteps * cellSize;
+  }
+
+  _unsupportedSpan(cells, gapDepthMap) {
+    let maxRun = 0;
+    let maxRunDepthSum = 0;
+    let currentRun = 0;
+    let currentDepthSum = 0;
+
+    for (const cell of cells) {
+      const depth = gapDepthMap.get(cell) || 0;
+      if (depth > 0) {
+        currentRun++;
+        currentDepthSum += depth;
+      } else {
+        if (currentRun > maxRun) {
+          maxRun = currentRun;
+          maxRunDepthSum = currentDepthSum;
+        }
+        currentRun = 0;
+        currentDepthSum = 0;
+      }
+    }
+    if (currentRun > maxRun) {
+      maxRun = currentRun;
+      maxRunDepthSum = currentDepthSum;
+    }
+
+    const cellSize = this._gridParams.cellSize;
+    return {
+      spanMm: maxRun * cellSize,
+      avgRunDepth: maxRun > 0 ? maxRunDepthSum / maxRun : 0,
+    };
   }
 
   _emitBridgeFinding(layerNum, run) {
@@ -5052,12 +5413,18 @@ class StructuralAnalyzer {
     return [
       { id: 'layer-bond', label: 'Layer Bond Strength', unit: '%' },
       { id: 'overhang-severity', label: 'Overhang Severity', unit: '%' },
+      { id: 'bridge', label: 'Bridge Risk', unit: '%' },
     ];
   }
 
   getOverlayData(overlayId, layerNum, moveIndex) {
     if (overlayId === 'overhang-severity') {
       const scores = this._overhangScores.get(layerNum);
+      if (!scores || moveIndex >= scores.length) return 0;
+      return scores[moveIndex];
+    }
+    if (overlayId === 'bridge') {
+      const scores = this._bridgeScores.get(layerNum);
       if (!scores || moveIndex >= scores.length) return 0;
       return scores[moveIndex];
     }
@@ -5074,7 +5441,172 @@ class StructuralAnalyzer {
   clear() {
     this._bondResults.clear();
     this._overhangScores.clear();
+    this._bridgeScores.clear();
     this._findings = [];
+    this._gridCache = null;
+  }
+
+  // --- Async Analysis (non-blocking, yields between phases) ---
+
+  async analyzeAsync(layerMoves, profile, onProgress) {
+    this._bondResults.clear();
+    this._findings = [];
+    this._gridCache = new Map();
+    this._profile = profile;
+
+    const materialType = profile.material?.type || 'PLA';
+    const material = getMaterialProfile(materialType, profile.material || {});
+    const thresholds = { ...DEFAULT_THRESHOLDS, ...(profile.thresholds || {}) };
+    this._thresholds = thresholds;
+
+    const cellSize = 0.8;
+    const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
+
+    // Compute global grid bounds for integer cell keys
+    let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves) continue;
+      for (const m of moves) {
+        if (!m.extrude) continue;
+        sMinX = Math.min(sMinX, m.x1, m.x2);
+        sMinY = Math.min(sMinY, m.y1, m.y2);
+        sMaxX = Math.max(sMaxX, m.x1, m.x2);
+        sMaxY = Math.max(sMaxY, m.y1, m.y2);
+      }
+    }
+    if (sMinX === Infinity) return;
+    const pad = cellSize * 2;
+    sMinX -= pad; sMinY -= pad; sMaxX += pad; sMaxY += pad;
+    const sGridW = Math.ceil((sMaxX - sMinX) / cellSize) + 1;
+    const sGridH = Math.ceil((sMaxY - sMinY) / cellSize) + 1;
+    this._gridParams = { minX: sMinX, minY: sMinY, cellSize, gridW: sGridW, gridH: sGridH };
+
+    // Main bond analysis loop with yields
+    let prevGrid = null;
+    let layerIdx = 0;
+
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves || moves.length === 0) { layerIdx++; continue; }
+
+      const grid = this._buildSpatialGrid(moves, cellSize);
+      this._gridCache.set(layerNum, grid);
+      const consistency = this._calcExtrusionConsistency(moves);
+      const layerTime = this._estimateLayerTime(moves);
+      const coolScore = this._coolingScore(layerTime, material);
+
+      let worstOverlap = 1.0;
+      let worstOverlapMove = null;
+      let worstOverlapIdx = 0;
+      let lowOverlapCount = 0;
+      let inconsistentCount = 0;
+      let worstConsist = 1.0;
+      let worstConsistMove = null;
+
+      const scores = [];
+      for (let i = 0; i < moves.length; i++) {
+        if (!moves[i].extrude) {
+          scores.push(1.0);
+          continue;
+        }
+        if (prevGrid === null) {
+          scores.push(1.0);
+          continue;
+        }
+
+        const overlap = this._calcOverlap(moves[i], prevGrid, cellSize);
+        const consist = consistency.get(i) ?? 1.0;
+
+        const baseBond = overlap * 0.5 + consist * 0.25 + coolScore * 0.25;
+        const bond = baseBond * Math.min(1, overlap + 0.3);
+        scores.push(Math.max(0, Math.min(1, bond)));
+
+        const overlapThresh = thresholds['layer-bond-overlap'] || {};
+        if (overlap < (overlapThresh.warning ?? 0.60)) {
+          lowOverlapCount++;
+          if (overlap < worstOverlap) {
+            worstOverlap = overlap;
+            worstOverlapMove = moves[i];
+            worstOverlapIdx = i;
+          }
+        }
+
+        const consistThresh = thresholds['extrusion-consistency'] || {};
+        if (consist < (1 - (consistThresh.warning ?? 0.15))) {
+          inconsistentCount++;
+          if (consist < worstConsist) {
+            worstConsist = consist;
+            worstConsistMove = moves[i];
+          }
+        }
+      }
+
+      this._bondResults.set(layerNum, scores);
+
+      if (worstOverlapMove) {
+        const overlapThresh = thresholds['layer-bond-overlap'] || {};
+        const severity = worstOverlap < (overlapThresh.critical ?? 0.30) ? 'critical' : 'warning';
+        this._addFinding(severity, 'layer-bond', layerNum, worstOverlapIdx, worstOverlapMove,
+          severity === 'critical' ? 'Very weak layer bond' : 'Reduced layer bond',
+          `Layer ${layerNum}: ${lowOverlapCount} extrusions with low overlap (worst: ${(worstOverlap * 100).toFixed(0)}%).`,
+          'Increase extrusion width or adjust perimeter overlap in slicer settings.',
+          { overlapPercent: worstOverlap, affectedMoves: lowOverlapCount });
+      }
+
+      const coolThresh = thresholds['layer-bond-cooling'] || {};
+      if (layerTime < (coolThresh.critical ?? 1.0) && prevGrid !== null) {
+        const refMove = moves.find(m => m.extrude) || moves[0];
+        this._addFinding('critical', 'cooling', layerNum, 0, refMove,
+          'Insufficient layer cooling time',
+          `Layer ${layerNum} completes in ${layerTime.toFixed(1)}s — risk of deformation before material solidifies.`,
+          'Increase minimum layer time or enable "slow down for small layers" in slicer.',
+          { layerTime });
+      } else if (layerTime < (coolThresh.warning ?? 3.0) && prevGrid !== null) {
+        const refMove = moves.find(m => m.extrude) || moves[0];
+        this._addFinding('warning', 'cooling', layerNum, 0, refMove,
+          'Short layer cooling time',
+          `Layer ${layerNum} completes in ${layerTime.toFixed(1)}s.`,
+          'Consider increasing minimum layer time.',
+          { layerTime });
+      }
+
+      if (worstConsistMove && inconsistentCount > 0) {
+        this._addFinding('info', 'extrusion', layerNum, 0, worstConsistMove,
+          'Inconsistent extrusion',
+          `Layer ${layerNum}: ${inconsistentCount} moves with flow deviation >${((thresholds['extrusion-consistency']?.warning ?? 0.15) * 100).toFixed(0)}% (worst: ${((1 - worstConsist) * 100).toFixed(0)}%).`,
+          'Check for partial clog or inconsistent filament diameter.',
+          { worstConsistency: worstConsist, affectedMoves: inconsistentCount });
+      }
+
+      prevGrid = grid;
+
+      // Yield every 50 layers
+      if (layerIdx % 50 === 49) {
+        if (onProgress) onProgress(layerIdx / layerNums.length * 0.5);
+        await new Promise(r => setTimeout(r, 0));
+      }
+      layerIdx++;
+    }
+
+    // Merge findings
+    this._mergeConsecutiveFindings('layer-bond');
+    this._mergeConsecutiveFindings('cooling');
+    this._mergeConsecutiveFindings('extrusion');
+
+    if (onProgress) onProgress(0.6);
+    await new Promise(r => setTimeout(r, 0));
+
+    // Wall integrity (sync, fast)
+    this._analyzeWallIntegrity(layerMoves, thresholds);
+
+    if (onProgress) onProgress(0.7);
+    await new Promise(r => setTimeout(r, 0));
+
+    // Overhangs (uses cached grids, so fast)
+    this._analyzeOverhangs(layerMoves, thresholds, profile);
+
+    if (onProgress) onProgress(1.0);
   }
 }
 
@@ -5151,26 +5683,35 @@ class ThermalAnalyzer {
 
   // --- Grid Helpers ---
 
-  _cellKey(x, y, cellSize) {
-    const cx = Math.floor(x / cellSize);
-    const cy = Math.floor(y / cellSize);
-    return `${cx},${cy}`;
-  }
-
-  _rasterizeLine(x1, y1, x2, y2, cellSize) {
-    const cells = new Set();
+  _rasterizeLineIndices(x1, y1, x2, y2) {
+    const { minX, minY, gridRes, gridW, gridH } = this._grid;
+    const indices = [];
+    const seen = this._rasterSeen;
     const dx = x2 - x1, dy = y2 - y1;
     const len = Math.hypot(dx, dy);
     if (len < 0.001) {
-      cells.add(this._cellKey(x1, y1, cellSize));
-      return cells;
+      const gx = Math.floor((x1 - minX) / gridRes);
+      const gy = Math.floor((y1 - minY) / gridRes);
+      if (gx >= 0 && gx < gridW && gy >= 0 && gy < gridH) {
+        const idx = gy * gridW + gx;
+        indices.push(idx);
+        seen[idx] = this._rasterGen;
+      }
+      return indices;
     }
-    const steps = Math.max(1, Math.ceil(len / (cellSize * 0.5)));
+    const steps = Math.max(1, Math.ceil(len / (gridRes * 0.5)));
     for (let s = 0; s <= steps; s++) {
       const t = s / steps;
-      cells.add(this._cellKey(x1 + dx * t, y1 + dy * t, cellSize));
+      const gx = Math.floor((x1 + dx * t - minX) / gridRes);
+      const gy = Math.floor((y1 + dy * t - minY) / gridRes);
+      if (gx < 0 || gx >= gridW || gy < 0 || gy >= gridH) continue;
+      const idx = gy * gridW + gx;
+      if (seen[idx] !== this._rasterGen) {
+        seen[idx] = this._rasterGen;
+        indices.push(idx);
+      }
     }
-    return cells;
+    return indices;
   }
 
   _distanceTransform(extrusionCount, gridW, gridH, gridRes) {
@@ -5372,6 +5913,10 @@ class ThermalAnalyzer {
     const gridH = Math.ceil((maxY - minY) / gridRes) + 1;
     const totalCells = gridW * gridH;
 
+    this._grid = { minX, minY, gridRes, gridW, gridH };
+    this._rasterSeen = new Uint8Array(totalCells);
+    this._rasterGen = 0;
+
     // Build parallel typed arrays for the grid
     const temperature = new Float32Array(totalCells);
     const lastExtrusionTime = new Float32Array(totalCells);
@@ -5386,25 +5931,6 @@ class ThermalAnalyzer {
     // so the effective cell temperature is below nozzle melt temp.
     const depositionTemp = material.meltTemp * 0.7;
 
-    // Helper: cell key string -> grid index
-    const cellToIndex = (cellKey) => {
-      const parts = cellKey.split(',');
-      const cx = parseInt(parts[0], 10);
-      const cy = parseInt(parts[1], 10);
-      // Convert cell coords to grid-relative
-      const gx = cx - Math.floor(minX / gridRes);
-      const gy = cy - Math.floor(minY / gridRes);
-      if (gx < 0 || gx >= gridW || gy < 0 || gy >= gridH) return -1;
-      return gy * gridW + gx;
-    };
-
-    // Helper: grid index -> cell grid-relative coords
-    const indexToGxGy = (idx) => {
-      const gy = Math.floor(idx / gridW);
-      const gx = idx % gridW;
-      return [gx, gy];
-    };
-
     const coolingConst = (material.thermalConductivity || 0.13) * 0.01 * chamberFactor;
 
     // Forward pass data collection for backward pass
@@ -5414,6 +5940,17 @@ class ThermalAnalyzer {
     const startTime = Date.now();
     let globalTime = 0;
     let budgetExceeded = false;
+
+    // Pre-allocate scratch arrays (reused each layer iteration to reduce GC pressure)
+    const _cellStrain = new Float32Array(totalCells);
+    const _effectiveDist = new Float32Array(totalCells);
+    const _sat = new Float32Array((gridW + 1) * (gridH + 1));
+    const _fillFraction = new Float32Array(totalCells);
+    const _warpGrid = new Float32Array(totalCells);
+    const _tempBuf = new Float32Array(totalCells);
+    const _layerTemp = new Float32Array(totalCells);
+
+    const moveRasterCache = new Map(); // "layerNum:moveIndex" -> array of cell indices
 
     // Forward pass
     for (let li = 0; li < layerNums.length; li++) {
@@ -5441,20 +5978,20 @@ class ThermalAnalyzer {
       // Snapshot temperature at layer start (after between-layer cooling).
       // This prevents within-layer heat injection from contaminating overlay
       // readings — all moves on this layer see the same post-cooling state.
-      const layerTemp = new Float32Array(temperature);
+      _layerTemp.set(temperature);
 
       const materialCTE = material.cte || 68e-6;
 
       // Per-cell contraction strain for neighbor stress calculation.
       // strain = CTE × max(0, T - Tg). Cells below Tg have solidified (strain 0).
       const gt_warp = material.glassTransition || 60;
-      const cellStrain = new Float32Array(totalCells);
+      _cellStrain.fill(0);
 
       // Compute centroid of printed area for part radius calculation.
       let centroidX = 0, centroidY = 0, printedCount = 0;
       for (let idx = 0; idx < totalCells; idx++) {
-        const dT = layerTemp[idx] - gt_warp;
-        cellStrain[idx] = dT > 0 ? materialCTE * dT : 0;
+        const dT = _layerTemp[idx] - gt_warp;
+        _cellStrain[idx] = dT > 0 ? materialCTE * dT : 0;
         if (extrusionCount[idx] > 0) {
           const gy = Math.floor(idx / gridW);
           const gx = idx % gridW;
@@ -5481,12 +6018,12 @@ class ThermalAnalyzer {
           if (d > partRadius) partRadius = d;
         }
       }
-      const effectiveDist = new Float32Array(totalCells);
+      _effectiveDist.fill(0);
       for (let idx = 0; idx < totalCells; idx++) {
         if (extrusionCount[idx] === 0) continue;
         const gy = Math.floor(idx / gridW), gx = idx % gridW;
         const d = Math.hypot(minX + gx * gridRes - centroidX, minY + gy * gridRes - centroidY);
-        effectiveDist[idx] = partRadius * (0.4 + 0.6 * d / partRadius);
+        _effectiveDist[idx] = partRadius * (0.4 + 0.6 * d / partRadius);
       }
 
       // Precompute local fill fraction for each cell.
@@ -5496,22 +6033,22 @@ class ThermalAnalyzer {
       // Uses a summed area table (integral image) for O(1) per-cell queries.
       const fillRadius = Math.max(2, Math.round(10 / gridRes));
       const satW = gridW + 1, satH = gridH + 1;
-      const sat = new Float32Array(satW * satH);
+      _sat.fill(0);
       for (let y = 1; y <= gridH; y++) {
         for (let x = 1; x <= gridW; x++) {
-          sat[y * satW + x] = (extrusionCount[(y - 1) * gridW + (x - 1)] > 0 ? 1 : 0)
-            + sat[(y - 1) * satW + x] + sat[y * satW + (x - 1)] - sat[(y - 1) * satW + (x - 1)];
+          _sat[y * satW + x] = (extrusionCount[(y - 1) * gridW + (x - 1)] > 0 ? 1 : 0)
+            + _sat[(y - 1) * satW + x] + _sat[y * satW + (x - 1)] - _sat[(y - 1) * satW + (x - 1)];
         }
       }
-      const fillFraction = new Float32Array(totalCells);
+      _fillFraction.fill(0);
       for (let idx = 0; idx < totalCells; idx++) {
         const gy = Math.floor(idx / gridW), gx = idx % gridW;
         const x0 = Math.max(0, gx - fillRadius), y0 = Math.max(0, gy - fillRadius);
         const x1 = Math.min(gridW - 1, gx + fillRadius), y1 = Math.min(gridH - 1, gy + fillRadius);
-        const sum = sat[(y1 + 1) * satW + (x1 + 1)] - sat[y0 * satW + (x1 + 1)]
-          - sat[(y1 + 1) * satW + x0] + sat[y0 * satW + x0];
+        const sum = _sat[(y1 + 1) * satW + (x1 + 1)] - _sat[y0 * satW + (x1 + 1)]
+          - _sat[(y1 + 1) * satW + x0] + _sat[y0 * satW + x0];
         const area = (x1 - x0 + 1) * (y1 - y0 + 1);
-        fillFraction[idx] = sum / area;
+        _fillFraction[idx] = sum / area;
       }
 
       // Process each move
@@ -5541,14 +6078,17 @@ class ThermalAnalyzer {
         }
 
         const exposure = getExposure(move.type);
-        const cells = this._rasterizeLine(move.x1, move.y1, move.x2, move.y2, gridRes);
-        const cellLen = len / Math.max(1, cells.size);
+        this._rasterGen = (this._rasterGen + 1) & 0xFF || 1;
+        const cellIndices = this._rasterizeLineIndices(move.x1, move.y1, move.x2, move.y2);
+        moveRasterCache.set(`${layerNum}:${mi}`, cellIndices);
+        const cellLen = len / Math.max(1, cellIndices.length);
 
         // Sample from layer snapshot — immune to within-layer heat injection
         const midX = (move.x1 + move.x2) / 2;
         const midY = (move.y1 + move.y2) / 2;
-        const midKey = this._cellKey(midX, midY, gridRes);
-        const midIdx = cellToIndex(midKey);
+        const mgx = Math.floor((midX - minX) / gridRes);
+        const mgy = Math.floor((midY - minY) / gridRes);
+        const midIdx = (mgx >= 0 && mgx < gridW && mgy >= 0 && mgy < gridH) ? mgy * gridW + mgx : -1;
 
         let heatScore = 0;
         let temperature_val = 0;
@@ -5556,7 +6096,7 @@ class ThermalAnalyzer {
         let warpRisk = 0;
 
         if (midIdx >= 0 && midIdx < totalCells) {
-          const preTemp = layerTemp[midIdx]; // post-cooling, pre-injection
+          const preTemp = _layerTemp[midIdx]; // post-cooling, pre-injection
 
           // Heat accumulation: how hot was the cell before this layer started?
           // High score = cell hadn't cooled from previous layer (heat building up).
@@ -5583,7 +6123,7 @@ class ThermalAnalyzer {
           // neighborStress = max strain difference with extruded neighbors
           // partRadius = constant scale factor (mm) — larger parts warp more
           // fillFraction = local material density — sparse structures warp less
-          const selfContraction = cellStrain[midIdx];
+          const selfContraction = _cellStrain[midIdx];
           let neighborStress = 0;
           const gy = Math.floor(midIdx / gridW);
           const gx = midIdx % gridW;
@@ -5595,17 +6135,15 @@ class ThermalAnalyzer {
           ];
           for (const nIdx of warpNeighbors) {
             if (nIdx < 0 || nIdx >= totalCells || extrusionCount[nIdx] === 0) continue;
-            const diff = Math.abs(cellStrain[midIdx] - cellStrain[nIdx]);
+            const diff = Math.abs(_cellStrain[midIdx] - _cellStrain[nIdx]);
             if (diff > neighborStress) neighborStress = diff;
           }
 
-          warpRisk = (selfContraction + neighborStress) * effectiveDist[midIdx] * fillFraction[midIdx];
+          warpRisk = (selfContraction + neighborStress) * _effectiveDist[midIdx] * _fillFraction[midIdx];
         }
 
         // Heat injection: fresh filament arrives near melt temp.
-        for (const cellKey of cells) {
-          const idx = cellToIndex(cellKey);
-          if (idx < 0 || idx >= totalCells) continue;
+        for (const idx of cellIndices) {
           temperature[idx] = Math.max(temperature[idx], depositionTemp);
           lastExtrusionTime[idx] = globalTime;
           extrusionCount[idx]++;
@@ -5635,11 +6173,11 @@ class ThermalAnalyzer {
       // extrusions) — the extrusionCount footprint is needed for cumulative warp
       // display in the viewer, and warp values will naturally be zero when
       // cellStrain is zero (temperature below glass transition).
-      const warpGrid = new Float32Array(totalCells);
+      _warpGrid.fill(0);
       if (printedCount > 0) {
         for (let idx = 0; idx < totalCells; idx++) {
           if (extrusionCount[idx] === 0) continue;
-          const strain = cellStrain[idx];
+          const strain = _cellStrain[idx];
           const gy = Math.floor(idx / gridW), gx = idx % gridW;
           let nStress = 0;
           const neighbors = [
@@ -5649,13 +6187,13 @@ class ThermalAnalyzer {
             gy < gridH - 1 ? idx + gridW : -1,
           ];
           for (const nIdx of neighbors) {
-            if (nIdx >= 0 && nIdx < totalCells && extrusionCount[nIdx] > 0) nStress = Math.max(nStress, Math.abs(strain - cellStrain[nIdx]));
+            if (nIdx >= 0 && nIdx < totalCells && extrusionCount[nIdx] > 0) nStress = Math.max(nStress, Math.abs(strain - _cellStrain[nIdx]));
           }
-          warpGrid[idx] = (strain + nStress) * effectiveDist[idx] * fillFraction[idx];
+          _warpGrid[idx] = (strain + nStress) * _effectiveDist[idx] * _fillFraction[idx];
         }
       }
       this._warpGrids.set(layerNum, {
-        warpRisk: warpGrid,
+        warpRisk: new Float32Array(_warpGrid),  // copy for persistent storage
         extrusionCount: new Uint16Array(extrusionCount),
         gridW, gridH, minX, minY, gridRes,
       });
@@ -5674,23 +6212,23 @@ class ThermalAnalyzer {
       // the center-to-edge gradient that drives warping and stress.
       const diffusionRate = 0.15;
       const diffIters = budgetExceeded ? 1 : 3;
-      const tempBuf = new Float32Array(temperature);
+      _tempBuf.set(temperature);
       for (let iter = 0; iter < diffIters; iter++) {
         for (let idx = 0; idx < totalCells; idx++) {
-          if (tempBuf[idx] <= ambientTemp) continue;
+          if (_tempBuf[idx] <= ambientTemp) continue;
           const gy = Math.floor(idx / gridW);
           const gx = idx % gridW;
           let sum = 0, count = 0;
-          if (gx > 0)          { sum += tempBuf[idx - 1];     count++; }
-          if (gx < gridW - 1)  { sum += tempBuf[idx + 1];     count++; }
-          if (gy > 0)          { sum += tempBuf[idx - gridW];  count++; }
-          if (gy < gridH - 1)  { sum += tempBuf[idx + gridW];  count++; }
+          if (gx > 0)          { sum += _tempBuf[idx - 1];     count++; }
+          if (gx < gridW - 1)  { sum += _tempBuf[idx + 1];     count++; }
+          if (gy > 0)          { sum += _tempBuf[idx - gridW];  count++; }
+          if (gy < gridH - 1)  { sum += _tempBuf[idx + gridW];  count++; }
           if (count > 0) {
             const avg = sum / count;
-            temperature[idx] = tempBuf[idx] + diffusionRate * (avg - tempBuf[idx]);
+            temperature[idx] = _tempBuf[idx] + diffusionRate * (avg - _tempBuf[idx]);
           }
         }
-        tempBuf.set(temperature);
+        _tempBuf.set(temperature);
       }
     }
 
@@ -5723,8 +6261,9 @@ class ThermalAnalyzer {
 
           const midX = (move.x1 + move.x2) / 2;
           const midY = (move.y1 + move.y2) / 2;
-          const midKey = this._cellKey(midX, midY, gridRes);
-          const midIdx = cellToIndex(midKey);
+          const mgx = Math.floor((midX - minX) / gridRes);
+          const mgy = Math.floor((midY - minY) / gridRes);
+          const midIdx = (mgx >= 0 && mgx < gridW && mgy >= 0 && mgy < gridH) ? mgy * gridW + mgx : -1;
           if (midIdx >= 0 && midIdx < totalCells) {
             const coolingTime = nextExtrTime[midIdx] - moveTime;
             if (coolingTime > 0) {
@@ -5745,12 +6284,10 @@ class ThermalAnalyzer {
           if (!existing || existing._timestamp === undefined) continue;
           const moveTime = existing._timestamp;
 
-          const cells = this._rasterizeLine(move.x1, move.y1, move.x2, move.y2, gridRes);
-          for (const cellKey of cells) {
-            const idx = cellToIndex(cellKey);
-            if (idx >= 0 && idx < totalCells) {
-              nextExtrTime[idx] = moveTime;
-            }
+          const cellIndices = moveRasterCache.get(`${layerNum}:${mi}`);
+          if (!cellIndices) continue;
+          for (const idx of cellIndices) {
+            nextExtrTime[idx] = moveTime;
           }
         }
       }
@@ -6088,6 +6625,419 @@ class ThermalAnalyzer {
 
     this._findings = [...other, ...merged];
   }
+
+  // --- Async Analysis (non-blocking, yields every 20 layers) ---
+
+  async analyzeAsync(layerMoves, profile, onProgress) {
+    this.clear();
+
+    const materialType = profile.material?.type || 'PLA';
+    const material = getMaterialProfile(materialType, profile.material || {});
+
+    // Depth settings
+    const depth = profile.thermal?.depth ?? 50;
+    let gridRes, timeBudget, enableBackward;
+    if (depth <= 33) {
+      gridRes = 4; timeBudget = 1500; enableBackward = false;
+    } else if (depth <= 66) {
+      gridRes = 2; timeBudget = 4000; enableBackward = true;
+    } else {
+      gridRes = 1; timeBudget = 10000; enableBackward = true;
+    }
+
+    // Environment
+    const chamberType = profile.environment?.chamberType || 'open';
+    const chamberFactor = chamberType === 'heated' ? 0.2 : chamberType === 'enclosed' ? 0.5 : 1.0;
+
+    // Parse fan states if raw lines available
+    let fanStates = {};
+    if (profile._parsedLines) {
+      fanStates = this._parseFanStates(profile._parsedLines);
+    }
+
+    // Infer ambient temp
+    const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
+    const maxLayerZ = layerNums.length * 0.2;
+    const ambientTemp = this._inferAmbient(
+      profile._parsedLines || [],
+      profile.environment || {},
+      maxLayerZ / 2
+    );
+
+    // Compute grid bounds from all extrusion moves
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let hasExtrusion = false;
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      if (!moves) continue;
+      for (const m of moves) {
+        if (!m.extrude) continue;
+        hasExtrusion = true;
+        minX = Math.min(minX, m.x1, m.x2);
+        minY = Math.min(minY, m.y1, m.y2);
+        maxX = Math.max(maxX, m.x1, m.x2);
+        maxY = Math.max(maxY, m.y1, m.y2);
+      }
+    }
+
+    if (!hasExtrusion) return;
+
+    // Add padding
+    const pad = gridRes * 2;
+    minX -= pad; minY -= pad;
+    maxX += pad; maxY += pad;
+
+    const gridW = Math.ceil((maxX - minX) / gridRes) + 1;
+    const gridH = Math.ceil((maxY - minY) / gridRes) + 1;
+    const totalCells = gridW * gridH;
+
+    this._grid = { minX, minY, gridRes, gridW, gridH };
+    this._rasterSeen = new Uint8Array(totalCells);
+    this._rasterGen = 0;
+
+    // Build parallel typed arrays for the grid
+    const temperature = new Float32Array(totalCells);
+    const lastExtrusionTime = new Float32Array(totalCells);
+    const extrusionCount = new Uint16Array(totalCells);
+    const exposureFactor = new Float32Array(totalCells);
+
+    // Init temperature to ambient, exposure to 1.0
+    temperature.fill(ambientTemp);
+    exposureFactor.fill(1.0);
+
+    const depositionTemp = material.meltTemp * 0.7;
+    const coolingConst = (material.thermalConductivity || 0.13) * 0.01 * chamberFactor;
+
+    const layerCoolingTimes = [];
+    const perMoveOverlays = [];
+
+    const startTime = Date.now();
+    let globalTime = 0;
+    let budgetExceeded = false;
+
+    // Pre-allocate scratch arrays
+    const _cellStrain = new Float32Array(totalCells);
+    const _effectiveDist = new Float32Array(totalCells);
+    const _sat = new Float32Array((gridW + 1) * (gridH + 1));
+    const _fillFraction = new Float32Array(totalCells);
+    const _warpGrid = new Float32Array(totalCells);
+    const _tempBuf = new Float32Array(totalCells);
+    const _layerTemp = new Float32Array(totalCells);
+
+    const moveRasterCache = new Map();
+
+    // Forward pass (with async yield points)
+    for (let li = 0; li < layerNums.length; li++) {
+      const layerNum = layerNums[li];
+      const moves = layerMoves[layerNum];
+      if (!moves || moves.length === 0) continue;
+
+      // Check time budget
+      if (Date.now() - startTime > timeBudget) {
+        budgetExceeded = true;
+      }
+
+      // Compute layer time
+      let layerTime = 0;
+      for (const move of moves) {
+        const len = Math.hypot(move.x2 - move.x1, move.y2 - move.y1);
+        const speed = (move.feedRate || 1500) / 60;
+        layerTime += speed > 0 ? len / speed : 0;
+      }
+      layerCoolingTimes.push({ layerNum, layerTime });
+
+      const fanSpeed = fanStates[layerNum] ?? 0;
+      const fanBoost = 1 + fanSpeed * (material.coolingSensitivity || 0.5);
+
+      _layerTemp.set(temperature);
+
+      const materialCTE = material.cte || 68e-6;
+      const gt_warp = material.glassTransition || 60;
+      _cellStrain.fill(0);
+
+      let centroidX = 0, centroidY = 0, printedCount = 0;
+      for (let idx = 0; idx < totalCells; idx++) {
+        const dT = _layerTemp[idx] - gt_warp;
+        _cellStrain[idx] = dT > 0 ? materialCTE * dT : 0;
+        if (extrusionCount[idx] > 0) {
+          const gy = Math.floor(idx / gridW);
+          const gx = idx % gridW;
+          centroidX += (minX + gx * gridRes);
+          centroidY += (minY + gy * gridRes);
+          printedCount++;
+        }
+      }
+      if (printedCount > 0) {
+        centroidX /= printedCount;
+        centroidY /= printedCount;
+      }
+
+      let partRadius = 1;
+      for (let idx = 0; idx < totalCells; idx++) {
+        if (extrusionCount[idx] > 0) {
+          const gy = Math.floor(idx / gridW), gx = idx % gridW;
+          const d = Math.hypot(minX + gx * gridRes - centroidX, minY + gy * gridRes - centroidY);
+          if (d > partRadius) partRadius = d;
+        }
+      }
+      _effectiveDist.fill(0);
+      for (let idx = 0; idx < totalCells; idx++) {
+        if (extrusionCount[idx] === 0) continue;
+        const gy = Math.floor(idx / gridW), gx = idx % gridW;
+        const d = Math.hypot(minX + gx * gridRes - centroidX, minY + gy * gridRes - centroidY);
+        _effectiveDist[idx] = partRadius * (0.4 + 0.6 * d / partRadius);
+      }
+
+      const fillRadius = Math.max(2, Math.round(10 / gridRes));
+      const satW = gridW + 1, satH = gridH + 1;
+      _sat.fill(0);
+      for (let y = 1; y <= gridH; y++) {
+        for (let x = 1; x <= gridW; x++) {
+          _sat[y * satW + x] = (extrusionCount[(y - 1) * gridW + (x - 1)] > 0 ? 1 : 0)
+            + _sat[(y - 1) * satW + x] + _sat[y * satW + (x - 1)] - _sat[(y - 1) * satW + (x - 1)];
+        }
+      }
+      _fillFraction.fill(0);
+      for (let idx = 0; idx < totalCells; idx++) {
+        const gy = Math.floor(idx / gridW), gx = idx % gridW;
+        const x0 = Math.max(0, gx - fillRadius), y0 = Math.max(0, gy - fillRadius);
+        const x1 = Math.min(gridW - 1, gx + fillRadius), y1 = Math.min(gridH - 1, gy + fillRadius);
+        const sum = _sat[(y1 + 1) * satW + (x1 + 1)] - _sat[y0 * satW + (x1 + 1)]
+          - _sat[(y1 + 1) * satW + x0] + _sat[y0 * satW + x0];
+        const area = (x1 - x0 + 1) * (y1 - y0 + 1);
+        _fillFraction[idx] = sum / area;
+      }
+
+      // Process each move
+      for (let mi = 0; mi < moves.length; mi++) {
+        const move = moves[mi];
+        if (!move.extrude) {
+          this._overlayData.set(`${layerNum}:${mi}`, {
+            coolingTime: layerTime,
+            heatAccum: 0,
+            coolingEff: 0,
+            temperature: 0,
+            warpRisk: 0,
+          });
+          continue;
+        }
+
+        const len = Math.hypot(move.x2 - move.x1, move.y2 - move.y1);
+        if (len < 0.001) {
+          this._overlayData.set(`${layerNum}:${mi}`, {
+            coolingTime: layerTime,
+            heatAccum: 0,
+            coolingEff: 0,
+            temperature: 0,
+            warpRisk: 0,
+          });
+          continue;
+        }
+
+        const exposure = getExposure(move.type);
+        this._rasterGen = (this._rasterGen + 1) & 0xFF || 1;
+        const cellIndices = this._rasterizeLineIndices(move.x1, move.y1, move.x2, move.y2);
+        moveRasterCache.set(`${layerNum}:${mi}`, cellIndices);
+        const cellLen = len / Math.max(1, cellIndices.length);
+
+        const midX = (move.x1 + move.x2) / 2;
+        const midY = (move.y1 + move.y2) / 2;
+        const mgx = Math.floor((midX - minX) / gridRes);
+        const mgy = Math.floor((midY - minY) / gridRes);
+        const midIdx = (mgx >= 0 && mgx < gridW && mgy >= 0 && mgy < gridH) ? mgy * gridW + mgx : -1;
+
+        let heatScore = 0;
+        let temperature_val = 0;
+        let coolingEff = 0;
+        let warpRisk = 0;
+
+        if (midIdx >= 0 && midIdx < totalCells) {
+          const preTemp = _layerTemp[midIdx];
+
+          const gt = material.glassTransition || 60;
+          const hdt = material.hdt || (gt + 20);
+          if (preTemp > gt) {
+            heatScore = Math.min(1.0, (preTemp - gt) / Math.max(1, hdt - gt));
+          }
+
+          temperature_val = preTemp;
+
+          if (extrusionCount[midIdx] > 0) {
+            coolingEff = Math.min(1.0, (depositionTemp - preTemp) / Math.max(1, depositionTemp - ambientTemp));
+          } else {
+            coolingEff = 1.0;
+          }
+
+          const selfContraction = _cellStrain[midIdx];
+          let neighborStress = 0;
+          const gy = Math.floor(midIdx / gridW);
+          const gx = midIdx % gridW;
+          const warpNeighbors = [
+            gx > 0 ? midIdx - 1 : -1,
+            gx < gridW - 1 ? midIdx + 1 : -1,
+            gy > 0 ? midIdx - gridW : -1,
+            gy < gridH - 1 ? midIdx + gridW : -1,
+          ];
+          for (const nIdx of warpNeighbors) {
+            if (nIdx < 0 || nIdx >= totalCells || extrusionCount[nIdx] === 0) continue;
+            const diff = Math.abs(_cellStrain[midIdx] - _cellStrain[nIdx]);
+            if (diff > neighborStress) neighborStress = diff;
+          }
+
+          warpRisk = (selfContraction + neighborStress) * _effectiveDist[midIdx] * _fillFraction[midIdx];
+        }
+
+        for (const idx of cellIndices) {
+          temperature[idx] = Math.max(temperature[idx], depositionTemp);
+          lastExtrusionTime[idx] = globalTime;
+          extrusionCount[idx]++;
+          exposureFactor[idx] = Math.min(exposureFactor[idx], exposure);
+        }
+
+        const speed = (move.feedRate || 1500) / 60;
+        const moveDuration = speed > 0 ? len / speed : 0;
+
+        this._overlayData.set(`${layerNum}:${mi}`, {
+          coolingTime: layerTime,
+          heatAccum: heatScore,
+          coolingEff,
+          temperature: temperature_val,
+          warpRisk,
+          _timestamp: globalTime,
+        });
+
+        globalTime += moveDuration;
+      }
+
+      // Store per-layer warp grid
+      _warpGrid.fill(0);
+      if (printedCount > 0) {
+        for (let idx = 0; idx < totalCells; idx++) {
+          if (extrusionCount[idx] === 0) continue;
+          const strain = _cellStrain[idx];
+          const gy = Math.floor(idx / gridW), gx = idx % gridW;
+          let nStress = 0;
+          const neighbors = [
+            gx > 0 ? idx - 1 : -1,
+            gx < gridW - 1 ? idx + 1 : -1,
+            gy > 0 ? idx - gridW : -1,
+            gy < gridH - 1 ? idx + gridW : -1,
+          ];
+          for (const nIdx of neighbors) {
+            if (nIdx >= 0 && nIdx < totalCells && extrusionCount[nIdx] > 0) nStress = Math.max(nStress, Math.abs(strain - _cellStrain[nIdx]));
+          }
+          _warpGrid[idx] = (strain + nStress) * _effectiveDist[idx] * _fillFraction[idx];
+        }
+      }
+      this._warpGrids.set(layerNum, {
+        warpRisk: new Float32Array(_warpGrid),
+        extrusionCount: new Uint16Array(extrusionCount),
+        gridW, gridH, minX, minY, gridRes,
+      });
+
+      // Between layers: cool all cells (Newton's Law)
+      for (let idx = 0; idx < totalCells; idx++) {
+        if (temperature[idx] > ambientTemp) {
+          const exp = exposureFactor[idx];
+          const cooling = (temperature[idx] - ambientTemp) * coolingConst * layerTime * fanBoost * exp;
+          temperature[idx] = Math.max(ambientTemp, temperature[idx] - cooling);
+        }
+      }
+
+      // Lateral heat diffusion
+      const diffusionRate = 0.15;
+      const diffIters = budgetExceeded ? 1 : 3;
+      _tempBuf.set(temperature);
+      for (let iter = 0; iter < diffIters; iter++) {
+        for (let idx = 0; idx < totalCells; idx++) {
+          if (_tempBuf[idx] <= ambientTemp) continue;
+          const gy = Math.floor(idx / gridW);
+          const gx = idx % gridW;
+          let sum = 0, count = 0;
+          if (gx > 0)          { sum += _tempBuf[idx - 1];     count++; }
+          if (gx < gridW - 1)  { sum += _tempBuf[idx + 1];     count++; }
+          if (gy > 0)          { sum += _tempBuf[idx - gridW];  count++; }
+          if (gy < gridH - 1)  { sum += _tempBuf[idx + gridW];  count++; }
+          if (count > 0) {
+            const avg = sum / count;
+            temperature[idx] = _tempBuf[idx] + diffusionRate * (avg - _tempBuf[idx]);
+          }
+        }
+        _tempBuf.set(temperature);
+      }
+
+      // Yield every 20 layers
+      if (li % 20 === 19) {
+        if (onProgress) onProgress(li / layerNums.length * 0.8);
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+
+    // Backward pass (sync — it's fast)
+    if (enableBackward && !budgetExceeded) {
+      if (onProgress) onProgress(0.8);
+      const nextExtrTime = new Float32Array(totalCells);
+      nextExtrTime.fill(globalTime);
+      let maxCoolingTime = 0;
+
+      for (let li = layerNums.length - 1; li >= 0; li--) {
+        const layerNum = layerNums[li];
+        const moves = layerMoves[layerNum];
+        if (!moves) continue;
+
+        // Phase 1: Read cooling times
+        for (let mi = moves.length - 1; mi >= 0; mi--) {
+          const move = moves[mi];
+          if (!move.extrude) continue;
+
+          const overlayKey = `${layerNum}:${mi}`;
+          const existing = this._overlayData.get(overlayKey);
+          if (!existing || existing._timestamp === undefined) continue;
+          const moveTime = existing._timestamp;
+
+          const midX = (move.x1 + move.x2) / 2;
+          const midY = (move.y1 + move.y2) / 2;
+          const mgx = Math.floor((midX - minX) / gridRes);
+          const mgy = Math.floor((midY - minY) / gridRes);
+          const midIdx = (mgx >= 0 && mgx < gridW && mgy >= 0 && mgy < gridH) ? mgy * gridW + mgx : -1;
+          if (midIdx >= 0 && midIdx < totalCells) {
+            const coolingTime = nextExtrTime[midIdx] - moveTime;
+            if (coolingTime > 0) {
+              existing.coolingTime = coolingTime;
+              maxCoolingTime = Math.max(maxCoolingTime, coolingTime);
+            }
+          }
+        }
+
+        // Phase 2: Update nextExtrTime
+        for (let mi = moves.length - 1; mi >= 0; mi--) {
+          const move = moves[mi];
+          if (!move.extrude) continue;
+
+          const overlayKey = `${layerNum}:${mi}`;
+          const existing = this._overlayData.get(overlayKey);
+          if (!existing || existing._timestamp === undefined) continue;
+          const moveTime = existing._timestamp;
+
+          const cellIndices = moveRasterCache.get(`${layerNum}:${mi}`);
+          if (!cellIndices) continue;
+          for (const idx of cellIndices) {
+            nextExtrTime[idx] = moveTime;
+          }
+        }
+      }
+    }
+
+    if (onProgress) onProgress(0.95);
+
+    // Generate findings
+    this._generateFindings(layerMoves, layerNums, material, layerCoolingTimes, chamberFactor, chamberType);
+
+    // Store grid data
+    this._gridData = { temperature, gridW, gridH, minX, minY, gridRes };
+
+    if (onProgress) onProgress(1.0);
+  }
 }
 
 class RetractionAnalyzer {
@@ -6247,8 +7197,8 @@ class RetractionAnalyzer {
           currentE = params.E;
         }
 
-        // Retraction: negative E, no XY movement
-        if (eDelta < -0.001 && !hasX && !hasY) {
+        // Retraction: negative E (includes wipe moves with XY, e.g. BambuStudio)
+        if (eDelta < -0.001) {
           if (!retracted) {
             events.push({
               lineIndex: i,
@@ -6289,25 +7239,32 @@ class RetractionAnalyzer {
    * lineIndex range to retraction events for fast lookup.
    */
   _buildRetractionIndexMap(events) {
-    const retractionLineIndices = new Set();
+    // Build sorted array for binary search in _hasRetractionBetween
+    const indices = [];
     for (const evt of events) {
       if (evt.type === 'retract') {
-        retractionLineIndices.add(evt.lineIndex);
+        indices.push(evt.lineIndex);
       }
     }
-    return retractionLineIndices;
+    indices.sort((a, b) => a - b);
+    return indices;
   }
 
   /**
    * Check if any retraction event exists between two line indices (exclusive).
+   * Uses binary search on sorted array — O(log n) per call.
    */
   _hasRetractionBetween(retractionLineIndices, startLine, endLine) {
-    for (const lineIdx of retractionLineIndices) {
-      if (lineIdx > startLine && lineIdx < endLine) {
-        return true;
-      }
+    const arr = retractionLineIndices;
+    // Binary search for first index > startLine
+    let lo = 0, hi = arr.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[mid] <= startLine) lo = mid + 1;
+      else hi = mid;
     }
-    return false;
+    // Check if that index is < endLine
+    return lo < arr.length && arr[lo] < endLine;
   }
 
   // --- Grid Helpers ---
@@ -6316,6 +7273,129 @@ class RetractionAnalyzer {
     const cx = Math.floor(x / cellSize);
     const cy = Math.floor(y / cellSize);
     return `${cx},${cy}`;
+  }
+
+  _buildCoverageGrid(moves, cellSize) {
+    const grid = new Set();
+    if (!moves) return grid;
+    for (const move of moves) {
+      if (!move.extrude) continue;
+      // Mark cells along the extrusion path (start, mid, end points)
+      const steps = Math.max(1, Math.ceil(Math.hypot(move.x2 - move.x1, move.y2 - move.y1) / cellSize));
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const x = move.x1 + (move.x2 - move.x1) * t;
+        const y = move.y1 + (move.y2 - move.y1) * t;
+        grid.add(this._cellKey(x, y, cellSize));
+      }
+    }
+    return grid;
+  }
+
+  _isTravelOverMaterial(move, coverageGrid, cellSize) {
+    if (coverageGrid.size === 0) return false;
+    // Scale sample count with travel distance so long diagonals don't miss gaps
+    const dist = Math.hypot(move.x2 - move.x1, move.y2 - move.y1);
+    const numSamples = Math.max(3, Math.ceil(dist / cellSize));
+    for (let i = 0; i <= numSamples; i++) {
+      const t = i / numSamples;
+      const x = move.x1 + (move.x2 - move.x1) * t;
+      const y = move.y1 + (move.y2 - move.y1) * t;
+      if (!coverageGrid.has(this._cellKey(x, y, cellSize))) return false;
+    }
+    return true;
+  }
+
+  // --- Context-Aware Threshold Logic ---
+
+  static _TYPE_GROUPS = {
+    WALL: new Set(['WALL-OUTER', 'WALL-INNER']),
+    BRIDGE: new Set(['BRIDGE']),
+    INFILL: new Set(['FILL', 'SOLID', 'TOP', 'BOTTOM']),
+    SUPPORT: new Set(['SUPPORT', 'SUPPORT-INTERFACE']),
+    GAP: new Set(['GAP INFILL']),
+  };
+
+  _getRetractionThreshold(moves, travelIndex, travelDist) {
+    const G = RetractionAnalyzer._TYPE_GROUPS;
+
+    let prevType = '';
+    for (let i = travelIndex - 1; i >= 0; i--) {
+      if (moves[i].extrude) {
+        prevType = (moves[i].type || '').toUpperCase();
+        break;
+      }
+    }
+
+    let nextType = '';
+    for (let i = travelIndex + 1; i < moves.length; i++) {
+      if (moves[i].extrude) {
+        nextType = (moves[i].type || '').toUpperCase();
+        break;
+      }
+    }
+
+    const prevIsBridge = G.BRIDGE.has(prevType);
+    const nextIsBridge = G.BRIDGE.has(nextType);
+    const prevIsWall = G.WALL.has(prevType);
+    const nextIsWall = G.WALL.has(nextType);
+
+    if (prevIsBridge && nextIsBridge) {
+      return { threshold: Infinity, severity: 'info', suppress: true, riskMultiplier: 0.3 };
+    }
+
+    if (prevIsBridge || nextIsBridge) {
+      return { threshold: 20, severity: 'info', suppress: false, riskMultiplier: 0.3 };
+    }
+
+    if (prevIsWall || nextIsWall) {
+      return {
+        threshold: 2,
+        severity: travelDist > 10 ? 'critical' : 'warning',
+        suppress: false,
+        riskMultiplier: 1,
+      };
+    }
+
+    const prevIsInfill = G.INFILL.has(prevType);
+    const nextIsInfill = G.INFILL.has(nextType);
+    if (prevIsInfill && nextIsInfill) {
+      return {
+        threshold: 10,
+        severity: travelDist > 20 ? 'warning' : 'info',
+        suppress: false,
+        riskMultiplier: 0.5,
+      };
+    }
+
+    const prevIsSupport = G.SUPPORT.has(prevType);
+    const nextIsSupport = G.SUPPORT.has(nextType);
+    if (prevIsSupport && nextIsSupport) {
+      return {
+        threshold: 10,
+        severity: 'info',
+        suppress: false,
+        riskMultiplier: 0.4,
+      };
+    }
+
+    const prevIsGap = G.GAP.has(prevType);
+    const nextIsGap = G.GAP.has(nextType);
+    if (prevIsGap && nextIsGap) {
+      return {
+        threshold: 8,
+        severity: travelDist > 15 ? 'warning' : 'info',
+        suppress: false,
+        riskMultiplier: 0.5,
+      };
+    }
+
+    return {
+      threshold: 2,
+      severity: travelDist > 10 ? 'critical' : 'warning',
+      suppress: false,
+      riskMultiplier: 1,
+    };
   }
 
   // --- Main Analysis ---
@@ -6354,12 +7434,25 @@ class RetractionAnalyzer {
     // Step 4: Walk layerMoves, compute overlays, and detect findings
     const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
 
-    for (const layerNum of layerNums) {
+    for (let li = 0; li < layerNums.length; li++) {
+      const layerNum = layerNums[li];
       const moves = layerMoves[layerNum];
       if (!moves || moves.length === 0) continue;
 
       // Per-layer retraction clustering for excessive-retractions detection
+      // Collect retraction events that fall within this layer's line range (once per layer)
+      const firstLineIdx = moves[0].lineIndex;
+      const lastLineIdx = moves[moves.length - 1].lineIndex;
       const layerRetractionPositions = [];
+      for (const evt of events) {
+        if (evt.type === 'retract' && evt.lineIndex >= firstLineIdx && evt.lineIndex <= lastLineIdx) {
+          layerRetractionPositions.push(evt);
+        }
+      }
+
+      // Build coverage grid from previous layer for stringing suppression
+      const prevLayerMoves = li > 0 ? layerMoves[layerNums[li - 1]] : null;
+      const coverageGrid = this._buildCoverageGrid(prevLayerMoves, cellSize);
 
       for (let mi = 0; mi < moves.length; mi++) {
         const move = moves[mi];
@@ -6401,8 +7494,14 @@ class RetractionAnalyzer {
           const travelRetracted = precedingExtrusionLineIndex >= 0 &&
             this._hasRetractionBetween(retractionLineIndices, precedingExtrusionLineIndex, move.lineIndex);
 
-          // Stringing risk: travelDistance * (1 if no retraction, 0.1 if retracted)
-          const riskMultiplier = travelRetracted ? 0.1 : 1;
+          // Context-aware threshold and risk multiplier
+          const ctx = this._getRetractionThreshold(moves, mi, travelDist);
+
+          // Suppress if travel is over material from previous layer
+          const overMaterial = this._isTravelOverMaterial(move, coverageGrid, cellSize);
+
+          // Stringing risk: modulated by context and retraction state
+          const riskMultiplier = travelRetracted ? 0.1 : (overMaterial ? 0.15 : ctx.riskMultiplier);
           const stringingRisk = travelDist * riskMultiplier;
 
           this._overlayData.set(`${layerNum}:${mi}`, {
@@ -6410,10 +7509,9 @@ class RetractionAnalyzer {
             stringingRisk,
           });
 
-          // Missing retraction detection
-          if (travelDist > 2 && precedingExtrusionLineIndex >= 0 && !travelRetracted) {
-            const severity = travelDist > 10 ? 'critical' : 'warning';
-            this._addFinding(severity, 'missing-retraction', layerNum, mi, move,
+          // Missing retraction detection (context-aware)
+          if (!ctx.suppress && !overMaterial && travelDist > ctx.threshold && precedingExtrusionLineIndex >= 0 && !travelRetracted) {
+            this._addFinding(ctx.severity, 'missing-retraction', layerNum, mi, move,
               'Missing retraction before travel move',
               `Travel of ${travelDist.toFixed(1)}mm without retraction on layer ${layerNum}. This may cause stringing.`,
               'Enable retraction in slicer settings or increase retraction trigger distance.',
@@ -6421,20 +7519,6 @@ class RetractionAnalyzer {
           }
         }
 
-        // Collect retraction positions for this layer's clustering
-        for (const evt of events) {
-          if (evt.type === 'retract') {
-            // Only include retractions that fall within moves on this layer
-            const firstLineIdx = moves[0].lineIndex;
-            const lastLineIdx = moves[moves.length - 1].lineIndex;
-            if (evt.lineIndex >= firstLineIdx && evt.lineIndex <= lastLineIdx) {
-              // Avoid duplicates by checking if we already added this event
-              if (!layerRetractionPositions.some(p => p.lineIndex === evt.lineIndex)) {
-                layerRetractionPositions.push(evt);
-              }
-            }
-          }
-        }
       }
 
       // Excessive retraction detection: cluster spatially within 5mm radius
@@ -9501,6 +10585,7 @@ function renderMotionLegend() {
   for (const overlay of analysisManager.getSupportedOverlays()) {
     modeOptions.push([overlay.id, overlay.label + (overlay.unit ? ' (' + overlay.unit + ')' : '')]);
   }
+  modeOptions.sort((a, b) => a[1].localeCompare(b[1]));
   const modeSelect = modeOptions.map(([val, label]) =>
     `<option value="${val}"${colorMode === val ? ' selected' : ''}>${label}</option>`
   ).join('');
@@ -9716,8 +10801,8 @@ function loadFile(file) {
     document.getElementById('profileJerk').value = motionAnalyzer.profile.jerk;
     document.getElementById('profileFirmware').value = motionAnalyzer.profile.firmwareType;
 
-    // Run structural analysis
-    runAnalysis();
+    // Run eager analysis (motion + flow only; others run on demand)
+    runEagerAnalysis();
 
     // Update analysis panel material dropdown
     const inferredMaterial = inferMaterial(parser.lines);
@@ -10678,13 +11763,26 @@ function navigateToFinding(findingId) {
 }
 
 // ===== TAB SWITCHING =====
-function switchTab(tabName) {
+async function switchTab(tabName) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
   document.querySelectorAll('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === 'tab-' + tabName));
   if (tabName === 'reference' && document.getElementById('refContent').children.length === 0) {
     renderReference();
   }
   if (tabName === 'analysis') {
+    if (!analysisManager.isAllAnalyzed()) {
+      const container = document.getElementById('analysisResults');
+      if (container) {
+        container.innerHTML = '<div class="analysis-progress"><div class="bar-label" id="analysisLabel">Analyzing...</div><div class="bar-wrap"><div class="bar-fill" id="analysisBar" style="width:0%"></div></div></div>';
+      }
+      const ENGINE_LABELS = { structural: 'Structural', thermal: 'Thermal', retraction: 'Retraction', motion: 'Motion', flow: 'Flow' };
+      await analysisManager.ensureAllAnalyzedAsync((info) => {
+        const label = document.getElementById('analysisLabel');
+        const bar = document.getElementById('analysisBar');
+        if (label) label.textContent = 'Analyzing ' + (ENGINE_LABELS[info.engine] || info.engine) + '... ' + (info.overall * 100).toFixed(0) + '%';
+        if (bar) bar.style.width = (info.overall * 100).toFixed(0) + '%';
+      });
+    }
     renderAnalysisPanel();
     renderCustomMaterials();
   }
@@ -11946,6 +13044,8 @@ analysisManager.register(structuralAnalyzer);
 analysisManager.register(thermalAnalyzer);
 analysisManager.register(retractionAnalyzer);
 analysisManager.register(flowAnalyzer);
+analysisManager.markEager('motion');
+analysisManager.markEager('flow');
 
 let analysisProfile = {
   printer: {},
@@ -12112,8 +13212,30 @@ function resetMotionTypeState() {
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
 
-function setColorMode(mode) {
+async function setColorMode(mode) {
   colorMode = mode;
+  // Ensure the engine for this overlay has been analyzed (async to avoid freeze)
+  const engine = analysisManager._overlayMap.get(mode);
+  if (engine && !analysisManager.isAnalyzed(engine.name)) {
+    const ENGINE_LABELS = { structural: 'Structural', thermal: 'Thermal', retraction: 'Retraction', motion: 'Motion', flow: 'Flow' };
+    const label = ENGINE_LABELS[engine.name] || engine.name;
+    // Show loading overlay on the 3D canvas area (visible on Visual tab)
+    const canvasArea = document.querySelector('.viewer-canvas-area');
+    let overlay = null;
+    if (canvasArea) {
+      overlay = document.createElement('div');
+      overlay.className = 'viewer-analysis-loading';
+      overlay.innerHTML = '<div style="text-align:center"><div class="bar-label" id="viewerAnalysisLabel">Analyzing ' + label + '...</div><div class="bar-wrap"><div class="bar-fill" id="viewerAnalysisBar" style="width:0%"></div></div></div>';
+      canvasArea.appendChild(overlay);
+    }
+    await analysisManager.ensureEngineAsync(engine.name, (p) => {
+      const bar = document.getElementById('viewerAnalysisBar');
+      const lbl = document.getElementById('viewerAnalysisLabel');
+      if (bar) bar.style.width = (p * 100).toFixed(0) + '%';
+      if (lbl) lbl.textContent = 'Analyzing ' + label + '... ' + (p * 100).toFixed(0) + '%';
+    });
+    if (overlay) overlay.remove();
+  }
   heatmapLayerStats = {};
   resetSimulation();
   viewer.clearBuffers();
@@ -12170,14 +13292,37 @@ function getHeatmapLayerStats(layerNum) {
   return stats;
 }
 
-function runAnalysis() {
+function runEagerAnalysis() {
   const inferredMaterial = inferMaterial(parser.lines);
   if (!analysisProfile._manualMaterial) {
     analysisProfile.material = getMaterialProfile(inferredMaterial);
   }
   analysisProfile.printer = { ...motionAnalyzer.profile };
   analysisProfile._parsedLines = parser.lines;
-  analysisManager.analyzeAll(parser.layerMoves, analysisProfile);
+  analysisManager.analyzeEager(parser.layerMoves, analysisProfile);
+  heatmapLayerStats = {};
+}
+
+async function runAnalysis() {
+  const inferredMaterial = inferMaterial(parser.lines);
+  if (!analysisProfile._manualMaterial) {
+    analysisProfile.material = getMaterialProfile(inferredMaterial);
+  }
+  analysisProfile.printer = { ...motionAnalyzer.profile };
+  analysisProfile._parsedLines = parser.lines;
+
+  const container = document.getElementById('analysisResults');
+  if (container) {
+    container.innerHTML = '<div class="analysis-progress"><div class="bar-label" id="analysisLabel">Analyzing...</div><div class="bar-wrap"><div class="bar-fill" id="analysisBar" style="width:0%"></div></div></div>';
+  }
+  const ENGINE_LABELS = { structural: 'Structural', thermal: 'Thermal', retraction: 'Retraction', motion: 'Motion', flow: 'Flow' };
+  await analysisManager.analyzeAllAsync(parser.layerMoves, analysisProfile, (info) => {
+    const label = document.getElementById('analysisLabel');
+    const bar = document.getElementById('analysisBar');
+    if (label) label.textContent = 'Analyzing ' + (ENGINE_LABELS[info.engine] || info.engine) + '... ' + (info.overall * 100).toFixed(0) + '%';
+    if (bar) bar.style.width = (info.overall * 100).toFixed(0) + '%';
+  });
+
   heatmapLayerStats = {};
   if (typeof renderAnalysisPanel === 'function') renderAnalysisPanel();
   if (currentView === 'visual') {

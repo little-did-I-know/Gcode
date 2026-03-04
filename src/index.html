@@ -291,6 +291,14 @@ main { display: flex; flex: 1; overflow: hidden; }
 .parse-progress .bar-wrap { width: 300px; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin-top: 8px; }
 .parse-progress .bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.1s; }
 .parse-progress .bar-label { font-size: 12px; color: var(--text-dim); }
+.analysis-progress { padding: 24px 16px; text-align: center; }
+.analysis-progress .bar-wrap { width: 100%; max-width: 300px; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin: 8px auto 0; }
+.analysis-progress .bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.1s; }
+.analysis-progress .bar-label { font-size: 12px; color: var(--text-dim); }
+.viewer-analysis-loading { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); z-index: 20; pointer-events: none; }
+.viewer-analysis-loading .bar-wrap { width: 220px; height: 6px; background: rgba(255,255,255,.15); border-radius: 3px; overflow: hidden; margin: 6px auto 0; }
+.viewer-analysis-loading .bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.1s; }
+.viewer-analysis-loading .bar-label { font-size: 13px; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
 
 /* RIGHT PANEL — TOOLS */
 .panel-right { width: 400px; min-width: 280px; max-width: 60vw; display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--border); position: relative; }

@@ -5,6 +5,9 @@ export class AnalysisManager {
     this.engines = [];
     this._overlayMap = new Map();
     this._statsCache = {};
+    this._analyzed = new Set();
+    this._eagerEngines = new Set();
+    this._storedArgs = null;
   }
 
   register(engine) {
@@ -14,14 +17,114 @@ export class AnalysisManager {
     }
   }
 
+  markEager(engineName) {
+    this._eagerEngines.add(engineName);
+  }
+
+  analyzeEager(layerMoves, profile) {
+    this._statsCache = {};
+    this._storedArgs = { layerMoves, profile };
+    for (const engine of this.engines) {
+      if (this._eagerEngines.has(engine.name)) {
+        engine.analyze(layerMoves, profile);
+        this._analyzed.add(engine.name);
+      }
+    }
+  }
+
+  ensureEngine(engineName) {
+    if (this._analyzed.has(engineName)) return;
+    if (!this._storedArgs) return;
+    const engine = this.engines.find(e => e.name === engineName);
+    if (!engine) return;
+    const { layerMoves, profile } = this._storedArgs;
+    engine.analyze(layerMoves, profile);
+    this._analyzed.add(engineName);
+  }
+
+  ensureAllAnalyzed() {
+    if (!this._storedArgs) return;
+    for (const engine of this.engines) {
+      if (!this._analyzed.has(engine.name)) {
+        const { layerMoves, profile } = this._storedArgs;
+        engine.analyze(layerMoves, profile);
+        this._analyzed.add(engine.name);
+      }
+    }
+  }
+
+  isAnalyzed(engineName) {
+    return this._analyzed.has(engineName);
+  }
+
+  isAllAnalyzed() {
+    return this.engines.every(e => this._analyzed.has(e.name));
+  }
+
+  async ensureEngineAsync(engineName, onProgress) {
+    if (this._analyzed.has(engineName)) return;
+    if (!this._storedArgs) return;
+    const engine = this.engines.find(e => e.name === engineName);
+    if (!engine) return;
+    const { layerMoves, profile } = this._storedArgs;
+    if (typeof engine.analyzeAsync === 'function') {
+      await engine.analyzeAsync(layerMoves, profile, onProgress);
+    } else {
+      engine.analyze(layerMoves, profile);
+    }
+    this._analyzed.add(engineName);
+  }
+
+  async ensureAllAnalyzedAsync(onProgress) {
+    if (!this._storedArgs) return;
+    const toRun = this.engines.filter(e => !this._analyzed.has(e.name));
+    if (toRun.length === 0) return;
+    for (let i = 0; i < toRun.length; i++) {
+      const engine = toRun[i];
+      const { layerMoves, profile } = this._storedArgs;
+      const engineProgress = (p) => {
+        if (onProgress) onProgress({ engine: engine.name, engineProgress: p, overall: (i + p) / toRun.length });
+      };
+      if (typeof engine.analyzeAsync === 'function') {
+        await engine.analyzeAsync(layerMoves, profile, engineProgress);
+      } else {
+        engine.analyze(layerMoves, profile);
+      }
+      this._analyzed.add(engine.name);
+      if (onProgress) onProgress({ engine: engine.name, engineProgress: 1, overall: (i + 1) / toRun.length });
+    }
+  }
+
   analyzeAll(layerMoves, profile) {
     this._statsCache = {};
+    this._storedArgs = { layerMoves, profile };
     for (const engine of this.engines) {
       engine.analyze(layerMoves, profile);
+      this._analyzed.add(engine.name);
+    }
+  }
+
+  async analyzeAllAsync(layerMoves, profile, onProgress) {
+    this._statsCache = {};
+    this._storedArgs = { layerMoves, profile };
+    this._analyzed.clear();
+    for (let i = 0; i < this.engines.length; i++) {
+      const engine = this.engines[i];
+      const engineProgress = (p) => {
+        if (onProgress) onProgress({ engine: engine.name, engineProgress: p, overall: (i + p) / this.engines.length });
+      };
+      if (typeof engine.analyzeAsync === 'function') {
+        await engine.analyzeAsync(layerMoves, profile, engineProgress);
+      } else {
+        engine.analyze(layerMoves, profile);
+      }
+      this._analyzed.add(engine.name);
+      if (onProgress) onProgress({ engine: engine.name, engineProgress: 1, overall: (i + 1) / this.engines.length });
     }
   }
 
   getAllFindings() {
+    this.ensureAllAnalyzed();
     const all = [];
     for (const engine of this.engines) {
       all.push(...engine.getFindings());
@@ -31,6 +134,7 @@ export class AnalysisManager {
   }
 
   getFindingsByEngine(engineName) {
+    this.ensureEngine(engineName);
     const engine = this.engines.find(e => e.name === engineName);
     if (!engine) return [];
     const findings = engine.getFindings();
@@ -49,6 +153,7 @@ export class AnalysisManager {
   getOverlayValue(overlayId, layerNum, moveIndex) {
     const engine = this._overlayMap.get(overlayId);
     if (!engine) return 0;
+    this.ensureEngine(engine.name);
     return engine.getOverlayData(overlayId, layerNum, moveIndex);
   }
 
@@ -76,6 +181,8 @@ export class AnalysisManager {
 
   clear() {
     this._statsCache = {};
+    this._analyzed.clear();
+    this._storedArgs = null;
     for (const engine of this.engines) {
       engine.clear();
     }

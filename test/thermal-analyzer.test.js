@@ -78,33 +78,43 @@ describe('ThermalAnalyzer - Engine Interface', () => {
 // ============================================================
 
 describe('ThermalAnalyzer - Grid Rasterization', () => {
+  function setupGrid(ta, gridRes = 4) {
+    const gridW = Math.ceil(20 / gridRes);
+    const gridH = Math.ceil(20 / gridRes);
+    ta._grid = { minX: 0, minY: 0, gridRes, gridW, gridH };
+    ta._rasterSeen = new Uint8Array(gridW * gridH);
+    ta._rasterGen = 1;
+  }
+
   it('rasterizes a horizontal line into correct cells', () => {
     const ta = new ThermalAnalyzer();
-    const cells = ta._rasterizeLine(0, 0, 10, 0, 4);
-    assert.ok(cells instanceof Set);
-    assert.ok(cells.size >= 3, `Expected >= 3 cells for 10mm line at 4mm res, got ${cells.size}`);
-    // Should include the start and end cells
-    assert.ok(cells.has(ta._cellKey(0, 0, 4)), 'Should contain start cell');
-    assert.ok(cells.has(ta._cellKey(10, 0, 4)), 'Should contain end cell');
+    setupGrid(ta, 4);
+    const indices = ta._rasterizeLineIndices(0, 0, 10, 0);
+    assert.ok(Array.isArray(indices));
+    assert.ok(indices.length >= 3, `Expected >= 3 cells for 10mm line at 4mm res, got ${indices.length}`);
   });
 
   it('rasterizes a diagonal line', () => {
     const ta = new ThermalAnalyzer();
-    const cells = ta._rasterizeLine(0, 0, 10, 10, 4);
-    assert.ok(cells.size >= 3, `Expected >= 3 cells for diagonal line, got ${cells.size}`);
+    setupGrid(ta, 4);
+    const indices = ta._rasterizeLineIndices(0, 0, 10, 10);
+    assert.ok(indices.length >= 3, `Expected >= 3 cells for diagonal line, got ${indices.length}`);
   });
 
   it('rasterizes a zero-length line into one cell', () => {
     const ta = new ThermalAnalyzer();
-    const cells = ta._rasterizeLine(5, 5, 5, 5, 4);
-    assert.strictEqual(cells.size, 1);
+    setupGrid(ta, 4);
+    const indices = ta._rasterizeLineIndices(5, 5, 5, 5);
+    assert.strictEqual(indices.length, 1);
   });
 
-  it('_cellKey returns consistent string format', () => {
+  it('_rasterizeLineIndices returns integer grid indices', () => {
     const ta = new ThermalAnalyzer();
-    const key = ta._cellKey(5.5, 3.2, 2);
-    assert.ok(typeof key === 'string');
-    assert.ok(key.includes(','), 'Cell key should contain comma separator');
+    setupGrid(ta, 2);
+    const indices = ta._rasterizeLineIndices(1, 1, 5, 3);
+    assert.ok(Array.isArray(indices));
+    assert.ok(indices.length > 0);
+    assert.ok(indices.every(i => Number.isInteger(i)), 'All indices should be integers');
   });
 });
 

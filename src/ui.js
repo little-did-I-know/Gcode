@@ -805,6 +805,7 @@ function renderMotionLegend() {
   for (const overlay of analysisManager.getSupportedOverlays()) {
     modeOptions.push([overlay.id, overlay.label + (overlay.unit ? ' (' + overlay.unit + ')' : '')]);
   }
+  modeOptions.sort((a, b) => a[1].localeCompare(b[1]));
   const modeSelect = modeOptions.map(([val, label]) =>
     `<option value="${val}"${colorMode === val ? ' selected' : ''}>${label}</option>`
   ).join('');
@@ -1020,8 +1021,8 @@ function loadFile(file) {
     document.getElementById('profileJerk').value = motionAnalyzer.profile.jerk;
     document.getElementById('profileFirmware').value = motionAnalyzer.profile.firmwareType;
 
-    // Run structural analysis
-    runAnalysis();
+    // Run eager analysis (motion + flow only; others run on demand)
+    runEagerAnalysis();
 
     // Update analysis panel material dropdown
     const inferredMaterial = inferMaterial(parser.lines);
@@ -1982,13 +1983,26 @@ function navigateToFinding(findingId) {
 }
 
 // ===== TAB SWITCHING =====
-function switchTab(tabName) {
+async function switchTab(tabName) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
   document.querySelectorAll('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === 'tab-' + tabName));
   if (tabName === 'reference' && document.getElementById('refContent').children.length === 0) {
     renderReference();
   }
   if (tabName === 'analysis') {
+    if (!analysisManager.isAllAnalyzed()) {
+      const container = document.getElementById('analysisResults');
+      if (container) {
+        container.innerHTML = '<div class="analysis-progress"><div class="bar-label" id="analysisLabel">Analyzing...</div><div class="bar-wrap"><div class="bar-fill" id="analysisBar" style="width:0%"></div></div></div>';
+      }
+      const ENGINE_LABELS = { structural: 'Structural', thermal: 'Thermal', retraction: 'Retraction', motion: 'Motion', flow: 'Flow' };
+      await analysisManager.ensureAllAnalyzedAsync((info) => {
+        const label = document.getElementById('analysisLabel');
+        const bar = document.getElementById('analysisBar');
+        if (label) label.textContent = 'Analyzing ' + (ENGINE_LABELS[info.engine] || info.engine) + '... ' + (info.overall * 100).toFixed(0) + '%';
+        if (bar) bar.style.width = (info.overall * 100).toFixed(0) + '%';
+      });
+    }
     renderAnalysisPanel();
     renderCustomMaterials();
   }

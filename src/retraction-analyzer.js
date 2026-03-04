@@ -155,8 +155,8 @@ export class RetractionAnalyzer {
           currentE = params.E;
         }
 
-        // Retraction: negative E, no XY movement
-        if (eDelta < -0.001 && !hasX && !hasY) {
+        // Retraction: negative E (includes wipe moves with XY, e.g. BambuStudio)
+        if (eDelta < -0.001) {
           if (!retracted) {
             events.push({
               lineIndex: i,
@@ -197,25 +197,32 @@ export class RetractionAnalyzer {
    * lineIndex range to retraction events for fast lookup.
    */
   _buildRetractionIndexMap(events) {
-    const retractionLineIndices = new Set();
+    // Build sorted array for binary search in _hasRetractionBetween
+    const indices = [];
     for (const evt of events) {
       if (evt.type === 'retract') {
-        retractionLineIndices.add(evt.lineIndex);
+        indices.push(evt.lineIndex);
       }
     }
-    return retractionLineIndices;
+    indices.sort((a, b) => a - b);
+    return indices;
   }
 
   /**
    * Check if any retraction event exists between two line indices (exclusive).
+   * Uses binary search on sorted array — O(log n) per call.
    */
   _hasRetractionBetween(retractionLineIndices, startLine, endLine) {
-    for (const lineIdx of retractionLineIndices) {
-      if (lineIdx > startLine && lineIdx < endLine) {
-        return true;
-      }
+    const arr = retractionLineIndices;
+    // Binary search for first index > startLine
+    let lo = 0, hi = arr.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[mid] <= startLine) lo = mid + 1;
+      else hi = mid;
     }
-    return false;
+    // Check if that index is < endLine
+    return lo < arr.length && arr[lo] < endLine;
   }
 
   // --- Grid Helpers ---
@@ -224,6 +231,129 @@ export class RetractionAnalyzer {
     const cx = Math.floor(x / cellSize);
     const cy = Math.floor(y / cellSize);
     return `${cx},${cy}`;
+  }
+
+  _buildCoverageGrid(moves, cellSize) {
+    const grid = new Set();
+    if (!moves) return grid;
+    for (const move of moves) {
+      if (!move.extrude) continue;
+      // Mark cells along the extrusion path (start, mid, end points)
+      const steps = Math.max(1, Math.ceil(Math.hypot(move.x2 - move.x1, move.y2 - move.y1) / cellSize));
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const x = move.x1 + (move.x2 - move.x1) * t;
+        const y = move.y1 + (move.y2 - move.y1) * t;
+        grid.add(this._cellKey(x, y, cellSize));
+      }
+    }
+    return grid;
+  }
+
+  _isTravelOverMaterial(move, coverageGrid, cellSize) {
+    if (coverageGrid.size === 0) return false;
+    // Scale sample count with travel distance so long diagonals don't miss gaps
+    const dist = Math.hypot(move.x2 - move.x1, move.y2 - move.y1);
+    const numSamples = Math.max(3, Math.ceil(dist / cellSize));
+    for (let i = 0; i <= numSamples; i++) {
+      const t = i / numSamples;
+      const x = move.x1 + (move.x2 - move.x1) * t;
+      const y = move.y1 + (move.y2 - move.y1) * t;
+      if (!coverageGrid.has(this._cellKey(x, y, cellSize))) return false;
+    }
+    return true;
+  }
+
+  // --- Context-Aware Threshold Logic ---
+
+  static _TYPE_GROUPS = {
+    WALL: new Set(['WALL-OUTER', 'WALL-INNER']),
+    BRIDGE: new Set(['BRIDGE']),
+    INFILL: new Set(['FILL', 'SOLID', 'TOP', 'BOTTOM']),
+    SUPPORT: new Set(['SUPPORT', 'SUPPORT-INTERFACE']),
+    GAP: new Set(['GAP INFILL']),
+  };
+
+  _getRetractionThreshold(moves, travelIndex, travelDist) {
+    const G = RetractionAnalyzer._TYPE_GROUPS;
+
+    let prevType = '';
+    for (let i = travelIndex - 1; i >= 0; i--) {
+      if (moves[i].extrude) {
+        prevType = (moves[i].type || '').toUpperCase();
+        break;
+      }
+    }
+
+    let nextType = '';
+    for (let i = travelIndex + 1; i < moves.length; i++) {
+      if (moves[i].extrude) {
+        nextType = (moves[i].type || '').toUpperCase();
+        break;
+      }
+    }
+
+    const prevIsBridge = G.BRIDGE.has(prevType);
+    const nextIsBridge = G.BRIDGE.has(nextType);
+    const prevIsWall = G.WALL.has(prevType);
+    const nextIsWall = G.WALL.has(nextType);
+
+    if (prevIsBridge && nextIsBridge) {
+      return { threshold: Infinity, severity: 'info', suppress: true, riskMultiplier: 0.3 };
+    }
+
+    if (prevIsBridge || nextIsBridge) {
+      return { threshold: 20, severity: 'info', suppress: false, riskMultiplier: 0.3 };
+    }
+
+    if (prevIsWall || nextIsWall) {
+      return {
+        threshold: 2,
+        severity: travelDist > 10 ? 'critical' : 'warning',
+        suppress: false,
+        riskMultiplier: 1,
+      };
+    }
+
+    const prevIsInfill = G.INFILL.has(prevType);
+    const nextIsInfill = G.INFILL.has(nextType);
+    if (prevIsInfill && nextIsInfill) {
+      return {
+        threshold: 10,
+        severity: travelDist > 20 ? 'warning' : 'info',
+        suppress: false,
+        riskMultiplier: 0.5,
+      };
+    }
+
+    const prevIsSupport = G.SUPPORT.has(prevType);
+    const nextIsSupport = G.SUPPORT.has(nextType);
+    if (prevIsSupport && nextIsSupport) {
+      return {
+        threshold: 10,
+        severity: 'info',
+        suppress: false,
+        riskMultiplier: 0.4,
+      };
+    }
+
+    const prevIsGap = G.GAP.has(prevType);
+    const nextIsGap = G.GAP.has(nextType);
+    if (prevIsGap && nextIsGap) {
+      return {
+        threshold: 8,
+        severity: travelDist > 15 ? 'warning' : 'info',
+        suppress: false,
+        riskMultiplier: 0.5,
+      };
+    }
+
+    return {
+      threshold: 2,
+      severity: travelDist > 10 ? 'critical' : 'warning',
+      suppress: false,
+      riskMultiplier: 1,
+    };
   }
 
   // --- Main Analysis ---
@@ -262,12 +392,25 @@ export class RetractionAnalyzer {
     // Step 4: Walk layerMoves, compute overlays, and detect findings
     const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
 
-    for (const layerNum of layerNums) {
+    for (let li = 0; li < layerNums.length; li++) {
+      const layerNum = layerNums[li];
       const moves = layerMoves[layerNum];
       if (!moves || moves.length === 0) continue;
 
       // Per-layer retraction clustering for excessive-retractions detection
+      // Collect retraction events that fall within this layer's line range (once per layer)
+      const firstLineIdx = moves[0].lineIndex;
+      const lastLineIdx = moves[moves.length - 1].lineIndex;
       const layerRetractionPositions = [];
+      for (const evt of events) {
+        if (evt.type === 'retract' && evt.lineIndex >= firstLineIdx && evt.lineIndex <= lastLineIdx) {
+          layerRetractionPositions.push(evt);
+        }
+      }
+
+      // Build coverage grid from previous layer for stringing suppression
+      const prevLayerMoves = li > 0 ? layerMoves[layerNums[li - 1]] : null;
+      const coverageGrid = this._buildCoverageGrid(prevLayerMoves, cellSize);
 
       for (let mi = 0; mi < moves.length; mi++) {
         const move = moves[mi];
@@ -309,8 +452,14 @@ export class RetractionAnalyzer {
           const travelRetracted = precedingExtrusionLineIndex >= 0 &&
             this._hasRetractionBetween(retractionLineIndices, precedingExtrusionLineIndex, move.lineIndex);
 
-          // Stringing risk: travelDistance * (1 if no retraction, 0.1 if retracted)
-          const riskMultiplier = travelRetracted ? 0.1 : 1;
+          // Context-aware threshold and risk multiplier
+          const ctx = this._getRetractionThreshold(moves, mi, travelDist);
+
+          // Suppress if travel is over material from previous layer
+          const overMaterial = this._isTravelOverMaterial(move, coverageGrid, cellSize);
+
+          // Stringing risk: modulated by context and retraction state
+          const riskMultiplier = travelRetracted ? 0.1 : (overMaterial ? 0.15 : ctx.riskMultiplier);
           const stringingRisk = travelDist * riskMultiplier;
 
           this._overlayData.set(`${layerNum}:${mi}`, {
@@ -318,10 +467,9 @@ export class RetractionAnalyzer {
             stringingRisk,
           });
 
-          // Missing retraction detection
-          if (travelDist > 2 && precedingExtrusionLineIndex >= 0 && !travelRetracted) {
-            const severity = travelDist > 10 ? 'critical' : 'warning';
-            this._addFinding(severity, 'missing-retraction', layerNum, mi, move,
+          // Missing retraction detection (context-aware)
+          if (!ctx.suppress && !overMaterial && travelDist > ctx.threshold && precedingExtrusionLineIndex >= 0 && !travelRetracted) {
+            this._addFinding(ctx.severity, 'missing-retraction', layerNum, mi, move,
               'Missing retraction before travel move',
               `Travel of ${travelDist.toFixed(1)}mm without retraction on layer ${layerNum}. This may cause stringing.`,
               'Enable retraction in slicer settings or increase retraction trigger distance.',
@@ -329,20 +477,6 @@ export class RetractionAnalyzer {
           }
         }
 
-        // Collect retraction positions for this layer's clustering
-        for (const evt of events) {
-          if (evt.type === 'retract') {
-            // Only include retractions that fall within moves on this layer
-            const firstLineIdx = moves[0].lineIndex;
-            const lastLineIdx = moves[moves.length - 1].lineIndex;
-            if (evt.lineIndex >= firstLineIdx && evt.lineIndex <= lastLineIdx) {
-              // Avoid duplicates by checking if we already added this event
-              if (!layerRetractionPositions.some(p => p.lineIndex === evt.lineIndex)) {
-                layerRetractionPositions.push(evt);
-              }
-            }
-          }
-        }
       }
 
       // Excessive retraction detection: cluster spatially within 5mm radius

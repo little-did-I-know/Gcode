@@ -451,3 +451,264 @@ describe('RetractionAnalyzer - Finding Format', () => {
     assert.ok('xyz' in f.location);
   });
 });
+
+describe('RetractionAnalyzer - Context-Aware Thresholds', () => {
+  it('suppresses missing retraction between bridge segments', () => {
+    const a = new RetractionAnalyzer();
+    const lines = [
+      ';LAYER:5',
+      'G1 X10 Y0 E1 F1200',
+      'G0 X25 Y0 F6000',
+      'G1 X40 Y0 E2 F1200',
+    ];
+    const layerMoves = {
+      5: [
+        { x1: 0, y1: 0, x2: 10, y2: 0, type: 'BRIDGE', extrude: true, feedRate: 1200, eLength: 1, lineIndex: 1 },
+        { x1: 10, y1: 0, x2: 25, y2: 0, type: 'BRIDGE', extrude: false, feedRate: 6000, eLength: 0, lineIndex: 2 },
+        { x1: 25, y1: 0, x2: 40, y2: 0, type: 'BRIDGE', extrude: true, feedRate: 1200, eLength: 1, lineIndex: 3 },
+      ],
+    };
+    a.analyze(layerMoves, makeProfile({ _parsedLines: lines }));
+    const missing = a.getFindings().filter(f => f.category === 'missing-retraction');
+    assert.strictEqual(missing.length, 0, 'bridge-to-bridge travel should not flag missing retraction');
+  });
+
+  it('suppresses missing retraction for short infill-to-infill travel', () => {
+    const a = new RetractionAnalyzer();
+    const lines = [
+      ';LAYER:2',
+      'G1 X10 Y0 E1 F3000',
+      'G0 X18 Y0 F6000',
+      'G1 X30 Y0 E2 F3000',
+    ];
+    const layerMoves = {
+      2: [
+        { x1: 0, y1: 0, x2: 10, y2: 0, type: 'FILL', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 1 },
+        { x1: 10, y1: 0, x2: 18, y2: 0, type: 'FILL', extrude: false, feedRate: 6000, eLength: 0, lineIndex: 2 },
+        { x1: 18, y1: 0, x2: 30, y2: 0, type: 'FILL', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 3 },
+      ],
+    };
+    a.analyze(layerMoves, makeProfile({ _parsedLines: lines }));
+    const missing = a.getFindings().filter(f => f.category === 'missing-retraction');
+    assert.strictEqual(missing.length, 0, '8mm infill-to-infill travel should be suppressed (threshold 10mm)');
+  });
+
+  it('still flags long infill-to-infill travel above threshold', () => {
+    const a = new RetractionAnalyzer();
+    const lines = [
+      ';LAYER:2',
+      'G1 X10 Y0 E1 F3000',
+      'G0 X25 Y0 F6000',
+      'G1 X40 Y0 E2 F3000',
+    ];
+    const layerMoves = {
+      2: [
+        { x1: 0, y1: 0, x2: 10, y2: 0, type: 'FILL', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 1 },
+        { x1: 10, y1: 0, x2: 25, y2: 0, type: 'FILL', extrude: false, feedRate: 6000, eLength: 0, lineIndex: 2 },
+        { x1: 25, y1: 0, x2: 40, y2: 0, type: 'FILL', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 3 },
+      ],
+    };
+    a.analyze(layerMoves, makeProfile({ _parsedLines: lines }));
+    const missing = a.getFindings().filter(f => f.category === 'missing-retraction');
+    assert.ok(missing.length > 0, '15mm infill travel should still be flagged');
+  });
+
+  it('suppresses missing retraction for support-to-support travel', () => {
+    const a = new RetractionAnalyzer();
+    const lines = [
+      ';LAYER:3',
+      'G1 X10 Y0 E1 F3000',
+      'G0 X18 Y0 F6000',
+      'G1 X30 Y0 E2 F3000',
+    ];
+    const layerMoves = {
+      3: [
+        { x1: 0, y1: 0, x2: 10, y2: 0, type: 'SUPPORT', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 1 },
+        { x1: 10, y1: 0, x2: 18, y2: 0, type: 'SUPPORT', extrude: false, feedRate: 6000, eLength: 0, lineIndex: 2 },
+        { x1: 18, y1: 0, x2: 30, y2: 0, type: 'SUPPORT', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 3 },
+      ],
+    };
+    a.analyze(layerMoves, makeProfile({ _parsedLines: lines }));
+    const missing = a.getFindings().filter(f => f.category === 'missing-retraction');
+    assert.strictEqual(missing.length, 0, '8mm support travel should be suppressed');
+  });
+
+  it('keeps strict threshold for wall-adjacent travel', () => {
+    const a = new RetractionAnalyzer();
+    const lines = [
+      ';LAYER:2',
+      'G1 X10 Y0 E1 F3000',
+      'G0 X15 Y0 F6000',
+      'G1 X20 Y0 E2 F3000',
+    ];
+    const layerMoves = {
+      2: [
+        { x1: 0, y1: 0, x2: 10, y2: 0, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 1 },
+        { x1: 10, y1: 0, x2: 15, y2: 0, type: 'WALL-OUTER', extrude: false, feedRate: 6000, eLength: 0, lineIndex: 2 },
+        { x1: 15, y1: 0, x2: 20, y2: 0, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 3 },
+      ],
+    };
+    a.analyze(layerMoves, makeProfile({ _parsedLines: lines }));
+    const missing = a.getFindings().filter(f => f.category === 'missing-retraction');
+    assert.ok(missing.length > 0, 'wall-to-wall 5mm travel should still be flagged at 2mm threshold');
+  });
+
+  it('uses higher threshold for bridge-adjacent travel (one side bridge)', () => {
+    const a = new RetractionAnalyzer();
+    const lines = [
+      ';LAYER:5',
+      'G1 X10 Y0 E1 F1200',
+      'G0 X25 Y0 F6000',
+      'G1 X40 Y0 E2 F3000',
+    ];
+    const layerMoves = {
+      5: [
+        { x1: 0, y1: 0, x2: 10, y2: 0, type: 'BRIDGE', extrude: true, feedRate: 1200, eLength: 1, lineIndex: 1 },
+        { x1: 10, y1: 0, x2: 25, y2: 0, type: 'BRIDGE', extrude: false, feedRate: 6000, eLength: 0, lineIndex: 2 },
+        { x1: 25, y1: 0, x2: 40, y2: 0, type: 'FILL', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 3 },
+      ],
+    };
+    a.analyze(layerMoves, makeProfile({ _parsedLines: lines }));
+    const missing = a.getFindings().filter(f => f.category === 'missing-retraction');
+    assert.strictEqual(missing.length, 0, '15mm bridge-adjacent travel should be suppressed (threshold 20mm)');
+  });
+
+  it('bridge-adjacent travel has reduced stringing risk', () => {
+    const a = new RetractionAnalyzer();
+    const lines = [
+      ';LAYER:5',
+      'G1 X10 Y0 E1 F1200',
+      'G0 X25 Y0 F6000',
+      'G1 X40 Y0 E2 F1200',
+    ];
+    const layerMoves = {
+      5: [
+        { x1: 0, y1: 0, x2: 10, y2: 0, type: 'BRIDGE', extrude: true, feedRate: 1200, eLength: 1, lineIndex: 1 },
+        { x1: 10, y1: 0, x2: 25, y2: 0, type: 'BRIDGE', extrude: false, feedRate: 6000, eLength: 0, lineIndex: 2 },
+        { x1: 25, y1: 0, x2: 40, y2: 0, type: 'BRIDGE', extrude: true, feedRate: 1200, eLength: 1, lineIndex: 3 },
+      ],
+    };
+    a.analyze(layerMoves, makeProfile({ _parsedLines: lines }));
+    const risk = a.getOverlayData('stringing-risk', 5, 1);
+    assert.ok(risk < 10, `bridge stringing risk (${risk}) should be reduced`);
+  });
+
+  it('uses gap fill threshold for gap-infill-to-gap-infill travel', () => {
+    const a = new RetractionAnalyzer();
+    const lines = [
+      ';LAYER:2',
+      'G1 X10 Y0 E1 F3000',
+      'G0 X17 Y0 F6000',
+      'G1 X30 Y0 E2 F3000',
+    ];
+    const layerMoves = {
+      2: [
+        { x1: 0, y1: 0, x2: 10, y2: 0, type: 'GAP INFILL', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 1 },
+        { x1: 10, y1: 0, x2: 17, y2: 0, type: 'GAP INFILL', extrude: false, feedRate: 6000, eLength: 0, lineIndex: 2 },
+        { x1: 17, y1: 0, x2: 30, y2: 0, type: 'GAP INFILL', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 3 },
+      ],
+    };
+    a.analyze(layerMoves, makeProfile({ _parsedLines: lines }));
+    const missing = a.getFindings().filter(f => f.category === 'missing-retraction');
+    assert.strictEqual(missing.length, 0, '7mm gap-fill travel should be suppressed (threshold 8mm)');
+  });
+});
+
+describe('RetractionAnalyzer - Layer-Below Coverage', () => {
+  it('suppresses missing retraction when travel is over material from previous layer', () => {
+    const a = new RetractionAnalyzer();
+    const lines = [
+      ';LAYER:0',
+      'G1 X50 Y0 E5 F3000',
+      ';LAYER:1',
+      'G1 X10 Y0 E6 F3000',
+      'G0 X30 Y0 F6000',       // 20mm travel over layer 0 material
+      'G1 X50 Y0 E7 F3000',
+    ];
+    const layerMoves = {
+      0: [
+        { x1: 0, y1: 0, x2: 50, y2: 0, type: 'FILL', extrude: true, feedRate: 3000, eLength: 5, lineIndex: 1 },
+      ],
+      1: [
+        { x1: 0, y1: 0, x2: 10, y2: 0, type: 'FILL', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 3 },
+        { x1: 10, y1: 0, x2: 30, y2: 0, type: 'FILL', extrude: false, feedRate: 6000, eLength: 0, lineIndex: 4 },
+        { x1: 30, y1: 0, x2: 50, y2: 0, type: 'FILL', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 5 },
+      ],
+    };
+    a.analyze(layerMoves, makeProfile({ _parsedLines: lines }));
+    const missing = a.getFindings().filter(f => f.category === 'missing-retraction');
+    assert.strictEqual(missing.length, 0, 'travel over material should not flag missing retraction');
+  });
+
+  it('still flags travel when NOT over material from previous layer', () => {
+    const a = new RetractionAnalyzer();
+    const lines = [
+      ';LAYER:0',
+      'G1 X5 Y0 E1 F3000',
+      ';LAYER:1',
+      'G1 X10 Y0 E2 F3000',
+      'G0 X30 Y0 F6000',       // 20mm travel over empty space
+      'G1 X50 Y0 E3 F3000',
+    ];
+    const layerMoves = {
+      0: [
+        // Only material at x=0..5, travel at x=10..30 is over empty space
+        { x1: 0, y1: 0, x2: 5, y2: 0, type: 'FILL', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 1 },
+      ],
+      1: [
+        { x1: 0, y1: 0, x2: 10, y2: 0, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 3 },
+        { x1: 10, y1: 0, x2: 30, y2: 0, type: 'WALL-OUTER', extrude: false, feedRate: 6000, eLength: 0, lineIndex: 4 },
+        { x1: 30, y1: 0, x2: 50, y2: 0, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 5 },
+      ],
+    };
+    a.analyze(layerMoves, makeProfile({ _parsedLines: lines }));
+    const missing = a.getFindings().filter(f => f.category === 'missing-retraction');
+    assert.ok(missing.length > 0, 'travel over empty space should still flag missing retraction');
+  });
+
+  it('no coverage grid on first layer (no layer below)', () => {
+    const a = new RetractionAnalyzer();
+    const lines = [
+      ';LAYER:0',
+      'G1 X10 Y0 E1 F3000',
+      'G0 X30 Y0 F6000',
+      'G1 X50 Y0 E2 F3000',
+    ];
+    const layerMoves = {
+      0: [
+        { x1: 0, y1: 0, x2: 10, y2: 0, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 1 },
+        { x1: 10, y1: 0, x2: 30, y2: 0, type: 'WALL-OUTER', extrude: false, feedRate: 6000, eLength: 0, lineIndex: 2 },
+        { x1: 30, y1: 0, x2: 50, y2: 0, type: 'WALL-OUTER', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 3 },
+      ],
+    };
+    a.analyze(layerMoves, makeProfile({ _parsedLines: lines }));
+    const missing = a.getFindings().filter(f => f.category === 'missing-retraction');
+    assert.ok(missing.length > 0, 'first layer travel should still flag (no layer below)');
+  });
+
+  it('reduces stringing risk for travel over material', () => {
+    const a = new RetractionAnalyzer();
+    const lines = [
+      ';LAYER:0',
+      'G1 X50 Y0 E5 F3000',
+      ';LAYER:1',
+      'G1 X10 Y0 E6 F3000',
+      'G0 X30 Y0 F6000',
+      'G1 X50 Y0 E7 F3000',
+    ];
+    const layerMoves = {
+      0: [
+        { x1: 0, y1: 0, x2: 50, y2: 0, type: 'FILL', extrude: true, feedRate: 3000, eLength: 5, lineIndex: 1 },
+      ],
+      1: [
+        { x1: 0, y1: 0, x2: 10, y2: 0, type: 'FILL', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 3 },
+        { x1: 10, y1: 0, x2: 30, y2: 0, type: 'FILL', extrude: false, feedRate: 6000, eLength: 0, lineIndex: 4 },
+        { x1: 30, y1: 0, x2: 50, y2: 0, type: 'FILL', extrude: true, feedRate: 3000, eLength: 1, lineIndex: 5 },
+      ],
+    };
+    a.analyze(layerMoves, makeProfile({ _parsedLines: lines }));
+    const risk = a.getOverlayData('stringing-risk', 1, 1);
+    // 20mm * 0.15 = 3.0, should be much less than 20mm * 0.5 (infill context) = 10
+    assert.ok(risk < 5, `stringing risk over material (${risk}) should be low`);
+  });
+});

@@ -37,6 +37,8 @@ analysisManager.register(structuralAnalyzer);
 analysisManager.register(thermalAnalyzer);
 analysisManager.register(retractionAnalyzer);
 analysisManager.register(flowAnalyzer);
+analysisManager.markEager('motion');
+analysisManager.markEager('flow');
 
 let analysisProfile = {
   printer: {},
@@ -203,8 +205,30 @@ function resetMotionTypeState() {
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
 }
 
-function setColorMode(mode) {
+async function setColorMode(mode) {
   colorMode = mode;
+  // Ensure the engine for this overlay has been analyzed (async to avoid freeze)
+  const engine = analysisManager._overlayMap.get(mode);
+  if (engine && !analysisManager.isAnalyzed(engine.name)) {
+    const ENGINE_LABELS = { structural: 'Structural', thermal: 'Thermal', retraction: 'Retraction', motion: 'Motion', flow: 'Flow' };
+    const label = ENGINE_LABELS[engine.name] || engine.name;
+    // Show loading overlay on the 3D canvas area (visible on Visual tab)
+    const canvasArea = document.querySelector('.viewer-canvas-area');
+    let overlay = null;
+    if (canvasArea) {
+      overlay = document.createElement('div');
+      overlay.className = 'viewer-analysis-loading';
+      overlay.innerHTML = '<div style="text-align:center"><div class="bar-label" id="viewerAnalysisLabel">Analyzing ' + label + '...</div><div class="bar-wrap"><div class="bar-fill" id="viewerAnalysisBar" style="width:0%"></div></div></div>';
+      canvasArea.appendChild(overlay);
+    }
+    await analysisManager.ensureEngineAsync(engine.name, (p) => {
+      const bar = document.getElementById('viewerAnalysisBar');
+      const lbl = document.getElementById('viewerAnalysisLabel');
+      if (bar) bar.style.width = (p * 100).toFixed(0) + '%';
+      if (lbl) lbl.textContent = 'Analyzing ' + label + '... ' + (p * 100).toFixed(0) + '%';
+    });
+    if (overlay) overlay.remove();
+  }
   heatmapLayerStats = {};
   resetSimulation();
   viewer.clearBuffers();
@@ -261,14 +285,37 @@ function getHeatmapLayerStats(layerNum) {
   return stats;
 }
 
-function runAnalysis() {
+function runEagerAnalysis() {
   const inferredMaterial = inferMaterial(parser.lines);
   if (!analysisProfile._manualMaterial) {
     analysisProfile.material = getMaterialProfile(inferredMaterial);
   }
   analysisProfile.printer = { ...motionAnalyzer.profile };
   analysisProfile._parsedLines = parser.lines;
-  analysisManager.analyzeAll(parser.layerMoves, analysisProfile);
+  analysisManager.analyzeEager(parser.layerMoves, analysisProfile);
+  heatmapLayerStats = {};
+}
+
+async function runAnalysis() {
+  const inferredMaterial = inferMaterial(parser.lines);
+  if (!analysisProfile._manualMaterial) {
+    analysisProfile.material = getMaterialProfile(inferredMaterial);
+  }
+  analysisProfile.printer = { ...motionAnalyzer.profile };
+  analysisProfile._parsedLines = parser.lines;
+
+  const container = document.getElementById('analysisResults');
+  if (container) {
+    container.innerHTML = '<div class="analysis-progress"><div class="bar-label" id="analysisLabel">Analyzing...</div><div class="bar-wrap"><div class="bar-fill" id="analysisBar" style="width:0%"></div></div></div>';
+  }
+  const ENGINE_LABELS = { structural: 'Structural', thermal: 'Thermal', retraction: 'Retraction', motion: 'Motion', flow: 'Flow' };
+  await analysisManager.analyzeAllAsync(parser.layerMoves, analysisProfile, (info) => {
+    const label = document.getElementById('analysisLabel');
+    const bar = document.getElementById('analysisBar');
+    if (label) label.textContent = 'Analyzing ' + (ENGINE_LABELS[info.engine] || info.engine) + '... ' + (info.overall * 100).toFixed(0) + '%';
+    if (bar) bar.style.width = (info.overall * 100).toFixed(0) + '%';
+  });
+
   heatmapLayerStats = {};
   if (typeof renderAnalysisPanel === 'function') renderAnalysisPanel();
   if (currentView === 'visual') {
