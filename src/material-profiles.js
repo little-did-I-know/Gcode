@@ -17,6 +17,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 300,          // mm/s
     maxVolumetricFlow: 15,       // mm³/s
     minLayerTime: 8,
+    optimalBridgeSpeed: 25,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.43,       // % saturated
     needsDrying: false,
     needsEnclosure: false,
@@ -40,6 +41,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 300,
     maxVolumetricFlow: 12,       // mm³/s
     minLayerTime: 10,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.40,
     needsDrying: true,
     needsEnclosure: false,
@@ -63,6 +65,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 300,
     maxVolumetricFlow: 11,       // mm³/s
     minLayerTime: 12,
+    optimalBridgeSpeed: 15,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.65,
     needsDrying: false,
     needsEnclosure: true,
@@ -86,6 +89,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 300,
     maxVolumetricFlow: 11,       // mm³/s
     minLayerTime: 12,
+    optimalBridgeSpeed: 15,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.45,
     needsDrying: false,
     needsEnclosure: true,
@@ -109,6 +113,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 200,
     maxVolumetricFlow: 5,        // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 15,     // mm/s — ideal bridge print speed
     waterAbsorption: 1.08,
     needsDrying: true,
     needsEnclosure: false,
@@ -132,6 +137,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 300,
     maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 15,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.25,
     needsDrying: true,
     needsEnclosure: true,
@@ -157,6 +163,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 250,
     maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 8,
+    optimalBridgeSpeed: 25,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.42,
     needsDrying: false,
     needsEnclosure: false,
@@ -181,6 +188,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 200,
     maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 10,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.30,
     needsDrying: false,
     needsEnclosure: false,
@@ -205,6 +213,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 180,
     maxVolumetricFlow: 9,        // mm³/s
     minLayerTime: 12,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.53,
     needsDrying: false,
     needsEnclosure: true,
@@ -229,6 +238,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 250,
     maxVolumetricFlow: 9,        // mm³/s
     minLayerTime: 12,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.33,
     needsDrying: false,
     needsEnclosure: true,
@@ -253,6 +263,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 300,
     maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.12,
     needsDrying: true,
     needsEnclosure: true,
@@ -278,6 +289,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 100,
     maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.37,
     needsDrying: true,
     needsEnclosure: false,
@@ -302,6 +314,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 100,
     maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.88,
     needsDrying: true,
     needsEnclosure: true,
@@ -326,6 +339,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 100,
     maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 2.35,
     needsDrying: true,
     needsEnclosure: true,
@@ -350,6 +364,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 130,
     maxVolumetricFlow: 9,        // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 2.56,
     needsDrying: true,
     needsEnclosure: true,
@@ -374,6 +389,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 100,
     maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 1.30,
     needsDrying: true,
     needsEnclosure: true,
@@ -398,6 +414,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 100,
     maxVolumetricFlow: 8,        // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 15,     // mm/s — ideal bridge print speed
     waterAbsorption: 0.05,
     needsDrying: true,
     needsEnclosure: true,
@@ -424,6 +441,7 @@ export const MATERIAL_PROFILES = {
     maxPrintSpeed: 100,
     maxVolumetricFlow: 10,       // mm³/s
     minLayerTime: 15,
+    optimalBridgeSpeed: 20,     // mm/s — ideal bridge print speed
     waterAbsorption: 2.35,
     needsDrying: true,
     needsEnclosure: true,
