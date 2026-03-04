@@ -17,6 +17,7 @@ import { RetractionAnalyzer } from './retraction-analyzer.js';
 import { FlowAnalyzer } from './flow-analyzer.js';
 import { MATERIAL_PROFILES, inferMaterial, getMaterialProfile, DEFAULT_THRESHOLDS } from './material-profiles.js';
 import { computeSelectionBounds, transformPoint, transformMoves, transformGcodeLine } from './transform.js';
+import { FanProfileEngine } from './fan-profile.js';
 
 let currentFirmware = 'bambu';
 
@@ -37,6 +38,8 @@ analysisManager.register(structuralAnalyzer);
 analysisManager.register(thermalAnalyzer);
 analysisManager.register(retractionAnalyzer);
 analysisManager.register(flowAnalyzer);
+const fanProfileEngine = new FanProfileEngine();
+analysisManager.register(fanProfileEngine);
 analysisManager.markEager('motion');
 analysisManager.markEager('flow');
 

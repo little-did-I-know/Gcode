@@ -2006,6 +2006,10 @@ async function switchTab(tabName) {
     renderAnalysisPanel();
     renderCustomMaterials();
   }
+  if (tabName === 'cooling') {
+    renderFanRules();
+    renderFanCurve();
+  }
 }
 
 // ===== REFERENCE TAB =====
@@ -2107,6 +2111,393 @@ function insertRefCommand(code) {
     layerInput.value = selectedLayer;
   }
   showToast(cmd.code + ' inserted into Custom G-code tab', 'success');
+}
+
+// ===== COOLING TAB =====
+
+const fanChannelVisible = { 0: true, 1: false, 2: false };
+let _fanCurveInteractionInit = false;
+
+const FAN_FEATURE_TYPES = [
+  'WALL-OUTER', 'WALL-INNER', 'FILL', 'SOLID', 'TOP', 'BOTTOM',
+  'SUPPORT', 'BRIDGE', 'OVERHANG', 'SKIRT', 'BRIM'
+];
+
+function renderFanRules() {
+  const container = document.getElementById('fanRulesList');
+  if (!container) return;
+  const rules = fanProfileEngine.getRules();
+
+  if (rules.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-secondary);font-size:12px;padding:8px 0">No fan rules defined. Click "+ Add Rule" to create one.</div>';
+    updateFanSummary();
+    return;
+  }
+
+  let html = '';
+  for (const rule of rules) {
+    html += '<div class="fan-rule-row" data-rule-id="' + rule.id + '">';
+
+    // Type selector
+    html += '<select class="fan-rule-type" onchange="updateFanRuleType(' + rule.id + ', this.value)">';
+    html += '<option value="layer-range"' + (rule.type === 'layer-range' ? ' selected' : '') + '>Layer Range</option>';
+    html += '<option value="feature-type"' + (rule.type === 'feature-type' ? ' selected' : '') + '>Feature Type</option>';
+    html += '<option value="thermal"' + (rule.type === 'thermal' ? ' selected' : '') + '>Thermal</option>';
+    html += '</select>';
+
+    // Condition inputs
+    html += '<div class="fan-rule-cond">';
+    if (rule.type === 'layer-range') {
+      const startVal = rule.startLayer ?? 0;
+      const endVal = (rule.endLayer === Infinity || rule.endLayer == null) ? '' : rule.endLayer;
+      html += '<input type="number" class="fan-rule-input" min="0" value="' + startVal + '" placeholder="Start" onchange="updateFanRule(' + rule.id + ', \'startLayer\', +this.value)">';
+      html += '<span style="color:var(--text-secondary);font-size:11px">to</span>';
+      html += '<input type="number" class="fan-rule-input" min="0" value="' + endVal + '" placeholder="End (∞)" onchange="updateFanRule(' + rule.id + ', \'endLayer\', this.value === \'\' ? Infinity : +this.value)">';
+    } else if (rule.type === 'feature-type') {
+      html += '<select class="fan-rule-input" onchange="updateFanRule(' + rule.id + ', \'feature\', this.value)">';
+      for (const ft of FAN_FEATURE_TYPES) {
+        html += '<option value="' + ft + '"' + (rule.feature === ft ? ' selected' : '') + '>' + ft + '</option>';
+      }
+      html += '</select>';
+    } else if (rule.type === 'thermal') {
+      const threshold = rule.threshold ?? 50;
+      html += '<span style="color:var(--text-secondary);font-size:11px">Heat &gt;</span>';
+      html += '<input type="number" class="fan-rule-input" min="0" max="100" value="' + threshold + '" onchange="updateFanRule(' + rule.id + ', \'threshold\', +this.value)">';
+    }
+    html += '</div>';
+
+    // Channel selector
+    html += '<select class="fan-rule-ch" onchange="updateFanRule(' + rule.id + ', \'channel\', +this.value)">';
+    html += '<option value="0"' + (rule.channel === 0 ? ' selected' : '') + '>P0</option>';
+    html += '<option value="1"' + (rule.channel === 1 ? ' selected' : '') + '>P1</option>';
+    html += '<option value="2"' + (rule.channel === 2 ? ' selected' : '') + '>P2</option>';
+    html += '</select>';
+
+    // Speed slider
+    const speed = rule.speed ?? 100;
+    html += '<input type="range" class="fan-rule-slider" min="0" max="100" value="' + speed + '" oninput="updateFanRule(' + rule.id + ', \'speed\', +this.value)">';
+    html += '<span class="fan-rule-pct">' + speed + '%</span>';
+
+    // Delete button
+    html += '<button class="fan-rule-del" onclick="removeFanRule(' + rule.id + ')" title="Remove rule">\u00d7</button>';
+
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+  updateFanSummary();
+}
+
+function addFanRuleUI() {
+  fanProfileEngine.addRule({
+    type: 'layer-range',
+    startLayer: 0,
+    endLayer: Infinity,
+    channel: 0,
+    speed: 100
+  });
+  renderFanRules();
+  renderFanCurve();
+}
+
+function removeFanRule(id) {
+  fanProfileEngine.removeRule(id);
+  renderFanRules();
+  renderFanCurve();
+}
+
+function updateFanRule(id, prop, value) {
+  const rule = fanProfileEngine._rules.find(r => r.id === id);
+  if (!rule) return;
+  rule[prop] = value;
+  fanProfileEngine._compiled = null;
+  renderFanCurve();
+  updateFanSummary();
+  // Re-render rules only if speed changed (to update pct label)
+  if (prop === 'speed') {
+    const pctEl = document.querySelector('.fan-rule-row[data-rule-id="' + id + '"] .fan-rule-pct');
+    if (pctEl) pctEl.textContent = value + '%';
+  }
+}
+
+function updateFanRuleType(id, newType) {
+  const oldRule = fanProfileEngine._rules.find(r => r.id === id);
+  if (!oldRule) return;
+
+  const base = { id: oldRule.id, channel: oldRule.channel, speed: oldRule.speed, type: newType };
+
+  // Type-specific defaults
+  if (newType === 'layer-range') {
+    base.startLayer = 0;
+    base.endLayer = Infinity;
+  } else if (newType === 'feature-type') {
+    base.feature = 'WALL-OUTER';
+  } else if (newType === 'thermal') {
+    base.threshold = 50;
+  }
+
+  // Replace in-place
+  const idx = fanProfileEngine._rules.indexOf(oldRule);
+  fanProfileEngine._rules[idx] = base;
+  fanProfileEngine._compiled = null;
+
+  renderFanRules();
+  renderFanCurve();
+}
+
+function updateFanSummary() {
+  const el = document.getElementById('fanSummary');
+  if (!el) return;
+
+  if (!parser || !parser.layers || parser.layers.length === 0) {
+    el.textContent = 'Load a file first.';
+    return;
+  }
+
+  const totalLayers = parser.layers.length;
+  const commands = fanProfileEngine.generateGcode(totalLayers);
+  let cmdCount = 0;
+  for (const entry of commands) {
+    cmdCount += entry.gcode.split('\n').length;
+  }
+  el.textContent = cmdCount + ' fan command' + (cmdCount !== 1 ? 's' : '') + ' will be inserted across ' + commands.length + ' layer' + (commands.length !== 1 ? 's' : '');
+}
+
+function applyFanProfile() {
+  if (!parser || !parser.layers || parser.layers.length === 0) {
+    showToast('Load a file first', 'error');
+    return;
+  }
+
+  const totalLayers = parser.layers.length;
+  // Compile with moves if available for feature-type rules
+  const hasFeatureRules = fanProfileEngine._rules.some(r => r.type === 'feature-type');
+  if (hasFeatureRules && parser.layerMoves) {
+    fanProfileEngine.compileWithMoves(totalLayers, parser.layerMoves);
+  } else {
+    fanProfileEngine.compile(totalLayers);
+  }
+
+  const commands = fanProfileEngine.generateGcode(totalLayers);
+  let cmdCount = 0;
+  for (const entry of commands) {
+    const lines = entry.gcode.split('\n');
+    cmdCount += lines.length;
+    modifier.addCustom(entry.layer, entry.gcode);
+  }
+
+  refreshAfterMod();
+  showToast('Applied ' + cmdCount + ' fan command' + (cmdCount !== 1 ? 's' : ''), 'success');
+}
+
+function resetFanProfile() {
+  fanProfileEngine.clearOverrides();
+  renderFanRules();
+  renderFanCurve();
+  showToast('Fan overrides cleared', 'success');
+}
+
+// ===== FAN CURVE CANVAS =====
+
+function renderFanCurve() {
+  const canvas = document.getElementById('fanCurveCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  // DPR scaling
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const w = rect.width;
+  const h = rect.height;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  ctx.scale(dpr, dpr);
+
+  // Read CSS colors
+  const style = getComputedStyle(document.documentElement);
+  const bgColor = style.getPropertyValue('--bg-primary').trim() || '#1a1b2e';
+  const borderColor = style.getPropertyValue('--border').trim() || '#333';
+  const textColor = style.getPropertyValue('--text-secondary').trim() || '#888';
+
+  // Clear background
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(0, 0, w, h);
+
+  const pad = { left: 32, right: 10, top: 10, bottom: 20 };
+  const plotW = w - pad.left - pad.right;
+  const plotH = h - pad.top - pad.bottom;
+
+  const totalLayers = (parser && parser.layers && parser.layers.length > 0) ? parser.layers.length : 100;
+
+  // Grid lines at 0%, 25%, 50%, 75%, 100%
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 0.5;
+  ctx.fillStyle = textColor;
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let pct = 0; pct <= 100; pct += 25) {
+    const y = pad.top + plotH - (pct / 100) * plotH;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + plotW, y);
+    ctx.stroke();
+    ctx.fillText(pct + '%', pad.left - 4, y);
+  }
+
+  // X axis labels
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  const step = Math.max(1, Math.round(totalLayers / 5));
+  for (let l = 0; l <= totalLayers; l += step) {
+    const x = pad.left + (l / totalLayers) * plotW;
+    ctx.fillText(l, x, pad.top + plotH + 4);
+  }
+
+  // Channel colors
+  const chColors = { 0: '#60a5fa', 1: '#4ade80', 2: '#fb923c' };
+
+  // Draw lines for each visible channel
+  for (let ch = 0; ch <= 2; ch++) {
+    if (!fanChannelVisible[ch]) continue;
+
+    const compiled = fanProfileEngine.compile(totalLayers);
+
+    ctx.strokeStyle = chColors[ch];
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let l = 0; l < totalLayers; l++) {
+      const speed = (compiled[l] && compiled[l][ch] != null) ? compiled[l][ch] : 0;
+      const x = pad.left + (l / Math.max(totalLayers - 1, 1)) * plotW;
+      const y = pad.top + plotH - (speed / 100) * plotH;
+      if (l === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // Draw override dots
+  const overrides = fanProfileEngine.getOverrides();
+  for (const [key, speed] of overrides) {
+    const [layerStr, chStr] = key.split(':');
+    const layerNum = Number(layerStr);
+    const ch = Number(chStr);
+    if (!fanChannelVisible[ch]) continue;
+
+    const x = pad.left + (layerNum / Math.max(totalLayers - 1, 1)) * plotW;
+    const y = pad.top + plotH - (speed / 100) * plotH;
+
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = chColors[ch];
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Init interaction on first render
+  if (!_fanCurveInteractionInit) {
+    initFanCurveInteraction();
+    _fanCurveInteractionInit = true;
+  }
+
+  updateFanSummary();
+  refreshFanOverlay();
+}
+
+function toggleFanChannel(ch, visible) {
+  fanChannelVisible[ch] = visible;
+  renderFanCurve();
+}
+
+function initFanCurveInteraction() {
+  const canvas = document.getElementById('fanCurveCanvas');
+  if (!canvas) return;
+
+  function getLayerAndSpeed(e) {
+    const rect = canvas.getBoundingClientRect();
+    const pad = { left: 32, right: 10, top: 10, bottom: 20 };
+    const plotW = rect.width - pad.left - pad.right;
+    const plotH = rect.height - pad.top - pad.bottom;
+    const totalLayers = (parser && parser.layers && parser.layers.length > 0) ? parser.layers.length : 100;
+
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    const layerFrac = (mx - pad.left) / plotW;
+    const speedFrac = 1 - (my - pad.top) / plotH;
+
+    const layer = Math.round(layerFrac * Math.max(totalLayers - 1, 1));
+    const speed = Math.round(Math.max(0, Math.min(100, speedFrac * 100)));
+
+    return { layer: Math.max(0, Math.min(totalLayers - 1, layer)), speed };
+  }
+
+  // Click: add override on first visible channel
+  canvas.addEventListener('click', function(e) {
+    const { layer, speed } = getLayerAndSpeed(e);
+    let ch = -1;
+    for (let c = 0; c <= 2; c++) {
+      if (fanChannelVisible[c]) { ch = c; break; }
+    }
+    if (ch < 0) return;
+    fanProfileEngine.setOverride(layer, ch, speed);
+    renderFanCurve();
+  });
+
+  // Right-click: remove nearest override
+  canvas.addEventListener('contextmenu', function(e) {
+    e.preventDefault();
+    const { layer } = getLayerAndSpeed(e);
+    const overrides = fanProfileEngine.getOverrides();
+    let bestKey = null;
+    let bestDist = Infinity;
+    for (const [key] of overrides) {
+      const [layerStr, chStr] = key.split(':');
+      const ch = Number(chStr);
+      if (!fanChannelVisible[ch]) continue;
+      const dist = Math.abs(Number(layerStr) - layer);
+      if (dist < bestDist && dist <= 2) {
+        bestDist = dist;
+        bestKey = key;
+      }
+    }
+    if (bestKey) {
+      const [ls, cs] = bestKey.split(':');
+      fanProfileEngine.removeOverride(Number(ls), Number(cs));
+      renderFanCurve();
+    }
+  });
+
+  // Mousemove: tooltip
+  canvas.addEventListener('mousemove', function(e) {
+    const { layer, speed } = getLayerAndSpeed(e);
+    canvas.title = 'Layer ' + layer + ': ' + speed + '%';
+  });
+}
+
+// ===== FAN OVERLAY PREVIEW =====
+
+function refreshFanOverlay() {
+  if (!parser || !parser.layers || parser.layers.length === 0) return;
+
+  const totalLayers = parser.layers.length;
+  const hasFeatureRules = fanProfileEngine._rules.some(r => r.type === 'feature-type');
+  if (hasFeatureRules && parser.layerMoves) {
+    fanProfileEngine.compileWithMoves(totalLayers, parser.layerMoves);
+  } else {
+    fanProfileEngine.compile(totalLayers);
+  }
+
+  // Clear cached heatmap stats so viewer picks up new fan data
+  heatmapLayerStats = {};
+
+  // If current color mode is a fan overlay, refresh the 3D view
+  if (typeof colorMode !== 'undefined' && colorMode.startsWith('fan-speed')) {
+    viewer.clearBuffers();
+    if (currentView === 'visual') viewer.render(viewer.currentLayer);
+  }
 }
 
 // ===== ADD MODIFICATIONS =====

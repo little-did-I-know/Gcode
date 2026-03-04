@@ -486,6 +486,19 @@ main { display: flex; flex: 1; overflow: hidden; }
 [data-theme="dark"] .ref-fw-badge[data-fw="rrf"] { background: #a78bfa22; color: #a78bfa; border-color: #a78bfa44; }
 .ref-no-results { text-align: center; color: var(--text-secondary); padding: 20px 0; font-size: 13px; }
 
+/* FAN / COOLING */
+.fan-rules-list { display: flex; flex-direction: column; gap: 4px; }
+.fan-rule { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; flex-wrap: wrap; }
+.fan-rule select, .fan-rule input { font-size: 11px; padding: 2px 4px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; }
+.fan-rule input[type="number"] { width: 48px; }
+.fan-rule input[type="range"] { width: 60px; flex-shrink: 0; }
+.fan-rule .fan-rule-speed { font-family: var(--mono); font-size: 11px; width: 32px; text-align: right; }
+.fan-rule .fan-rule-del { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 14px; padding: 0 4px; }
+.fan-rule .fan-rule-del:hover { color: #ef4444; }
+.fan-ch-toggle { font-size: 11px; display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; }
+.fan-ch-toggle input { width: 12px; height: 12px; }
+.fan-summary { font-size: 11px; color: var(--text-secondary); padding: 4px 0; }
+
 /* PRINTER PROFILE PANEL */
 #printerProfilePanel {
   position: absolute; bottom: 12px; right: 12px; z-index: 5;
@@ -763,6 +776,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="tab" data-tab="inserts" onclick="switchTab('inserts')">Inserts</button>
         <button class="tab" data-tab="reference" onclick="switchTab('reference')">Reference</button>
         <button class="tab" data-tab="recovery" onclick="switchTab('recovery')">Recovery</button>
+        <button class="tab" data-tab="cooling" onclick="switchTab('cooling')">Cooling</button>
         <button class="tab" data-tab="analysis" onclick="switchTab('analysis')">Analysis</button>
       </div>
 
@@ -973,6 +987,29 @@ main { display: flex; flex: 1; overflow: hidden; }
           <div class="hint">Z-heights are shifted so the resume layer prints at the original first-layer height. Feedrates on the resume layer are overridden with first-layer speeds for bed adhesion.</div>
         </div>
         <button class="btn btn-primary" onclick="addRecovery()">+ Add Recovery</button>
+      </div>
+
+      <!-- COOLING TAB -->
+      <div class="tab-content" id="tab-cooling">
+        <div class="section-label">Fan Rules</div>
+        <div id="fanRulesList" class="fan-rules-list"></div>
+        <button class="std-btn" onclick="addFanRuleUI()" style="margin-top:6px;width:100%">+ Add Rule</button>
+
+        <div class="section-label" style="margin-top:12px">Fan Curve
+          <span class="fan-channel-toggles" id="fanChannelToggles">
+            <label class="fan-ch-toggle"><input type="checkbox" checked onchange="toggleFanChannel(0, this.checked)"><span style="color:#60a5fa">P0</span></label>
+            <label class="fan-ch-toggle"><input type="checkbox" onchange="toggleFanChannel(1, this.checked)"><span style="color:#4ade80">P1</span></label>
+            <label class="fan-ch-toggle"><input type="checkbox" onchange="toggleFanChannel(2, this.checked)"><span style="color:#fb923c">P2</span></label>
+          </span>
+        </div>
+        <canvas id="fanCurveCanvas" width="400" height="180" style="width:100%;border:1px solid var(--border);border-radius:6px;cursor:crosshair"></canvas>
+
+        <div class="section-label" style="margin-top:12px">Actions</div>
+        <div id="fanSummary" class="fan-summary"></div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="std-btn" onclick="applyFanProfile()" style="flex:1">Apply</button>
+          <button class="std-btn" onclick="resetFanProfile()" style="flex:1">Reset</button>
+        </div>
       </div>
 
       <!-- ANALYSIS TAB -->
