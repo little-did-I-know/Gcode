@@ -24,6 +24,7 @@ const FILES = [
   'retraction-analyzer.js',
   'flow-analyzer.js',
   'fan-profile.js',
+  'pa-tuner.js',
   'viewer3d.js',
   'ui.js',
   'app.js',

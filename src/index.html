@@ -452,29 +452,40 @@ main { display: flex; flex: 1; overflow: hidden; }
 .onboard-hint.below::after { bottom: 100%; left: 20px; border-bottom-color: var(--accent); }
 @keyframes hintPulse { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
 
-/* Reference tab */
-.ref-search-wrap { position: sticky; top: 0; z-index: 2; padding-bottom: 8px; background: var(--bg-primary); }
+/* Reference view */
+#referenceView { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+#referenceView.hidden { display: none; }
+.ref-search-bar { padding: 12px 16px 8px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.ref-search-bar .input { width: 100%; max-width: 400px; }
 .ref-firmware-badge { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
 .ref-firmware-badge span { background: var(--accent); color: #fff; padding: 1px 8px; border-radius: 8px; font-weight: 600; font-size: 10px; }
-.ref-category { margin-bottom: 12px; }
-.ref-category-header { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 6px 0; font-weight: 700; font-size: 13px; color: var(--text-primary); user-select: none; }
+.ref-main { display: flex; flex: 1; overflow: hidden; }
+.ref-sidebar { width: 180px; min-width: 140px; flex-shrink: 0; overflow-y: auto; padding: 12px 0; border-right: 1px solid var(--border); background: var(--surface); }
+.ref-sidebar-item { display: block; padding: 6px 16px; font-size: 12px; color: var(--text-secondary); cursor: pointer; border-left: 3px solid transparent; text-decoration: none; transition: all .15s; }
+.ref-sidebar-item:hover { color: var(--text-primary); background: var(--surface2); }
+.ref-sidebar-item.active { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+.ref-cards-area { flex: 1; overflow-y: auto; padding: 12px 20px; }
+.ref-category { margin-bottom: 16px; }
+.ref-category-header { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 8px 0; font-weight: 700; font-size: 14px; color: var(--text-primary); user-select: none; scroll-margin-top: 8px; }
 .ref-category-header::before { content: '\25BC'; font-size: 9px; transition: transform .2s; }
 .ref-category.collapsed .ref-category-header::before { transform: rotate(-90deg); }
 .ref-category.collapsed .ref-category-cards { display: none; }
-.ref-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: var(--bg-secondary); }
-.ref-card-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
-.ref-card-code { font-family: var(--mono); font-weight: 700; font-size: 15px; color: var(--accent); }
-.ref-card-name { font-weight: 600; font-size: 13px; color: var(--text-primary); }
-.ref-card-desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; line-height: 1.4; }
-.ref-card-params { width: 100%; font-size: 11px; border-collapse: collapse; margin-bottom: 6px; }
-.ref-card-params th { text-align: left; font-weight: 600; color: var(--text-secondary); padding: 2px 8px 2px 0; border-bottom: 1px solid var(--border); }
-.ref-card-params td { padding: 2px 8px 2px 0; color: var(--text-primary); }
-.ref-card-params td:first-child { font-family: var(--mono); font-weight: 700; color: var(--accent); width: 30px; }
-.ref-card-example { font-family: var(--mono); font-size: 11px; background: var(--bg-primary); padding: 4px 8px; border-radius: 4px; color: var(--text-secondary); margin-bottom: 6px; overflow-x: auto; white-space: nowrap; }
-.ref-card-firmware { font-size: 11px; padding: 4px 8px; border-radius: 4px; margin-bottom: 6px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg-secondary)); color: var(--text-primary); }
-.ref-card-insert { font-size: 11px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; float: right; }
+.ref-card { border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; background: var(--bg-secondary); }
+.ref-card-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.ref-card-code { font-family: var(--mono); font-weight: 700; font-size: 16px; color: var(--accent); }
+.ref-card-name { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+.ref-card-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; line-height: 1.5; }
+.ref-card-params { width: 100%; font-size: 12px; border-collapse: collapse; margin-bottom: 8px; }
+.ref-card-params th { text-align: left; font-weight: 600; color: var(--text-secondary); padding: 3px 10px 3px 0; border-bottom: 1px solid var(--border); }
+.ref-card-params td { padding: 3px 10px 3px 0; color: var(--text-primary); }
+.ref-card-params td:first-child { font-family: var(--mono); font-weight: 700; color: var(--accent); width: 40px; }
+.ref-card-example { font-family: var(--mono); font-size: 12px; background: var(--bg-primary); padding: 6px 10px; border-radius: 4px; color: var(--text-secondary); margin-bottom: 8px; overflow-x: auto; white-space: nowrap; }
+.ref-card-firmware { font-size: 12px; padding: 6px 10px; border-radius: 4px; margin-bottom: 8px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg-secondary)); color: var(--text-primary); }
+.ref-card-actions { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
+.ref-card-insert { font-size: 11px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; white-space: nowrap; }
 .ref-card-insert:hover { background: var(--accent); color: #fff; }
-.ref-fw-badges { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
+.ref-card-insert.disabled { opacity: .4; pointer-events: none; }
+.ref-fw-badges { display: flex; gap: 4px; flex-shrink: 0; }
 .ref-fw-badge { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 8px; line-height: 1.4; white-space: nowrap; }
 .ref-fw-badge[data-fw="bambu"] { background: #2d7a3a22; color: #2d7a3a; border: 1px solid #2d7a3a44; }
 .ref-fw-badge[data-fw="klipper"] { background: #c4640022; color: #c46400; border: 1px solid #c4640044; }
@@ -484,7 +495,11 @@ main { display: flex; flex: 1; overflow: hidden; }
 [data-theme="dark"] .ref-fw-badge[data-fw="klipper"] { background: #fb923c22; color: #fb923c; border-color: #fb923c44; }
 [data-theme="dark"] .ref-fw-badge[data-fw="marlin"] { background: #60a5fa22; color: #60a5fa; border-color: #60a5fa44; }
 [data-theme="dark"] .ref-fw-badge[data-fw="rrf"] { background: #a78bfa22; color: #a78bfa; border-color: #a78bfa44; }
-.ref-no-results { text-align: center; color: var(--text-secondary); padding: 20px 0; font-size: 13px; }
+.ref-no-results { text-align: center; color: var(--text-secondary); padding: 40px 0; font-size: 14px; }
+@media (max-width: 900px) {
+  .ref-sidebar { display: none; }
+  .ref-cards-area { padding: 12px; }
+}
 
 /* FAN / COOLING */
 .fan-rules-list { display: flex; flex-direction: column; gap: 4px; }
@@ -498,6 +513,21 @@ main { display: flex; flex: 1; overflow: hidden; }
 .fan-ch-toggle { font-size: 11px; display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; }
 .fan-ch-toggle input { width: 12px; height: 12px; }
 .fan-summary { font-size: 11px; color: var(--text-secondary); padding: 4px 0; }
+
+/* PA TUNER */
+.pa-firmware-info { font-size: 12px; opacity: 0.7; padding: 4px 0; }
+.pa-feature-table { display: flex; flex-direction: column; gap: 2px; }
+.pa-feature-row {
+  display: flex; align-items: center; gap: 6px; padding: 4px 6px;
+  background: var(--surface2); border-radius: 4px; font-size: 13px; color: var(--text);
+}
+.pa-feature-row .pa-type-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pa-feature-row .pa-speed-hint { font-size: 11px; opacity: 0.5; white-space: nowrap; }
+.pa-feature-row input[type="number"] { width: 72px; }
+.pa-calib-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; font-size: 13px; }
+.pa-calib-grid label { opacity: 0.7; }
+.pa-calib-grid .input { width: 100%; }
+.pa-summary { font-size: 12px; opacity: 0.7; padding: 4px 0; }
 
 /* PRINTER PROFILE PANEL */
 #printerProfilePanel {
@@ -620,6 +650,7 @@ main { display: flex; flex: 1; overflow: hidden; }
           <button class="active" onclick="setView('code')" id="viewCodeBtn">Code</button>
           <button onclick="setView('visual')" id="viewVisualBtn">Visual</button>
           <button onclick="setView('warp')" id="viewWarpBtn">Warp</button>
+          <button onclick="setView('reference')" id="viewRefBtn">Reference</button>
         </div>
         <span>Go to layer:</span>
         <input type="number" class="jump-input" id="jumpLayer" min="0" placeholder="#" onchange="jumpToLayer(+this.value)">
@@ -641,6 +672,16 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div class="empty-state" id="previewEmpty">
           <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>
           <p>Upload a .gcode file to preview and modify it</p>
+        </div>
+      </div>
+      <div id="referenceView" class="hidden">
+        <div class="ref-search-bar">
+          <input type="text" class="input" id="refSearch" placeholder="Search commands (e.g. G1, home, temperature...)" oninput="filterReferenceCards()">
+          <div class="ref-firmware-badge" id="refFirmwareBadge"></div>
+        </div>
+        <div class="ref-main">
+          <div class="ref-sidebar" id="refSidebar"></div>
+          <div class="ref-cards-area" id="refContent"></div>
         </div>
       </div>
       <div class="viewer-wrap" id="viewerWrap">
@@ -774,9 +815,9 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="tab" data-tab="zoffset" onclick="switchTab('zoffset')">Z-Offset</button>
         <button class="tab" data-tab="custom" onclick="switchTab('custom')">Custom</button>
         <button class="tab" data-tab="inserts" onclick="switchTab('inserts')">Inserts</button>
-        <button class="tab" data-tab="reference" onclick="switchTab('reference')">Reference</button>
         <button class="tab" data-tab="recovery" onclick="switchTab('recovery')">Recovery</button>
         <button class="tab" data-tab="cooling" onclick="switchTab('cooling')">Cooling</button>
+        <button class="tab" data-tab="pa-tuner" onclick="switchTab('pa-tuner')">PA Tuning</button>
         <button class="tab" data-tab="analysis" onclick="switchTab('analysis')">Analysis</button>
       </div>
 
@@ -958,15 +999,6 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="btn btn-primary" onclick="addInsertsForSelection()">+ Add Pause for Selected Holes</button>
       </div>
 
-      <!-- REFERENCE TAB -->
-      <div class="tab-content" id="tab-reference">
-        <div class="ref-search-wrap">
-          <input type="text" class="input" id="refSearch" placeholder="Search commands (e.g. G1, home, temperature...)" oninput="filterReferenceCards()">
-          <div class="ref-firmware-badge" id="refFirmwareBadge"></div>
-        </div>
-        <div id="refContent"></div>
-      </div>
-
       <!-- RECOVERY TAB -->
       <div class="tab-content" id="tab-recovery">
         <div style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--text);">
@@ -1010,6 +1042,57 @@ main { display: flex; flex: 1; overflow: hidden; }
           <button class="std-btn" onclick="applyFanProfile()" style="flex:1">Apply</button>
           <button class="std-btn" onclick="resetFanProfile()" style="flex:1">Reset</button>
         </div>
+      </div>
+
+      <!-- PA TUNING TAB -->
+      <div class="tab-content" id="tab-pa-tuner">
+        <div class="section-label">Firmware</div>
+        <div id="paFirmwareInfo" class="pa-firmware-info"></div>
+
+        <div class="section-label" style="margin-top:10px">Base K-Factor</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="number" id="paBaseK" class="input" min="0" max="0.2" step="0.001" value="0" style="width:90px" onchange="updatePaBaseK(this.value)">
+          <span style="opacity:0.6;font-size:12px">Default for all types</span>
+        </div>
+
+        <div class="section-label" style="margin-top:12px">Per-Feature K-Factor</div>
+        <div id="paFeatureTable" class="pa-feature-table">
+          <div style="opacity:0.5;font-size:12px;padding:8px">Load a file to see motion types</div>
+        </div>
+        <button class="std-btn" onclick="resetPaOverrides()" style="margin-top:6px;width:100%">Reset All to Base K</button>
+
+        <div class="section-label" style="margin-top:12px;display:flex;align-items:center">
+          <span>Calibration Pattern</span>
+          <button class="std-btn" onclick="togglePaCalibration()" style="font-size:11px;padding:2px 8px;margin-left:auto" id="paCalibToggle">Show</button>
+        </div>
+        <div id="paCalibSection" style="display:none">
+          <div style="font-size:12px;opacity:0.7;margin-bottom:8px">
+            Generates a standalone G-code file with slow→fast line pairs at varying K values.
+            Look for the cleanest transition to find your optimal K.
+          </div>
+          <div class="pa-calib-grid">
+            <label>K Start</label>
+            <input type="number" id="paCalibKStart" class="input" min="0" max="0.2" step="0.005" value="0">
+            <label>K End</label>
+            <input type="number" id="paCalibKEnd" class="input" min="0" max="0.2" step="0.005" value="0.1">
+            <label>K Step</label>
+            <input type="number" id="paCalibKStep" class="input" min="0.001" max="0.05" step="0.001" value="0.005">
+            <label>Nozzle °C</label>
+            <input type="number" id="paCalibNozzle" class="input" min="150" max="300" step="5" value="200">
+            <label>Bed °C</label>
+            <input type="number" id="paCalibBed" class="input" min="0" max="120" step="5" value="60">
+            <label>Filament</label>
+            <select id="paCalibFilament" class="input">
+              <option value="1.75">1.75mm</option>
+              <option value="2.85">2.85mm</option>
+            </select>
+          </div>
+          <button class="std-btn" onclick="generatePaCalibration()" style="margin-top:8px;width:100%">Generate &amp; Download</button>
+        </div>
+
+        <div class="section-label" style="margin-top:12px">Actions</div>
+        <div id="paSummary" class="pa-summary"></div>
+        <button class="std-btn" onclick="applyPaCommands()" style="margin-top:6px;width:100%">Apply</button>
       </div>
 
       <!-- ANALYSIS TAB -->
@@ -1102,8 +1185,10 @@ main { display: flex; flex: 1; overflow: hidden; }
       <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Undo</td></tr>
       <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td><td>Redo</td></tr>
       <tr><td><kbd>Space</kbd></td><td>Toggle Code/Visual</td></tr>
+      <tr><td><kbd>W</kbd></td><td>Toggle Warp view</td></tr>
+      <tr><td><kbd>R</kbd></td><td>Toggle Reference view</td></tr>
       <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Previous/Next layer</td></tr>
-      <tr><td><kbd>1</kbd>–<kbd>8</kbd></td><td>Switch tool tab</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>0</kbd></td><td>Switch tool tab</td></tr>
       <tr><td><kbd>F</kbd></td><td>Reset camera</td></tr>
       <tr><td><kbd>?</kbd></td><td>This help</td></tr>
       <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>Find in file</td></tr>
