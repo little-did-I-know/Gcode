@@ -1986,9 +1986,7 @@ function navigateToFinding(findingId) {
 async function switchTab(tabName) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
   document.querySelectorAll('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === 'tab-' + tabName));
-  if (tabName === 'reference' && document.getElementById('refContent').children.length === 0) {
-    renderReference();
-  }
+
   if (tabName === 'analysis') {
     if (!analysisManager.isAllAnalyzed()) {
       const container = document.getElementById('analysisResults');
@@ -2010,6 +2008,9 @@ async function switchTab(tabName) {
     renderFanRules();
     renderFanCurve();
   }
+  if (tabName === 'pa-tuner') {
+    renderPaTuner();
+  }
 }
 
 // ===== REFERENCE TAB =====
@@ -2028,9 +2029,19 @@ function renderReference() {
     catMap[cmd.category].push(cmd);
   });
 
+  // Build sidebar
+  let sidebarHtml = '';
+  categories.forEach(cat => {
+    const catId = 'ref-cat-' + cat.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    sidebarHtml += '<a class="ref-sidebar-item" data-cat="' + catId + '" onclick="scrollToRefCategory(\'' + catId + '\')">' + cat + '</a>';
+  });
+  document.getElementById('refSidebar').innerHTML = sidebarHtml;
+
+  // Build cards
   let html = '';
   categories.forEach(cat => {
-    html += '<div class="ref-category" data-category="' + cat + '">';
+    const catId = 'ref-cat-' + cat.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    html += '<div class="ref-category" data-category="' + cat + '" id="' + catId + '">';
     html += '<div class="ref-category-header" onclick="this.parentElement.classList.toggle(\'collapsed\')">' + cat + '</div>';
     html += '<div class="ref-category-cards">';
     catMap[cat].forEach(cmd => {
@@ -2046,8 +2057,12 @@ function renderReference() {
         });
         badgeHtml += '</span>';
       }
+      const canInsertAtCursor = selectedLayer !== null && parser.lines;
       html += '<div class="ref-card-head"><span class="ref-card-code">' + cmd.code + '</span><span class="ref-card-name">' + cmd.name + '</span>' + badgeHtml;
-      html += '<button class="ref-card-insert" onclick="insertRefCommand(\'' + cmd.code.replace(/'/g, "\\'") + '\');event.stopPropagation()">Insert</button></div>';
+      html += '<span class="ref-card-actions">';
+      html += '<button class="ref-card-insert" onclick="insertRefCommand(\'' + cmd.code.replace(/'/g, "\\'") + '\');event.stopPropagation()" title="Insert into Custom G-code tab">Insert</button>';
+      html += '<button class="ref-card-insert' + (canInsertAtCursor ? '' : ' disabled') + '" onclick="insertRefCommandAtCursor(\'' + cmd.code.replace(/'/g, "\\'") + '\');event.stopPropagation()" title="' + (canInsertAtCursor ? 'Insert at current layer' : 'Load a file and select a layer first') + '">Insert at Cursor</button>';
+      html += '</span></div>';
       html += '<div class="ref-card-desc">' + cmd.description + '</div>';
       if (cmd.params.length > 0) {
         html += '<table class="ref-card-params"><tr><th>Param</th><th>Description</th><th>Example</th></tr>';
@@ -2066,6 +2081,43 @@ function renderReference() {
   });
 
   document.getElementById('refContent').innerHTML = html;
+
+  // Set up intersection observer for sidebar active tracking
+  setupRefSidebarObserver();
+}
+
+function scrollToRefCategory(catId) {
+  const el = document.getElementById(catId);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+let _refObserver = null;
+function setupRefSidebarObserver() {
+  if (_refObserver) _refObserver.disconnect();
+  const cardsArea = document.querySelector('.ref-cards-area');
+  if (!cardsArea) return;
+
+  const catHeaders = cardsArea.querySelectorAll('.ref-category');
+  if (catHeaders.length === 0) return;
+
+  _refObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const catId = entry.target.id;
+        document.querySelectorAll('.ref-sidebar-item').forEach(item => {
+          item.classList.toggle('active', item.dataset.cat === catId);
+        });
+      }
+    });
+  }, {
+    root: cardsArea,
+    rootMargin: '0px 0px -80% 0px',
+    threshold: 0
+  });
+
+  catHeaders.forEach(cat => _refObserver.observe(cat));
 }
 
 function filterReferenceCards() {
@@ -2083,6 +2135,12 @@ function filterReferenceCards() {
     });
     cat.style.display = catVisible ? '' : 'none';
     if (catVisible) anyVisible = true;
+  });
+
+  // Also filter sidebar items
+  document.querySelectorAll('.ref-sidebar-item').forEach(item => {
+    const catEl = document.getElementById(item.dataset.cat);
+    item.style.display = catEl && catEl.style.display !== 'none' ? '' : 'none';
   });
 
   let noRes = document.getElementById('refNoResults');
@@ -2103,6 +2161,13 @@ function filterReferenceCards() {
 function insertRefCommand(code) {
   const cmd = GCODE_REFERENCE.find(c => c.code === code);
   if (!cmd) return;
+
+  // Auto-expand right panel if collapsed
+  const panelRight = document.getElementById('panelRight');
+  if (panelRight && panelRight.offsetWidth < 50) {
+    panelRight.style.width = '400px';
+  }
+
   switchTab('custom');
   const textarea = document.getElementById('customGcode');
   textarea.value = cmd.template;
@@ -2111,6 +2176,23 @@ function insertRefCommand(code) {
     layerInput.value = selectedLayer;
   }
   showToast(cmd.code + ' inserted into Custom G-code tab', 'success');
+}
+
+function insertRefCommandAtCursor(code) {
+  const cmd = GCODE_REFERENCE.find(c => c.code === code);
+  if (!cmd) return;
+  if (selectedLayer === null || !parser.lines) {
+    showToast('Select a layer first to insert at cursor', 'warning');
+    return;
+  }
+
+  const layer = parser.getLayerByNumber(selectedLayer);
+  if (!layer) { showToast('Layer not found', 'error'); return; }
+
+  // Insert command at end of selected layer's block
+  modifier.addCustom(selectedLayer, cmd.template);
+  refreshAfterMod();
+  showToast(cmd.code + ' inserted at layer ' + selectedLayer, 'success');
 }
 
 // ===== COOLING TAB =====
@@ -2500,6 +2582,149 @@ function refreshFanOverlay() {
   }
 }
 
+// ===== PA TUNING TAB =====
+
+function renderPaTuner() {
+  renderPaFirmwareInfo();
+  renderPaFeatureTable();
+  updatePaSummary();
+}
+
+function renderPaFirmwareInfo() {
+  const el = document.getElementById('paFirmwareInfo');
+  if (!el) return;
+  const fw = typeof currentFirmware !== 'undefined' ? currentFirmware : 'marlin';
+  const cmd = fw === 'klipper' ? 'SET_PRESSURE_ADVANCE ADVANCE=X' : 'M900 KX';
+  el.textContent = 'Firmware: ' + fw + ' — uses ' + cmd;
+}
+
+function renderPaFeatureTable() {
+  const container = document.getElementById('paFeatureTable');
+  if (!container) return;
+
+  if (typeof motionAnalyzer === 'undefined' || !motionAnalyzer.results || motionAnalyzer.results.size === 0) {
+    container.innerHTML = '<div style="opacity:0.5;font-size:12px;padding:8px">Load a file to see motion types</div>';
+    return;
+  }
+
+  const hints = paTuner.gatherSpeedHints(motionAnalyzer.results);
+  const types = Object.keys(hints).sort();
+
+  if (types.length === 0) {
+    container.innerHTML = '<div style="opacity:0.5;font-size:12px;padding:8px">No extrusion moves found</div>';
+    return;
+  }
+
+  const overrides = paTuner.getFeatureOverrides();
+
+  container.innerHTML = types.map(type => {
+    const hint = hints[type];
+    const speedStr = hint.min === hint.max
+      ? Math.round(hint.min) + ' mm/s'
+      : Math.round(hint.min) + '-' + Math.round(hint.max) + ' mm/s';
+    const kVal = type in overrides ? overrides[type] : paTuner.baseK;
+    return '<div class="pa-feature-row">' +
+      '<span class="pa-type-name" title="' + type + '">' + type + '</span>' +
+      '<span class="pa-speed-hint">' + speedStr + '</span>' +
+      '<input type="number" class="input" min="0" max="0.2" step="0.001" value="' + kVal.toFixed(3) + '"' +
+      ' onchange="updatePaFeatureK(\'' + type.replace(/'/g, "\\'") + '\', this.value)">' +
+      '</div>';
+  }).join('');
+}
+
+function updatePaBaseK(val) {
+  const k = parseFloat(val) || 0;
+  paTuner.setBaseK(k);
+  renderPaFeatureTable();
+  updatePaSummary();
+}
+
+function updatePaFeatureK(type, val) {
+  const k = parseFloat(val) || 0;
+  paTuner.setFeatureK(type, k);
+  updatePaSummary();
+}
+
+function resetPaOverrides() {
+  paTuner.clearFeatureOverrides();
+  document.getElementById('paBaseK').value = '0';
+  paTuner.setBaseK(0);
+  renderPaFeatureTable();
+  updatePaSummary();
+}
+
+function togglePaCalibration() {
+  const section = document.getElementById('paCalibSection');
+  const btn = document.getElementById('paCalibToggle');
+  if (!section || !btn) return;
+  const hidden = section.style.display === 'none';
+  section.style.display = hidden ? 'block' : 'none';
+  btn.textContent = hidden ? 'Hide' : 'Show';
+}
+
+function updatePaSummary() {
+  const el = document.getElementById('paSummary');
+  if (!el) return;
+
+  if (typeof parser === 'undefined' || !parser.layerMoves) {
+    el.textContent = 'Load a file to see command count';
+    return;
+  }
+
+  const fw = typeof currentFirmware !== 'undefined' ? currentFirmware : 'marlin';
+  const commands = paTuner.compile(parser.layerMoves, fw);
+  const totalCmds = commands.reduce((sum, c) => sum + c.gcode.split('\n').length, 0);
+  el.textContent = 'Will insert ' + totalCmds + ' PA command' + (totalCmds !== 1 ? 's' : '') + ' across ' + commands.length + ' layer' + (commands.length !== 1 ? 's' : '');
+}
+
+function applyPaCommands() {
+  if (typeof parser === 'undefined' || !parser.layerMoves) return;
+  if (typeof modifier === 'undefined') return;
+
+  const fw = typeof currentFirmware !== 'undefined' ? currentFirmware : 'marlin';
+  const commands = paTuner.compile(parser.layerMoves, fw);
+
+  if (commands.length === 0) {
+    updatePaSummary();
+    return;
+  }
+
+  for (const cmd of commands) {
+    modifier.addCustom(cmd.layer, cmd.gcode);
+  }
+
+  refreshAfterMod();
+
+  const totalCmds = commands.reduce((sum, c) => sum + c.gcode.split('\n').length, 0);
+  const el = document.getElementById('paSummary');
+  if (el) el.textContent = 'Applied ' + totalCmds + ' PA command' + (totalCmds !== 1 ? 's' : '') + ' across ' + commands.length + ' layer' + (commands.length !== 1 ? 's' : '');
+}
+
+function generatePaCalibration() {
+  const kStart = parseFloat(document.getElementById('paCalibKStart')?.value) || 0;
+  const kEnd = parseFloat(document.getElementById('paCalibKEnd')?.value) || 0.1;
+  const kStep = parseFloat(document.getElementById('paCalibKStep')?.value) || 0.005;
+  const nozzleTemp = parseInt(document.getElementById('paCalibNozzle')?.value) || 200;
+  const bedTemp = parseInt(document.getElementById('paCalibBed')?.value) || 60;
+  const filamentDiameter = parseFloat(document.getElementById('paCalibFilament')?.value) || 1.75;
+  const fw = typeof currentFirmware !== 'undefined' ? currentFirmware : 'marlin';
+
+  const gcode = paTuner.generateCalibrationPattern({
+    kStart, kEnd, kStep, nozzleTemp, bedTemp, filamentDiameter, firmware: fw,
+  });
+
+  // Download as .gcode file
+  const blob = new Blob([gcode], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'pa-calibration-K' + kStart.toFixed(3) + '-' + kEnd.toFixed(3) + '.gcode';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ===== ADD MODIFICATIONS =====
 function addPause() {
   const layer = parseInt(document.getElementById('pauseLayer').value);
@@ -2776,12 +3001,31 @@ function onModDragEnd() {
 function setView(view) {
   currentView = view;
   const isViewer = view === 'visual' || view === 'warp';
+  const isRef = view === 'reference';
   document.getElementById('viewCodeBtn').classList.toggle('active', view === 'code');
   document.getElementById('viewVisualBtn').classList.toggle('active', view === 'visual');
   document.getElementById('viewWarpBtn').classList.toggle('active', view === 'warp');
-  document.getElementById('gcodePreview').classList.toggle('hidden', isViewer);
+  document.getElementById('viewRefBtn').classList.toggle('active', isRef);
+  document.getElementById('gcodePreview').classList.toggle('hidden', isViewer || isRef);
   document.getElementById('viewerWrap').classList.toggle('active', isViewer);
+  document.getElementById('referenceView').classList.toggle('hidden', !isRef);
   document.getElementById('warpControls').classList.toggle('hidden', view !== 'warp');
+
+  // Hide toolbar tools when in reference view
+  const toolbarTools = ['holeDetectToggle', 'measureToggle', 'pauseSelectToggle', 'editModeToggle', 'crossSectionToggle', 'colorPickerRow'];
+  toolbarTools.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isRef ? 'none' : '';
+  });
+  const jumpControls = document.querySelectorAll('.preview-toolbar > span, .preview-toolbar > .jump-input');
+  jumpControls.forEach(el => el.style.display = isRef ? 'none' : '');
+  const previewInfo = document.getElementById('previewInfo');
+  if (previewInfo) previewInfo.style.display = isRef ? 'none' : '';
+
+  // Render reference content on first switch
+  if (isRef && document.getElementById('refContent').children.length === 0) {
+    renderReference();
+  }
 
   // Set viewer warp mode
   viewer._warpViewActive = view === 'warp';
@@ -2802,7 +3046,6 @@ function setView(view) {
       stopSimulation();
       hideSimControls();
     }
-    // Show legend with warping-risk colors + deformation slider when in warp view
     if (view === 'warp') {
       updateWarpLegend();
     }

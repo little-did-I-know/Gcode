@@ -1,0 +1,255 @@
+// ===== PRESSURE ADVANCE TUNER =====
+const PA_K_MAX = 0.2; // Max K-factor for direct-drive; Bowden setups may need higher
+
+export class PaTuner {
+  constructor() {
+    this.baseK = 0;
+    this._featureOverrides = {};
+  }
+
+  getFeatureOverrides() {
+    return { ...this._featureOverrides };
+  }
+
+  setBaseK(k) {
+    this.baseK = Math.min(PA_K_MAX, Math.max(0, k));
+  }
+
+  setFeatureK(typeName, k) {
+    this._featureOverrides[typeName] = Math.min(PA_K_MAX, Math.max(0, k));
+  }
+
+  removeFeatureK(typeName) {
+    delete this._featureOverrides[typeName];
+  }
+
+  clearFeatureOverrides() {
+    this._featureOverrides = {};
+  }
+
+  /**
+   * Resolve K for a given feature type.
+   * Returns per-feature override if set, otherwise base K.
+   */
+  _resolveK(typeName) {
+    if (typeName in this._featureOverrides) return this._featureOverrides[typeName];
+    return this.baseK;
+  }
+
+  /**
+   * Format a PA G-code command for a given K value, feature type, and firmware.
+   * @param {number} k
+   * @param {string} typeName
+   * @param {string} firmware - 'klipper', 'marlin', 'bambu', or 'rrf'
+   * @returns {string}
+   */
+  _formatPaCommand(k, typeName, firmware) {
+    const kStr = k.toFixed(3);
+    const comment = `; PA: ${typeName}`;
+    if (firmware === 'klipper') {
+      return `SET_PRESSURE_ADVANCE ADVANCE=${kStr} ${comment}`;
+    }
+    return `M900 K${kStr} ${comment}`;
+  }
+
+  /**
+   * Scan layerMoves for type transitions and compile PA commands.
+   * @param {Object} layerMoves - { layerNum: [ {type, extrude, lineIndex}, ... ] }
+   * @param {string} firmware - 'klipper', 'marlin', 'bambu', or 'rrf'
+   * @returns {Array<{layer: number, gcode: string}>}
+   */
+  compile(layerMoves, firmware) {
+    const results = [];
+    let lastK = null;
+    const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
+
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      const commands = [];
+
+      for (const move of moves) {
+        if (!move.extrude) continue;
+        const k = this._resolveK(move.type);
+        if (k === lastK) continue;
+        commands.push(this._formatPaCommand(k, move.type, firmware));
+        lastK = k;
+      }
+
+      if (commands.length > 0) {
+        results.push({ layer: layerNum, gcode: commands.join('\n') });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Generate a complete G-code calibration pattern for pressure advance tuning.
+   * Prints a series of lines at increasing K values, each with a slow then fast segment.
+   * @param {Object} opts - Configuration options
+   * @param {number} [opts.kStart=0] - Starting K value
+   * @param {number} [opts.kEnd=0.1] - Ending K value
+   * @param {number} [opts.kStep=0.005] - K increment per line
+   * @param {number} [opts.nozzleTemp=200] - Nozzle temperature in °C
+   * @param {number} [opts.bedTemp=60] - Bed temperature in °C
+   * @param {number} [opts.filamentDiameter=1.75] - Filament diameter (1.75 or 2.85)
+   * @param {string} [opts.firmware='marlin'] - Firmware type ('marlin' or 'klipper')
+   * @returns {string} Complete G-code file as a string
+   */
+  generateCalibrationPattern(opts = {}) {
+    const kStart = opts.kStart ?? 0;
+    const kEnd = opts.kEnd ?? 0.1;
+    const kStep = opts.kStep ?? 0.005;
+    const nozzleTemp = opts.nozzleTemp ?? 200;
+    const bedTemp = opts.bedTemp ?? 60;
+    const filamentDiameter = opts.filamentDiameter ?? 1.75;
+    const firmware = opts.firmware ?? 'marlin';
+
+    // Print geometry
+    const lineWidth = 0.4;
+    const layerHeight = 0.2;
+    const lineLength = 80;
+    const slowLength = 40;
+    const lineSpacing = 3;
+    const startX = 10;
+    const startY = 10;
+    const retractDist = 0.8;    // retraction distance in mm
+    const retractSpeed = 2400;  // retraction speed F (40mm/s)
+    const zHop = 0.4;           // Z hop height for travel moves
+
+    // E per mm = (lineWidth * layerHeight) / (π * (filamentDiameter/2)²)
+    const filamentArea = Math.PI * (filamentDiameter / 2) ** 2;
+    const ePerMm = (lineWidth * layerHeight) / filamentArea;
+
+    let e = 0;
+
+    const paCmd = (k) => {
+      const kStr = k.toFixed(3);
+      if (firmware === 'klipper') return `SET_PRESSURE_ADVANCE ADVANCE=${kStr}`;
+      return `M900 K${kStr}`;
+    };
+
+    // Retract + Z-hop before travel
+    const retract = () => {
+      e -= retractDist;
+      return [
+        `G1 E${e.toFixed(4)} F${retractSpeed} ; Retract`,
+        `G1 Z${(layerHeight + zHop).toFixed(2)} F600 ; Z-hop`,
+      ];
+    };
+
+    // Un-retract + lower Z after travel
+    const unretract = () => {
+      e += retractDist;
+      return [
+        `G1 Z${layerHeight} F600 ; Lower Z`,
+        `G1 E${e.toFixed(4)} F${retractSpeed} ; Un-retract`,
+      ];
+    };
+
+    const lines = [];
+
+    // --- Header ---
+    lines.push('; Pressure Advance Calibration Pattern');
+    lines.push(`; Generated by G-Code Modifier PA Tuner`);
+    lines.push(`; K range: ${kStart.toFixed(3)} to ${kEnd.toFixed(3)}, step ${kStep.toFixed(3)}`);
+    lines.push(`; Nozzle: ${nozzleTemp}°C, Bed: ${bedTemp}°C`);
+    lines.push(`; Line width: ${lineWidth}mm, Layer height: ${layerHeight}mm`);
+    lines.push(`; Filament: ${filamentDiameter}mm diameter`);
+    lines.push(`; Firmware: ${firmware}`);
+    lines.push(';');
+    lines.push('; Each line prints slow (25mm/s) then fast (100mm/s).');
+    lines.push('; Look for the K value where the transition is smoothest.');
+    lines.push('');
+
+    // --- Startup ---
+    lines.push('; --- Startup ---');
+    lines.push(`M140 S${bedTemp} ; Set bed temperature`);
+    lines.push(`M104 S${nozzleTemp} ; Set nozzle temperature`);
+    lines.push(`M190 S${bedTemp} ; Wait for bed temperature`);
+    lines.push(`M109 S${nozzleTemp} ; Wait for nozzle temperature`);
+    lines.push('G28 ; Home all axes');
+    lines.push('G90 ; Absolute positioning');
+    lines.push('M82 ; Absolute extrusion mode');
+    lines.push(`G1 Z${layerHeight} F300 ; Move to first layer height`);
+    lines.push('G92 E0 ; Reset extruder position');
+    lines.push('M106 S153 ; Part cooling fan 60%');
+    lines.push('');
+
+    // --- Purge line ---
+    lines.push('; --- Purge line ---');
+    lines.push(`G1 X5 Y5 F3000 ; Move to purge start`);
+    const purgeLen = 50;
+    e += ePerMm * purgeLen;
+    lines.push(`G1 X5 Y${5 + purgeLen} E${e.toFixed(4)} F1000 ; Purge line`);
+    lines.push('G92 E0 ; Reset extruder after purge');
+    e = 0;
+    lines.push(...retract());
+    lines.push('');
+
+    // --- Calibration lines ---
+    lines.push('; --- Calibration lines ---');
+
+    let lineIndex = 0;
+    for (let k = kStart; k <= kEnd + kStep * 0.01; k += kStep) {
+      const kClamped = Math.min(k, kEnd);
+      const y = startY + lineIndex * lineSpacing;
+
+      lines.push(`; --- K = ${kClamped.toFixed(3)} ---`);
+      lines.push(`${paCmd(kClamped)} ; Set PA K factor`);
+
+      // Travel to line start (with un-retract)
+      lines.push(`G1 X${startX} Y${y.toFixed(1)} F3000 ; Travel to line start`);
+      lines.push(...unretract());
+
+      // Slow segment: first half at 25mm/s (F1500)
+      e += ePerMm * slowLength;
+      lines.push(`G1 X${startX + slowLength} Y${y.toFixed(1)} E${e.toFixed(4)} F1500 ; Slow segment (25mm/s)`);
+
+      // Fast segment: second half at 100mm/s (F6000)
+      e += ePerMm * (lineLength - slowLength);
+      lines.push(`G1 X${startX + lineLength} Y${y.toFixed(1)} E${e.toFixed(4)} F6000 ; Fast segment (100mm/s)`);
+
+      // Retract + Z-hop after line
+      lines.push(...retract());
+      lines.push('');
+      lineIndex++;
+    }
+
+    // --- Footer ---
+    lines.push('; --- Finish ---');
+    lines.push(`${paCmd(0)} ; Reset PA to 0`);
+    lines.push('M107 ; Fan off');
+    lines.push('G1 Z10 F600 ; Raise Z');
+    lines.push('G28 X Y ; Home X and Y');
+    lines.push('M104 S0 ; Nozzle off');
+    lines.push('M140 S0 ; Bed off');
+    lines.push('M84 ; Disable steppers');
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Gather speed ranges per motion type from analysis results.
+   * @param {Map<number, Array>} motionResults - Map of layerNum to result arrays
+   * @returns {Object} e.g. { 'Outer Wall': { min: 30, max: 60 }, ... }
+   */
+  gatherSpeedHints(motionResults) {
+    const hints = {};
+    for (const [, results] of motionResults) {
+      for (const r of results) {
+        if (!r.move.extrude) continue;
+        const type = r.move.type;
+        const speed = r.requestedSpeed;
+        if (!hints[type]) {
+          hints[type] = { min: speed, max: speed };
+        } else {
+          if (speed < hints[type].min) hints[type].min = speed;
+          if (speed > hints[type].max) hints[type].max = speed;
+        }
+      }
+    }
+    return hints;
+  }
+}
+
