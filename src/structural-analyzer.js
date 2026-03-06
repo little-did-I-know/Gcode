@@ -667,7 +667,13 @@ export class StructuralAnalyzer {
 
           bridgeScores.push(Math.min(1, risk));
 
-          if (spanMm > 5) {
+          // Only track bridge runs for wall/perimeter moves, not infill
+          const bType = (moves[i].type || '').toUpperCase();
+          const bIsInfill = bType.includes('FILL') || bType.includes('SPARSE')
+            || bType.includes('GRID') || bType.includes('GYROID')
+            || bType.includes('HONEYCOMB') || bType.includes('LIGHTNING')
+            || bType === 'SOLID' || bType === 'TOP' || bType === 'BOTTOM';
+          if (spanMm > 5 && !bIsInfill) {
             bridgeRun.push({ move: moves[i], index: i });
           } else {
             if (bridgeRun.length > 0) {
@@ -678,11 +684,21 @@ export class StructuralAnalyzer {
         }
 
         if (overhang > 0.4) {
-          highOverhangCount++;
-          if (overhang > worstOverhang) {
-            worstOverhang = overhang;
-            worstOverhangMove = moves[i];
-            worstOverhangIdx = i;
+          // Skip infill/solid-fill moves — cross-hatch infill alternates angles
+          // between layers by design, so grid overlap is naturally low but NOT
+          // an overhang. Also skip top/bottom surfaces (same pattern, just denser).
+          const mType = (moves[i].type || '').toUpperCase();
+          const isInfill = mType.includes('FILL') || mType.includes('SPARSE')
+            || mType.includes('GRID') || mType.includes('GYROID')
+            || mType.includes('HONEYCOMB') || mType.includes('LIGHTNING')
+            || mType === 'SOLID' || mType === 'TOP' || mType === 'BOTTOM';
+          if (!isInfill) {
+            highOverhangCount++;
+            if (overhang > worstOverhang) {
+              worstOverhang = overhang;
+              worstOverhangMove = moves[i];
+              worstOverhangIdx = i;
+            }
           }
         }
       }

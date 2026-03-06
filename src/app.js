@@ -67,6 +67,8 @@ let editPreviewParams = null;
 let editSelectedMoves = [];
 let editSelectionBounds = null;
 let editTransformState = null;
+let layerRangeStart = null;
+let layerRangeEnd = null;
 let crossSectionActive = false;
 let crossSectionFlipped = false;
 let reparsing = false;
@@ -297,6 +299,14 @@ function runEagerAnalysis() {
   analysisProfile._parsedLines = parser.lines;
   analysisManager.analyzeEager(parser.layerMoves, analysisProfile);
   heatmapLayerStats = {};
+  if (typeof Diagnostics !== 'undefined') {
+    Diagnostics.scan(parser);
+    if (typeof updateDiagnosticBadge !== 'undefined') updateDiagnosticBadge();
+  }
+  if (typeof Insights !== 'undefined') {
+    Insights.generate(parser, Diagnostics);
+    if (typeof renderInsightsPanel !== 'undefined') renderInsightsPanel();
+  }
 }
 
 async function runAnalysis() {
@@ -320,8 +330,16 @@ async function runAnalysis() {
   });
 
   heatmapLayerStats = {};
+  if (typeof Diagnostics !== 'undefined') {
+    Diagnostics.scanDeep();
+    if (typeof updateDiagnosticBadge !== 'undefined') updateDiagnosticBadge();
+  }
+  if (typeof Insights !== 'undefined') {
+    Insights.generate(parser, Diagnostics);
+    if (typeof renderInsightsPanel !== 'undefined') renderInsightsPanel();
+  }
   if (typeof renderAnalysisPanel === 'function') renderAnalysisPanel();
-  if (currentView === 'visual') {
+  if (currentView === 'visual' || currentView === 'warp') {
     viewer.clearBuffers();
     viewer.render(viewer.currentLayer);
   }
@@ -364,6 +382,61 @@ document.addEventListener('DOMContentLoaded', () => {
   if (heightInput) heightInput.addEventListener('input', updateComputedPauseInfo);
   if (unitSelect) unitSelect.addEventListener('change', updateComputedPauseInfo);
   initDecodeTooltip();
+  if (typeof StatsOverlay !== 'undefined') StatsOverlay.init();
+  if (typeof initCompareControls === 'function') initCompareControls();
+  if (typeof Tooltips !== 'undefined') Tooltips.init();
+  if (typeof ContextMenu !== 'undefined') ContextMenu.init();
+
+  // Register command palette commands
+  if (typeof CommandPalette !== 'undefined') {
+    CommandPalette.register([
+      // Navigation
+      { id: 'goto-layer', label: 'Go to layer...', category: 'Navigation', action: () => {
+        const num = prompt('Go to layer number:');
+        if (num != null && !isNaN(num)) selectLayer(parseInt(num));
+      }},
+      { id: 'goto-line', label: 'Go to line...', category: 'Navigation', action: () => {
+        const num = prompt('Go to line number:');
+        if (num != null && !isNaN(num)) goToLine(parseInt(num) - 1);
+      }},
+
+      // View
+      { id: 'toggle-view', label: 'Toggle Code/Visual view', category: 'View', shortcut: 'Space', action: () => setView(currentView === 'code' ? 'visual' : 'code') },
+      { id: 'code-view', label: 'Switch to code view', category: 'View', action: () => setView('code') },
+      { id: 'visual-view', label: 'Switch to visual view', category: 'View', action: () => setView('visual') },
+      { id: 'warp-view', label: 'Show warp view', category: 'View', shortcut: 'W', action: () => setView('warp') },
+      { id: 'fit-bounds', label: 'Fit camera to model', category: 'View', shortcut: 'F', action: () => { if (viewer) viewer.fitBounds(); }},
+
+      // Tools
+      { id: 'measure', label: 'Toggle measurement mode', category: 'Tools', shortcut: 'M', action: () => { if (typeof toggleMeasureMode !== 'undefined') toggleMeasureMode(); }},
+      { id: 'compare', label: 'Toggle layer comparison', category: 'Tools', shortcut: 'C', action: () => { if (typeof toggleCompareMode !== 'undefined') toggleCompareMode(); }},
+      { id: 'arrows', label: 'Toggle flow direction arrows', category: 'Tools', shortcut: 'D', action: () => { if (typeof toggleFlowArrows !== 'undefined') toggleFlowArrows(); }},
+      { id: 'cross-section', label: 'Toggle cross-section', category: 'Tools', shortcut: 'X', action: () => { if (typeof toggleCrossSection !== 'undefined') toggleCrossSection(); }},
+      { id: 'simulation', label: 'Play/pause simulation', category: 'Tools', shortcut: 'P', action: () => { if (typeof toggleSimulation !== 'undefined') toggleSimulation(); }},
+
+      // Modifications
+      { id: 'add-pause', label: 'Add pause at current layer', category: 'Modify', action: () => switchTab('pause') },
+      { id: 'add-filament', label: 'Add filament change', category: 'Modify', action: () => switchTab('filament') },
+      { id: 'add-custom', label: 'Insert custom G-code', category: 'Modify', action: () => switchTab('custom') },
+      { id: 'add-zoffset', label: 'Apply Z-offset', category: 'Modify', action: () => switchTab('zoffset') },
+
+      // Analysis
+      { id: 'run-analysis', label: 'Run all analyses', category: 'Analysis', action: () => { if (typeof runAnalysis !== 'undefined') runAnalysis(); }},
+      { id: 'heatmap-speed', label: 'Heatmap: Speed', category: 'Analysis', action: () => setColorMode('speed') },
+      { id: 'heatmap-accel', label: 'Heatmap: Acceleration', category: 'Analysis', action: () => setColorMode('acceleration') },
+      { id: 'heatmap-motion', label: 'Motion type colors', category: 'Analysis', action: () => setColorMode('motion-type') },
+
+      // Export/File
+      { id: 'export', label: 'Export G-code', category: 'File', shortcut: 'Ctrl+E', action: () => { if (typeof exportGcode !== 'undefined') exportGcode(); }},
+      { id: 'open-file', label: 'Open file', category: 'File', shortcut: 'Ctrl+O', action: () => document.getElementById('fileInput')?.click() },
+      { id: 'shortcuts', label: 'Show keyboard shortcuts', category: 'Help', shortcut: '?', action: () => { if (typeof toggleShortcutsOverlay !== 'undefined') toggleShortcutsOverlay(); }},
+
+      // Insights & Help
+      { id: 'insights', label: 'Show insights panel', category: 'View', action: () => toggleInsightsPanel() },
+      { id: 'guided-tour', label: 'Start guided tour', category: 'Help', action: () => Onboarding.start() },
+      { id: 'range-stats', label: 'Show range stats', category: 'Navigation', action: () => showRangeStats(), condition: () => layerRangeStart !== null },
+    ]);
+  }
 });
 
 window.addEventListener('keydown', e => {
@@ -377,8 +450,20 @@ window.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'e') { e.preventDefault(); exportGcode(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); document.getElementById('fileInput').click(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); if (currentView === 'code') showSearchBar(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); if (typeof CommandPalette !== 'undefined') CommandPalette.toggle(); return; }
 
   if (isInput) return;
+
+  // Measure mode Esc
+  if (measureMode && e.key === 'Escape') {
+    measureMode = false;
+    MeasureTool.reset();
+    document.getElementById('measureToggle').classList.remove('active');
+    document.getElementById('viewerCanvas').style.cursor = '';
+    showToast('Measurement mode OFF');
+    if (currentView === 'visual') viewer.render(viewer.currentLayer);
+    return;
+  }
 
   // Edit mode shortcuts
   if (editMode) {
@@ -437,6 +522,35 @@ window.addEventListener('keydown', e => {
 
   // Cross-section toggle
   if (e.key === 'x' && currentView === 'visual') { toggleCrossSection(); return; }
+
+  // Measurement mode toggle
+  if ((e.key === 'm' || e.key === 'M') && currentView === 'visual') {
+    measureMode = !measureMode;
+    if (!measureMode) MeasureTool.reset();
+    document.getElementById('measureToggle').classList.toggle('active', measureMode);
+    document.getElementById('viewerCanvas').style.cursor = measureMode ? 'crosshair' : '';
+    showToast(measureMode ? 'Measurement mode ON — click to place points' : 'Measurement mode OFF');
+    viewer.render(selectedLayer);
+    return;
+  }
+
+  // Flow direction arrows toggle
+  if ((e.key === 'd' || e.key === 'D') && currentView === 'visual') {
+    if (typeof FlowArrows !== 'undefined') {
+      FlowArrows.enabled = !FlowArrows.enabled;
+      const btn = document.getElementById('flowArrowsToggle');
+      if (btn) btn.classList.toggle('active', FlowArrows.enabled);
+      showToast(FlowArrows.enabled ? 'Flow arrows ON' : 'Flow arrows OFF');
+      viewer.render(selectedLayer);
+    }
+    return;
+  }
+
+  // Comparison mode toggle
+  if ((e.key === 'c' || e.key === 'C') && currentView === 'visual') {
+    toggleCompareMode();
+    return;
+  }
 
   // Help overlay
   if (e.key === '?') { toggleShortcutsOverlay(); return; }

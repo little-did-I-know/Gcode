@@ -412,6 +412,83 @@ export class GcodeViewer3D {
     return result;
   }
 
+  _drawCompareLayer(mvp) {
+    if (typeof LayerComparison === 'undefined' || !LayerComparison.active) return;
+
+    const compareMoves = LayerComparison.getCompareMoves(this.currentLayer);
+    if (!compareMoves || compareMoves.length === 0) return;
+
+    // Use the current layer's Z for overlay alignment so both layers appear at the same height
+    const layer = parser.getLayerByNumber(this.currentLayer);
+    const z = layer ? layer.zHeight || 0 : 0;
+    const halfW = 0.2;
+    const tint = LayerComparison.compareTint;
+
+    const ribbonVerts = [];
+
+    for (let i = 0; i < compareMoves.length; i++) {
+      const move = compareMoves[i];
+      if (!move.extrude) continue;
+
+      const dx = move.x2 - move.x1;
+      const dy = move.y2 - move.y1;
+      const len = Math.hypot(dx, dy);
+      if (len < 0.001) continue;
+
+      // Base color tinted with comparison orange
+      const baseColor = this._getTypeColor(move.type);
+      const r = baseColor[0] * tint[0];
+      const g = baseColor[1] * tint[1];
+      const b = baseColor[2] * tint[2];
+
+      // Perpendicular offset for ribbon width
+      const nx = -dy / len * halfW;
+      const ny = dx / len * halfW;
+
+      // Two triangles forming a ribbon
+      const verts = [
+        move.x1 + nx, move.y1 + ny, z,
+        move.x1 - nx, move.y1 - ny, z,
+        move.x2 + nx, move.y2 + ny, z,
+        move.x2 + nx, move.y2 + ny, z,
+        move.x1 - nx, move.y1 - ny, z,
+        move.x2 - nx, move.y2 - ny, z,
+      ];
+      for (let j = 0; j < 6; j++) {
+        ribbonVerts.push(
+          verts[j * 3], verts[j * 3 + 1], verts[j * 3 + 2],
+          r, g, b,
+          1.0
+        );
+      }
+    }
+
+    if (ribbonVerts.length === 0) return;
+
+    const gl = this.gl;
+    const data = new Float32Array(ribbonVerts);
+    const stride = 7 * 4;
+
+    gl.useProgram(this.prog);
+    gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+    gl.uniform4fv(this.u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
+    gl.uniform1f(this.u_alphaOverride, 0.5);
+
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STREAM_DRAW);
+
+    gl.enableVertexAttribArray(this.a_pos);
+    gl.vertexAttribPointer(this.a_pos, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(this.a_color);
+    gl.vertexAttribPointer(this.a_color, 3, gl.FLOAT, false, stride, 12);
+    gl.enableVertexAttribArray(this.a_alpha);
+    gl.vertexAttribPointer(this.a_alpha, 1, gl.FLOAT, false, stride, 24);
+
+    gl.drawArrays(gl.TRIANGLES, 0, ribbonVerts.length / 7);
+    gl.deleteBuffer(buf);
+  }
+
   clearBuffers() {
     if (this._broken) return;
     const gl = this.gl;
@@ -846,7 +923,12 @@ export class GcodeViewer3D {
 
       } else {
         // Normal rendering (no simulation)
-        gl.uniform1f(this.u_alphaOverride, isCurrent ? -1.0 : dimAlpha);
+        const compareActive = typeof LayerComparison !== 'undefined' && LayerComparison.active;
+        const inRange = typeof layerRangeStart !== 'undefined' && layerRangeStart !== null &&
+                        typeof layerRangeEnd !== 'undefined' && layerRangeEnd !== null &&
+                        ln >= layerRangeStart && ln <= layerRangeEnd;
+        const layerAlpha = isCurrent ? (compareActive ? 0.5 : -1.0) : (inRange ? -1.0 : dimAlpha);
+        gl.uniform1f(this.u_alphaOverride, layerAlpha);
 
         // Draw extrusion ribbons
         if (buf.ribbonVao && buf.ribbonCount > 0) {
@@ -870,6 +952,11 @@ export class GcodeViewer3D {
       }
     }
 
+    // Draw comparison overlay layer
+    this._drawCompareLayer(mvp);
+
+    // Draw flow direction arrows
+    this._drawFlowArrows(mvp);
     // Draw modification marker planes
     this._drawModMarkers(mvp);
     this._drawHoleHighlights(mvp);
@@ -878,6 +965,61 @@ export class GcodeViewer3D {
     this._drawEditOverlays(mvp);
     this._drawEditPreview(mvp);
     this._drawClipPlaneQuad(mvp);
+  }
+
+  _drawFlowArrows(mvp) {
+    if (typeof FlowArrows === 'undefined' || !FlowArrows.enabled) return;
+
+    FlowArrows.setZoomLevel(this.cam.zoom);
+
+    const moves = parser.layerMoves[this.currentLayer];
+    if (!moves || moves.length === 0) return;
+
+    const layer = parser.layers[this.currentLayer];
+    const z = layer ? layer.zHeight || 0 : 0;
+
+    // Determine color function based on current color mode
+    const viewer = this;
+    let getColorFn;
+    if (colorMode === 'motion-type') {
+      getColorFn = (move) => viewer._getTypeColor(move.type);
+    } else {
+      // Heatmap mode — get stats and compute per-move color
+      const stats = typeof getHeatmapLayerStats !== 'undefined' ? getHeatmapLayerStats(this.currentLayer) : null;
+      if (stats) {
+        getColorFn = (move) => {
+          const idx = moves.indexOf(move);
+          const val = getHeatmapValue(move, viewer.currentLayer, idx);
+          if (val == null) return viewer._getTypeColor(move.type);
+          return viewer._getHeatmapColor(val, stats.min, stats.max, stats.invert);
+        };
+      } else {
+        getColorFn = (move) => viewer._getTypeColor(move.type);
+      }
+    }
+
+    const data = FlowArrows.buildArrows(moves, z, getColorFn);
+    if (data.count === 0) return;
+
+    const gl = this.gl;
+    gl.useProgram(this.prog);
+    gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+    gl.uniform1f(this.u_alphaOverride, -1.0);
+    gl.uniform4fv(this.u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
+
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, data.verts, gl.STREAM_DRAW);
+
+    gl.enableVertexAttribArray(this.a_pos);
+    gl.vertexAttribPointer(this.a_pos, 3, gl.FLOAT, false, 28, 0);
+    gl.enableVertexAttribArray(this.a_color);
+    gl.vertexAttribPointer(this.a_color, 3, gl.FLOAT, false, 28, 12);
+    gl.enableVertexAttribArray(this.a_alpha);
+    gl.vertexAttribPointer(this.a_alpha, 1, gl.FLOAT, false, 28, 24);
+
+    gl.drawArrays(gl.TRIANGLES, 0, data.count);
+    gl.deleteBuffer(buf);
   }
 
   _drawModMarkers(mvp) {
@@ -1052,6 +1194,24 @@ export class GcodeViewer3D {
     return { x: near[0] + t * (far[0] - near[0]), y: near[1] + t * (far[1] - near[1]), z: layerZ };
   }
 
+  worldToScreen(wx, wy, wz) {
+    const mvp = this._getMVP();
+    const clip = [
+      mvp[0]*wx + mvp[4]*wy + mvp[8]*wz + mvp[12],
+      mvp[1]*wx + mvp[5]*wy + mvp[9]*wz + mvp[13],
+      mvp[2]*wx + mvp[6]*wy + mvp[10]*wz + mvp[14],
+      mvp[3]*wx + mvp[7]*wy + mvp[11]*wz + mvp[15]
+    ];
+    if (clip[3] <= 0) return null;
+    const ndcX = clip[0] / clip[3];
+    const ndcY = clip[1] / clip[3];
+    const canvas = this.gl.canvas;
+    return {
+      x: (ndcX * 0.5 + 0.5) * canvas.clientWidth,
+      y: (1 - (ndcY * 0.5 + 0.5)) * canvas.clientHeight
+    };
+  }
+
   findNearestMove(worldX, worldY, layerNum) {
     const moves = parser.layerMoves[layerNum];
     if (!moves || moves.length === 0) return null;
@@ -1075,24 +1235,13 @@ export class GcodeViewer3D {
   }
 
   _drawMeasurement(mvp) {
-    if (!measureMode || measurePoints.length === 0) return;
+    if (!measureMode || MeasureTool.points.length === 0) return;
     const gl = this.gl;
-    const verts = [];
-    const color = [1.0, 1.0, 1.0, 1.0];
+    const layer = parser.getLayerByNumber(this.currentLayer);
+    const layerZ = layer?.zHeight || 0;
+    const data = MeasureTool.getDrawData(layerZ);
+    if (!data) return;
 
-    for (const pt of measurePoints) {
-      const s = 0.5;
-      verts.push(pt.x - s, pt.y, pt.z, ...color, pt.x + s, pt.y, pt.z, ...color);
-      verts.push(pt.x, pt.y - s, pt.z, ...color, pt.x, pt.y + s, pt.z, ...color);
-    }
-
-    if (measurePoints.length === 2) {
-      const [a, b] = measurePoints;
-      verts.push(a.x, a.y, a.z, ...color, b.x, b.y, b.z, ...color);
-    }
-
-    if (verts.length === 0) return;
-    const data = new Float32Array(verts);
     const stride = 7 * 4;
     gl.useProgram(this.lineProg);
     gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
@@ -1104,8 +1253,10 @@ export class GcodeViewer3D {
     gl.vertexAttribPointer(this.line_a_pos, 3, gl.FLOAT, false, stride, 0);
     gl.enableVertexAttribArray(this.line_a_color);
     gl.vertexAttribPointer(this.line_a_color, 4, gl.FLOAT, false, stride, 12);
-    gl.drawArrays(gl.LINES, 0, verts.length / 7);
+    gl.drawArrays(gl.LINES, 0, data.length / 7);
     gl.deleteBuffer(vbo);
+
+    MeasureTool.updateLabels(this);
   }
 
   _drawMoveHighlight(mvp, move, color, alpha, lineOffset, crosshairSize) {
@@ -1362,7 +1513,30 @@ export class GcodeViewer3D {
   _setupInteraction() {
     const c = this.canvas;
 
-    c.addEventListener('contextmenu', e => e.preventDefault());
+    c.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      if (typeof ContextMenu === 'undefined') return;
+
+      const rect = c.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const layer = parser.layers[this.currentLayer];
+      const z = layer ? layer.zHeight || 0 : 0;
+      const pt = this.screenToLayerPoint(sx, sy, z);
+
+      let move = null;
+      if (pt) {
+        move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
+        // Check if move is close enough (within 5mm) using point-to-segment distance
+        if (move) {
+          const dist = ContextMenu._distToMove(pt.x, pt.y, move);
+          if (dist > 5) move = null;
+        }
+      }
+
+      const items = ContextMenu.buildViewerMenu(move, this.currentLayer);
+      ContextMenu.show(e.clientX, e.clientY, items);
+    });
 
     c.addEventListener('mousedown', e => {
       this._dragging = true;
@@ -1508,6 +1682,48 @@ export class GcodeViewer3D {
       });
     });
 
+    // Stats hover — active when visual view is showing and no special mode is active
+    let statsHoverRaf = false;
+    c.addEventListener('mousemove', e => {
+      if (this._dragging) return;
+      if (pauseSelectMode || editMode) return;
+      if (statsHoverRaf) return;
+      statsHoverRaf = true;
+      requestAnimationFrame(() => {
+        statsHoverRaf = false;
+        if (this._dragging || pauseSelectMode || editMode) return;
+        if (typeof StatsOverlay === 'undefined') return;
+        const rect = c.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const layer = parser.getLayerByNumber(this.currentLayer);
+        if (!layer) return;
+        const z = layer.zHeight || 0;
+        const pt = this.screenToLayerPoint(sx, sy, z);
+        if (!pt) { StatsOverlay.clearHoverInfo(); return; }
+        const move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
+        if (!move) { StatsOverlay.clearHoverInfo(); return; }
+        // Compute distance to nearest move for threshold check
+        const dx = move.x2 - move.x1, dy = move.y2 - move.y1;
+        const lenSq = dx * dx + dy * dy;
+        let dist;
+        if (lenSq === 0) {
+          dist = Math.hypot(pt.x - move.x1, pt.y - move.y1);
+        } else {
+          let t = ((pt.x - move.x1) * dx + (pt.y - move.y1) * dy) / lenSq;
+          t = Math.max(0, Math.min(1, t));
+          dist = Math.hypot(pt.x - (move.x1 + t * dx), pt.y - (move.y1 + t * dy));
+        }
+        if (dist < 2) {
+          const moves = parser.layerMoves[this.currentLayer];
+          const moveIndex = moves ? moves.indexOf(move) : -1;
+          StatsOverlay.showHoverInfo(move, this.currentLayer, moveIndex);
+        } else {
+          StatsOverlay.clearHoverInfo();
+        }
+      });
+    });
+
     c.addEventListener('mouseleave', () => {
       if (editHoveredMove) {
         editHoveredMove = null;
@@ -1518,6 +1734,7 @@ export class GcodeViewer3D {
         hoveredMove = null;
         if (pauseSelectMode) this.render(this.currentLayer);
       }
+      if (typeof StatsOverlay !== 'undefined') StatsOverlay.clearHoverInfo();
     });
 
     window.addEventListener('mouseup', () => { this._dragging = false; });
@@ -1609,14 +1826,9 @@ export class GcodeViewer3D {
       if (measureMode) {
         const pt = this.screenToLayerPoint(sx, sy, z);
         if (pt) {
-          measurePoints.push(pt);
-          if (measurePoints.length > 2) measurePoints = [measurePoints[measurePoints.length - 1]];
+          const nearest = this.findNearestMove(pt.x, pt.y, this.currentLayer);
+          MeasureTool.addPoint(pt.x, pt.y, z, nearest);
           this.render(this.currentLayer);
-          if (measurePoints.length === 2) {
-            const [a, b] = measurePoints;
-            const dist = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
-            showToast('Distance: ' + dist.toFixed(2) + ' mm', 'success', 6000);
-          }
         }
         return;
       }
