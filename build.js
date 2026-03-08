@@ -31,6 +31,7 @@ const FILES = [
   'arrows.js',
   'comparison.js',
   'context-menu.js',
+  'pa-tuner.js',
   'viewer3d.js',
   'tooltips.js',
   'command-palette.js',

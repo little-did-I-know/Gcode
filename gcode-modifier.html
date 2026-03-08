@@ -574,29 +574,40 @@ main { display: flex; flex: 1; overflow: hidden; }
 .onboard-hint.below::after { bottom: 100%; left: 20px; border-bottom-color: var(--accent); }
 @keyframes hintPulse { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
 
-/* Reference tab */
-.ref-search-wrap { position: sticky; top: 0; z-index: 2; padding-bottom: 8px; background: var(--bg-primary); }
+/* Reference view */
+#referenceView { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+#referenceView.hidden { display: none; }
+.ref-search-bar { padding: 12px 16px 8px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.ref-search-bar .input { width: 100%; max-width: 400px; }
 .ref-firmware-badge { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
 .ref-firmware-badge span { background: var(--accent); color: #fff; padding: 1px 8px; border-radius: 8px; font-weight: 600; font-size: 10px; }
-.ref-category { margin-bottom: 12px; }
-.ref-category-header { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 6px 0; font-weight: 700; font-size: 13px; color: var(--text-primary); user-select: none; }
+.ref-main { display: flex; flex: 1; overflow: hidden; }
+.ref-sidebar { width: 180px; min-width: 140px; flex-shrink: 0; overflow-y: auto; padding: 12px 0; border-right: 1px solid var(--border); background: var(--surface); }
+.ref-sidebar-item { display: block; padding: 6px 16px; font-size: 12px; color: var(--text-secondary); cursor: pointer; border-left: 3px solid transparent; text-decoration: none; transition: all .15s; }
+.ref-sidebar-item:hover { color: var(--text-primary); background: var(--surface2); }
+.ref-sidebar-item.active { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+.ref-cards-area { flex: 1; overflow-y: auto; padding: 12px 20px; }
+.ref-category { margin-bottom: 16px; }
+.ref-category-header { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 8px 0; font-weight: 700; font-size: 14px; color: var(--text-primary); user-select: none; scroll-margin-top: 8px; }
 .ref-category-header::before { content: '\25BC'; font-size: 9px; transition: transform .2s; }
 .ref-category.collapsed .ref-category-header::before { transform: rotate(-90deg); }
 .ref-category.collapsed .ref-category-cards { display: none; }
-.ref-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: var(--bg-secondary); }
-.ref-card-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
-.ref-card-code { font-family: var(--mono); font-weight: 700; font-size: 15px; color: var(--accent); }
-.ref-card-name { font-weight: 600; font-size: 13px; color: var(--text-primary); }
-.ref-card-desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; line-height: 1.4; }
-.ref-card-params { width: 100%; font-size: 11px; border-collapse: collapse; margin-bottom: 6px; }
-.ref-card-params th { text-align: left; font-weight: 600; color: var(--text-secondary); padding: 2px 8px 2px 0; border-bottom: 1px solid var(--border); }
-.ref-card-params td { padding: 2px 8px 2px 0; color: var(--text-primary); }
-.ref-card-params td:first-child { font-family: var(--mono); font-weight: 700; color: var(--accent); width: 30px; }
-.ref-card-example { font-family: var(--mono); font-size: 11px; background: var(--bg-primary); padding: 4px 8px; border-radius: 4px; color: var(--text-secondary); margin-bottom: 6px; overflow-x: auto; white-space: nowrap; }
-.ref-card-firmware { font-size: 11px; padding: 4px 8px; border-radius: 4px; margin-bottom: 6px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg-secondary)); color: var(--text-primary); }
-.ref-card-insert { font-size: 11px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; float: right; }
+.ref-card { border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; background: var(--bg-secondary); }
+.ref-card-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.ref-card-code { font-family: var(--mono); font-weight: 700; font-size: 16px; color: var(--accent); }
+.ref-card-name { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+.ref-card-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; line-height: 1.5; }
+.ref-card-params { width: 100%; font-size: 12px; border-collapse: collapse; margin-bottom: 8px; }
+.ref-card-params th { text-align: left; font-weight: 600; color: var(--text-secondary); padding: 3px 10px 3px 0; border-bottom: 1px solid var(--border); }
+.ref-card-params td { padding: 3px 10px 3px 0; color: var(--text-primary); }
+.ref-card-params td:first-child { font-family: var(--mono); font-weight: 700; color: var(--accent); width: 40px; }
+.ref-card-example { font-family: var(--mono); font-size: 12px; background: var(--bg-primary); padding: 6px 10px; border-radius: 4px; color: var(--text-secondary); margin-bottom: 8px; overflow-x: auto; white-space: nowrap; }
+.ref-card-firmware { font-size: 12px; padding: 6px 10px; border-radius: 4px; margin-bottom: 8px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg-secondary)); color: var(--text-primary); }
+.ref-card-actions { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
+.ref-card-insert { font-size: 11px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; white-space: nowrap; }
 .ref-card-insert:hover { background: var(--accent); color: #fff; }
-.ref-fw-badges { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
+.ref-card-insert.disabled { opacity: .4; pointer-events: none; }
+.ref-fw-badges { display: flex; gap: 4px; flex-shrink: 0; }
 .ref-fw-badge { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 8px; line-height: 1.4; white-space: nowrap; }
 .ref-fw-badge[data-fw="bambu"] { background: #2d7a3a22; color: #2d7a3a; border: 1px solid #2d7a3a44; }
 .ref-fw-badge[data-fw="klipper"] { background: #c4640022; color: #c46400; border: 1px solid #c4640044; }
@@ -606,7 +617,11 @@ main { display: flex; flex: 1; overflow: hidden; }
 [data-theme="dark"] .ref-fw-badge[data-fw="klipper"] { background: #fb923c22; color: #fb923c; border-color: #fb923c44; }
 [data-theme="dark"] .ref-fw-badge[data-fw="marlin"] { background: #60a5fa22; color: #60a5fa; border-color: #60a5fa44; }
 [data-theme="dark"] .ref-fw-badge[data-fw="rrf"] { background: #a78bfa22; color: #a78bfa; border-color: #a78bfa44; }
-.ref-no-results { text-align: center; color: var(--text-secondary); padding: 20px 0; font-size: 13px; }
+.ref-no-results { text-align: center; color: var(--text-secondary); padding: 40px 0; font-size: 14px; }
+@media (max-width: 900px) {
+  .ref-sidebar { display: none; }
+  .ref-cards-area { padding: 12px; }
+}
 
 /* FAN / COOLING */
 .fan-rules-list { display: flex; flex-direction: column; gap: 4px; }
@@ -620,6 +635,21 @@ main { display: flex; flex: 1; overflow: hidden; }
 .fan-ch-toggle { font-size: 11px; display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; }
 .fan-ch-toggle input { width: 12px; height: 12px; }
 .fan-summary { font-size: 11px; color: var(--text-secondary); padding: 4px 0; }
+
+/* PA TUNER */
+.pa-firmware-info { font-size: 12px; opacity: 0.7; padding: 4px 0; }
+.pa-feature-table { display: flex; flex-direction: column; gap: 2px; }
+.pa-feature-row {
+  display: flex; align-items: center; gap: 6px; padding: 4px 6px;
+  background: var(--surface2); border-radius: 4px; font-size: 13px; color: var(--text);
+}
+.pa-feature-row .pa-type-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pa-feature-row .pa-speed-hint { font-size: 11px; opacity: 0.5; white-space: nowrap; }
+.pa-feature-row input[type="number"] { width: 72px; }
+.pa-calib-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; font-size: 13px; }
+.pa-calib-grid label { opacity: 0.7; }
+.pa-calib-grid .input { width: 100%; }
+.pa-summary { font-size: 12px; opacity: 0.7; padding: 4px 0; }
 
 /* PRINTER PROFILE PANEL */
 #printerProfilePanel {
@@ -1134,6 +1164,7 @@ main { display: flex; flex: 1; overflow: hidden; }
           <button class="active" onclick="setView('code')" id="viewCodeBtn">Code</button>
           <button onclick="setView('visual')" id="viewVisualBtn">Visual</button>
           <button onclick="setView('warp')" id="viewWarpBtn">Warp</button>
+          <button onclick="setView('reference')" id="viewRefBtn">Reference</button>
         </div>
         <span>Go to layer:</span>
         <input type="number" class="jump-input" id="jumpLayer" min="0" placeholder="#" onchange="jumpToLayer(+this.value)">
@@ -1157,6 +1188,16 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div class="empty-state" id="previewEmpty">
           <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>
           <p>Upload a .gcode file to preview and modify it</p>
+        </div>
+      </div>
+      <div id="referenceView" class="hidden">
+        <div class="ref-search-bar">
+          <input type="text" class="input" id="refSearch" placeholder="Search commands (e.g. G1, home, temperature...)" oninput="filterReferenceCards()">
+          <div class="ref-firmware-badge" id="refFirmwareBadge"></div>
+        </div>
+        <div class="ref-main">
+          <div class="ref-sidebar" id="refSidebar"></div>
+          <div class="ref-cards-area" id="refContent"></div>
         </div>
       </div>
       <div class="viewer-wrap" id="viewerWrap">
@@ -1318,6 +1359,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="tab" data-tab="reference" onclick="switchTab('reference')" data-tooltip="G-code command reference guide">Reference</button>
         <button class="tab" data-tab="recovery" onclick="switchTab('recovery')" data-tooltip="Resume a failed print from a specific layer">Recovery</button>
         <button class="tab" data-tab="cooling" onclick="switchTab('cooling')" data-tooltip="Fan speed profiles and cooling analysis">Cooling</button>
+        <button class="tab" data-tab="pa-tuner" onclick="switchTab('pa-tuner')" data-tooltip="Generate pressure advance calibration patterns">PA Tuning</button>
         <button class="tab" data-tab="analysis" onclick="switchTab('analysis')" data-tooltip="Run diagnostics to find potential print problems">Analysis</button>
       </div>
 
@@ -1499,15 +1541,6 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="btn btn-primary" onclick="addInsertsForSelection()">+ Add Pause for Selected Holes</button>
       </div>
 
-      <!-- REFERENCE TAB -->
-      <div class="tab-content" id="tab-reference">
-        <div class="ref-search-wrap">
-          <input type="text" class="input" id="refSearch" placeholder="Search commands (e.g. G1, home, temperature...)" oninput="filterReferenceCards()">
-          <div class="ref-firmware-badge" id="refFirmwareBadge"></div>
-        </div>
-        <div id="refContent"></div>
-      </div>
-
       <!-- RECOVERY TAB -->
       <div class="tab-content" id="tab-recovery">
         <div style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--text);">
@@ -1551,6 +1584,57 @@ main { display: flex; flex: 1; overflow: hidden; }
           <button class="std-btn" onclick="applyFanProfile()" style="flex:1">Apply</button>
           <button class="std-btn" onclick="resetFanProfile()" style="flex:1">Reset</button>
         </div>
+      </div>
+
+      <!-- PA TUNING TAB -->
+      <div class="tab-content" id="tab-pa-tuner">
+        <div class="section-label">Firmware</div>
+        <div id="paFirmwareInfo" class="pa-firmware-info"></div>
+
+        <div class="section-label" style="margin-top:10px">Base K-Factor</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="number" id="paBaseK" class="input" min="0" max="0.2" step="0.001" value="0" style="width:90px" onchange="updatePaBaseK(this.value)">
+          <span style="opacity:0.6;font-size:12px">Default for all types</span>
+        </div>
+
+        <div class="section-label" style="margin-top:12px">Per-Feature K-Factor</div>
+        <div id="paFeatureTable" class="pa-feature-table">
+          <div style="opacity:0.5;font-size:12px;padding:8px">Load a file to see motion types</div>
+        </div>
+        <button class="std-btn" onclick="resetPaOverrides()" style="margin-top:6px;width:100%">Reset All to Base K</button>
+
+        <div class="section-label" style="margin-top:12px;display:flex;align-items:center">
+          <span>Calibration Pattern</span>
+          <button class="std-btn" onclick="togglePaCalibration()" style="font-size:11px;padding:2px 8px;margin-left:auto" id="paCalibToggle">Show</button>
+        </div>
+        <div id="paCalibSection" style="display:none">
+          <div style="font-size:12px;opacity:0.7;margin-bottom:8px">
+            Generates a standalone G-code file with slow→fast line pairs at varying K values.
+            Look for the cleanest transition to find your optimal K.
+          </div>
+          <div class="pa-calib-grid">
+            <label>K Start</label>
+            <input type="number" id="paCalibKStart" class="input" min="0" max="0.2" step="0.005" value="0">
+            <label>K End</label>
+            <input type="number" id="paCalibKEnd" class="input" min="0" max="0.2" step="0.005" value="0.1">
+            <label>K Step</label>
+            <input type="number" id="paCalibKStep" class="input" min="0.001" max="0.05" step="0.001" value="0.005">
+            <label>Nozzle °C</label>
+            <input type="number" id="paCalibNozzle" class="input" min="150" max="300" step="5" value="200">
+            <label>Bed °C</label>
+            <input type="number" id="paCalibBed" class="input" min="0" max="120" step="5" value="60">
+            <label>Filament</label>
+            <select id="paCalibFilament" class="input">
+              <option value="1.75">1.75mm</option>
+              <option value="2.85">2.85mm</option>
+            </select>
+          </div>
+          <button class="std-btn" onclick="generatePaCalibration()" style="margin-top:8px;width:100%">Generate &amp; Download</button>
+        </div>
+
+        <div class="section-label" style="margin-top:12px">Actions</div>
+        <div id="paSummary" class="pa-summary"></div>
+        <button class="std-btn" onclick="applyPaCommands()" style="margin-top:6px;width:100%">Apply</button>
       </div>
 
       <!-- ANALYSIS TAB -->
@@ -1643,8 +1727,10 @@ main { display: flex; flex: 1; overflow: hidden; }
       <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Undo</td></tr>
       <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td><td>Redo</td></tr>
       <tr><td><kbd>Space</kbd></td><td>Toggle Code/Visual</td></tr>
+      <tr><td><kbd>W</kbd></td><td>Toggle Warp view</td></tr>
+      <tr><td><kbd>R</kbd></td><td>Toggle Reference view</td></tr>
       <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Previous/Next layer</td></tr>
-      <tr><td><kbd>1</kbd>–<kbd>8</kbd></td><td>Switch tool tab</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>0</kbd></td><td>Switch tool tab</td></tr>
       <tr><td><kbd>F</kbd></td><td>Reset camera</td></tr>
       <tr><td><kbd>?</kbd></td><td>This help</td></tr>
       <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>Find in file</td></tr>
@@ -2740,6 +2826,384 @@ const GCODE_REFERENCE = [
     example: 'SET_LED LED=my_neopixel RED=1.0 GREEN=0.0 BLUE=0.0 ; Set all LEDs red\nSET_LED LED=my_neopixel RED=0.0 GREEN=1.0 BLUE=0.0 INDEX=1 ; Set first LED green',
     template: 'SET_LED LED=my_neopixel RED=1.0 GREEN=0.0 BLUE=0.0',
     firmware: { bambu: 'Not supported — Klipper specific.', klipper: 'Requires [neopixel] or [dotstar] section in printer.cfg.', marlin: 'Not supported — Klipper specific.', reprap: 'Not supported — Klipper specific.' }
+  },
+
+  // ── Bambu Lab Extended ──
+  { code: 'M620', name: 'AMS Filament Select Block', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Opens an AMS filament selection block. The firmware executes the filament change sequence between M620 and the matching M621. S selects the slot (0-3), S255 unloads to AMS. M620 M enables AMS remap mode. Must always be paired with M621.',
+    params: [
+      { letter: 'S', name: 'Filament slot index (0-3 for AMS slots, 255 for unload/retract)', example: '0' },
+    ],
+    example: 'M620 S0A ; switch material if AMS exists\nM620 S255 ; unload filament to AMS\nM620 M ; enable AMS remap mode',
+    template: 'M620 S0A',
+    firmware: { bambu: 'Verified — controls AMS filament selection.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M621', name: 'End AMS Filament Select', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Closes the AMS filament selection block opened by M620. The printer finalizes the filament change. S value must match the corresponding M620.',
+    params: [
+      { letter: 'S', name: 'Filament slot index (must match corresponding M620)', example: '0' },
+    ],
+    example: 'M621 S0A ; end filament select for slot 0',
+    template: 'M621 S0A',
+    firmware: { bambu: 'Verified — always paired with M620.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M622', name: 'Conditional: If', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Conditional execution block. Tests a flag value (M622 S) or the result of the last M1002 judge_flag call (M622 J). If the condition is true, commands until M623 are executed. Bambu firmware implements a full conditional system for runtime branching.',
+    params: [
+      { letter: 'S', name: 'Expected flag value to match', example: '1' },
+      { letter: 'J', name: 'Expected judge result (0=false, 1=true)', example: '1' },
+    ],
+    example: 'M1002 judge_flag timelapse_record_flag\nM622 J1 ; if timelapse is enabled\n    M971 S11 C11 O0 ; capture frame\nM623 ; end if',
+    template: 'M622 J1',
+    firmware: { bambu: 'Verified — conditional execution with M623 end block.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M623', name: 'End Conditional Block', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Closes the conditional block opened by M622. In nested structures, serves as both "end if" and boundary between if/else branches.',
+    params: [],
+    example: 'M622 J1 ; if condition\n    G28 ; home\nM623 ; end if',
+    template: 'M623',
+    firmware: { bambu: 'Verified — always paired with M622.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M1002', name: 'System Control Multiplex', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Gateway command to many system functions via string arguments. Sub-commands: gcode_claim_action (set display state), set_filament_type (set active filament), judge_flag (query system flag for M622), set_gcode_claim_speed_level (speed display), judge_last_extrude_cali_success (check calibration), set_flag (set system flag).',
+    params: [],
+    example: 'M1002 gcode_claim_action : 2 ; display "Heating"\nM1002 set_filament_type:PLA ; set filament type\nM1002 judge_flag timelapse_record_flag ; query flag',
+    template: 'M1002 gcode_claim_action : 0',
+    firmware: { bambu: 'Verified — multiplex system command with string sub-commands.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M1006', name: 'Sound/Buzzer System', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Controls the built-in buzzer to play melodies. M1006 S1 initializes the sound system, note lines define a 3-channel MIDI-like sequence (A/B/L=Ch1, C/D/M=Ch2, E/F/N=Ch3 with note/duration/volume), and M1006 W plays and waits. Used for startup and completion sounds.',
+    params: [],
+    example: 'M1006 S1 ; init sound\nM1006 A0 B0 L100 C37 D10 M100 E37 F10 N100 ; note\nM1006 W ; play and wait',
+    template: 'M1006 S1\nM1006 A0 B10 L100 C44 D10 M100 E44 F10 N100\nM1006 W',
+    firmware: { bambu: 'Verified — 3-channel MIDI-like sound system.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M960', name: 'Laser/LED Control', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Controls the laser modules and LED indicators on the toolhead. S1/S2 control laser modules (for lidar scanning), S5 controls the logo lamp LED. P sets on/off state.',
+    params: [
+      { letter: 'S', name: 'Device: 1=laser 1, 2=laser 2, 5=logo lamp', example: '5' },
+      { letter: 'P', name: 'State: 0=off, 1=on', example: '1' },
+    ],
+    example: 'M960 S1 P0 ; turn off laser\nM960 S5 P1 ; turn on logo lamp',
+    template: 'M960 S5 P1',
+    firmware: { bambu: 'Verified — laser and logo lamp control.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M971', name: 'Camera Capture', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Triggers the onboard camera to capture a frame. Used for timelapse recording at layer changes and in end gcode (repeated captures for smooth end-of-print sequence).',
+    params: [
+      { letter: 'S', name: 'Capture mode (11 observed)', example: '11' },
+      { letter: 'C', name: 'Capture configuration (11 observed)', example: '11' },
+      { letter: 'O', name: 'Output target (0 observed)', example: '0' },
+    ],
+    example: 'M971 S11 C11 O0 ; capture timelapse frame',
+    template: 'M971 S11 C11 O0',
+    firmware: { bambu: 'Inferred — camera capture for timelapse.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M975', name: 'Vibration Suppression', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Enables or disables the vibration suppression / mechanical resonance compensation system. Similar to Klipper input shaping but built into Bambu firmware.',
+    params: [
+      { letter: 'S', name: 'Enable: 0=off, 1=on', example: '1' },
+    ],
+    example: 'M975 S1 ; turn on vibration suppression',
+    template: 'M975 S1',
+    firmware: { bambu: 'Verified — resonance compensation system.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M982.2', name: 'Cog Noise Reduction', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Enables or disables stepper motor cog noise reduction. Reduces characteristic stepper noise by applying compensation algorithms to motor drive signals.',
+    params: [
+      { letter: 'S', name: 'Enable: 0=off, 1=on', example: '1' },
+    ],
+    example: 'M982.2 S1 ; turn on cog noise reduction',
+    template: 'M982.2 S1',
+    firmware: { bambu: 'Verified — stepper noise compensation.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M983', name: 'Extrusion Compensation Calibration', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Runs dynamic extrusion compensation calibration. The printer extrudes a test line and measures actual flow to determine compensation parameters. If calibration fails, it retries (checked via M1002 judge_last_extrude_cali_success).',
+    params: [
+      { letter: 'F', name: 'Volumetric flow speed', example: '1.2' },
+      { letter: 'A', name: 'Compensation factor', example: '0.3' },
+      { letter: 'H', name: 'Nozzle diameter in mm', example: '0.4' },
+    ],
+    example: 'M983 F1.2 A0.3 H0.4 ; calibrate extrusion compensation',
+    template: 'M983 F1.2 A0.3 H0.4',
+    firmware: { bambu: 'Verified — dynamic flow calibration before print.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M991', name: 'Layer Change Notification', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Notifies the system of a layer change event for progress tracking, timelapse synchronization, and display updates. P-1 signals end of timelapse in end gcode.',
+    params: [
+      { letter: 'S', name: 'Notification type (0 observed)', example: '0' },
+      { letter: 'P', name: 'Layer number (0-indexed, -1 for end)', example: '5' },
+    ],
+    example: 'M991 S0 P5 ; notify layer 5 change\nM991 S0 P-1 ; end timelapse at safe pos',
+    template: 'M991 S0 P0',
+    firmware: { bambu: 'Verified — layer progress and timelapse sync.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'G29.1', name: 'Set Z Offset for Bed Type', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Applies Z offset compensation based on build plate type. Different plate surfaces (smooth PEI, textured PEI, high-temp plate) have different heights and this command compensates for the difference.',
+    params: [
+      { letter: 'Z', name: 'Z offset in mm (negative = nozzle closer to bed)', example: '-0.02' },
+    ],
+    example: 'G29.1 Z{-0.02} ; for Textured PEI Plate',
+    template: 'G29.1 Z-0.02',
+    firmware: { bambu: 'Verified — bed type Z offset compensation.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'G29.2', name: 'Enable/Disable Auto Bed Leveling', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Enables or disables auto bed leveling mesh compensation. ABL is turned off during nozzle wipe (to allow free Z movement) and re-enabled before printing.',
+    params: [
+      { letter: 'S', name: 'Enable: 0=off, 1=on', example: '1' },
+    ],
+    example: 'G29.2 S0 ; turn off ABL for wipe\nG29.2 S1 ; re-enable ABL',
+    template: 'G29.2 S1',
+    firmware: { bambu: 'Verified — ABL mesh toggle.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'G380', name: 'Z Move with Endstop Control', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Z-axis move with endstop awareness. S2 moves up (away from bed). S3 moves down and stops at endstop — used extensively in nozzle wipe where the nozzle is pressed into the wiper.',
+    params: [
+      { letter: 'S', name: 'Mode: 2=move up, 3=move down (stop at endstop)', example: '3' },
+      { letter: 'Z', name: 'Distance in mm (positive=up, negative=down)', example: '-5' },
+      { letter: 'F', name: 'Feed rate in mm/min', example: '1200' },
+    ],
+    example: 'G380 S2 Z30 F1200 ; move up 30mm\nG380 S3 Z-5 F1200 ; move down into wiper',
+    template: 'G380 S3 Z-5 F1200',
+    firmware: { bambu: 'Inferred — Z motion with endstop modes.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'G392', name: 'Toggle Clog Detection', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Toggles the nozzle clog detection system. Note: slicer inline comments are contradictory — G392 S0 is labeled both "turn off" and "turn on" in different locations. Actual behavior may depend on context.',
+    params: [
+      { letter: 'S', name: 'State flag (0/1)', example: '0' },
+    ],
+    example: 'G392 S0 ; toggle clog detection',
+    template: 'G392 S0',
+    firmware: { bambu: 'Verified — clog detection toggle (contradictory slicer comments, needs testing).', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'G39', name: 'Nozzle Clog Detection Scan', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Visual scan to detect nozzle wrapping (filament buildup) or clogging. The printer moves to the specified position and uses the camera/sensor to inspect the nozzle state. Triggered at the 3rd layer.',
+    params: [
+      { letter: 'S', name: 'Start scan (1=enable)', example: '1' },
+      { letter: 'X', name: 'Scan position X coordinate', example: '187' },
+      { letter: 'Y', name: 'Scan position Y coordinate', example: '178' },
+    ],
+    example: 'G39 S1 X187 Y178 ; enable nozzle clog detect at 3rd layer',
+    template: 'G39 S1 X187 Y178',
+    firmware: { bambu: 'Inferred — visual nozzle inspection.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M73.2', name: 'Reset Time Estimate Magnitude', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Resets or scales the remaining time estimate on the touchscreen. R1.0 resets to normal. Bambu-specific extension of standard M73 progress reporting.',
+    params: [
+      { letter: 'R', name: 'Magnitude multiplier (1.0 = reset to normal)', example: '1.0' },
+    ],
+    example: 'M73.2 R1.0 ; reset time estimate magnitude',
+    template: 'M73.2 R1.0',
+    firmware: { bambu: 'Verified — time estimate display scaling.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M201.2', name: 'Reset Acceleration Magnitude', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Resets or scales acceleration values. K1.0 resets to normal. Bambu-specific extension of standard M201 max acceleration setting.',
+    params: [
+      { letter: 'K', name: 'Magnitude multiplier (1.0 = reset to normal)', example: '1.0' },
+    ],
+    example: 'M201.2 K1.0 ; reset acceleration magnitude',
+    template: 'M201.2 K1.0',
+    firmware: { bambu: 'Verified — acceleration scaling.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M620.1', name: 'Set Flush Extrusion Params', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Configures extrusion parameters for filament purge/flush sequences. Called twice during filament changes — once for old filament flush settings, once for new filament.',
+    params: [
+      { letter: 'E', name: 'Extrusion mode flag', example: '' },
+      { letter: 'F', name: 'Flush volumetric speed', example: '548.788' },
+      { letter: 'T', name: 'Flush temperature in °C', example: '240' },
+    ],
+    example: 'M620.1 E F548.788 T240',
+    template: 'M620.1 E F548 T240',
+    firmware: { bambu: 'Inferred — flush extrusion configuration.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M620.3', name: 'Filament Tangle Detection', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Enables or disables filament tangle detection on the AMS. When enabled, the printer monitors for filament tangles during feeding.',
+    params: [
+      { letter: 'W', name: 'Enable flag: 0=off, 1=on', example: '1' },
+    ],
+    example: 'M620.3 W1 ; turn on filament tangle detection',
+    template: 'M620.3 W1',
+    firmware: { bambu: 'Verified — AMS tangle monitoring.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M628', name: 'Begin Flush Sequence', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Signals the firmware to begin monitoring a filament purge sequence. The actual extrusion moves follow between M628 and M629. S0 for standard flush, S1 for flush with cutter-assisted long retraction.',
+    params: [
+      { letter: 'S', name: 'Mode: 0=standard, 1=with long retraction/cut', example: '0' },
+    ],
+    example: 'M628 S0 ; begin standard flush',
+    template: 'M628 S0',
+    firmware: { bambu: 'Inferred — flush sequence bookend with M629.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M629', name: 'End Flush Sequence', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Signals that a filament purge sequence is complete. Paired with M628. Called with S to end a specific phase, or without params to end all flushing.',
+    params: [
+      { letter: 'S', name: 'Mode (matches corresponding M628)', example: '0' },
+    ],
+    example: 'M629 S1 ; end flush phase\nM629 ; end all flushing',
+    template: 'M629',
+    firmware: { bambu: 'Inferred — flush sequence end marker.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M984', name: 'Apply Extrusion Compensation', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Applies measured extrusion compensation values from a preceding M983 calibration. Called after the calibration test line and wipe to finalize compensation parameters.',
+    params: [
+      { letter: 'A', name: 'Adjustment factor', example: '0.1' },
+      { letter: 'E', name: 'Extrusion parameter', example: '1' },
+      { letter: 'S', name: 'Apply mode', example: '1' },
+      { letter: 'F', name: 'Flow speed', example: '1.2' },
+      { letter: 'H', name: 'Nozzle diameter in mm', example: '0.4' },
+    ],
+    example: 'M984 A0.1 E1 S1 F1.2 H0.4',
+    template: 'M984 A0.1 E1 S1 F1.2 H0.4',
+    firmware: { bambu: 'Inferred — applies M983 calibration results.', klipper: null, marlin: null, reprap: null }
+  },
+  // ── Bambu Lab X1C Lidar ──
+  { code: 'M969', name: 'Lidar Scanning Mode', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Controls the X1C lidar scanning system. S1 starts scanning with N scan count and A parameter. S0 stops scanning. Used during handeye and extrusion calibration on X1C.',
+    params: [
+      { letter: 'S', name: 'Enable: 0=stop, 1=start', example: '1' },
+      { letter: 'N', name: 'Scan count', example: '3' },
+      { letter: 'A', name: 'Parameter', example: '2000' },
+    ],
+    example: 'M969 S1 N3 A2000 ; start lidar scanning\nM969 S0 ; turn off scanning',
+    template: 'M969 S1 N3 A2000',
+    firmware: { bambu: 'Inferred — X1C lidar scanning. Not available on A1/P1S.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M973', name: 'Camera/Scanner Stream Control', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Controls the X1C camera and laser scanner stream. S1=start, S2=capture/process, S3=configure stream, S4=turn off scanner, S6=set auto exposure for laser (P0=horizontal, P1=vertical).',
+    params: [
+      { letter: 'S', name: 'Mode: 1=start, 2=capture, 3=configure, 4=off, 6=auto-exposure', example: '4' },
+      { letter: 'P', name: 'Sub-parameter', example: '0' },
+    ],
+    example: 'M973 S3 P1 ; camera start stream\nM973 S6 P0 ; auto exposure for horizontal laser\nM973 S4 ; turn off scanner',
+    template: 'M973 S4',
+    firmware: { bambu: 'Inferred — X1C camera/scanner control.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M993', name: 'Nozzle Cam Detection Control', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Controls nozzle camera detection permissions. A/B/C set detection modes: 0=not allowed, 1=allowed, 2=save status, 3=extended mode. Used on H2 series printers with nozzle cameras.',
+    params: [
+      { letter: 'A', name: 'Detection mode for channel A', example: '1' },
+      { letter: 'B', name: 'Detection mode for channel B', example: '1' },
+      { letter: 'C', name: 'Detection mode for channel C', example: '1' },
+    ],
+    example: 'M993 A0 B0 C0 ; nozzle cam detection not allowed\nM993 A1 B1 C1 ; nozzle cam detection allowed',
+    template: 'M993 A1 B1 C1',
+    firmware: { bambu: 'Inferred — H2 series nozzle camera control.', klipper: null, marlin: null, reprap: null }
+  },
+  // ── Bambu Lab H2C Tool Changer ──
+  { code: 'M640', name: 'Tool Changer Operation', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'H2C tool changer control system. M640 S begins a tool operation. Sub-commands: M640.1 R=retract tool, M640.1 S=select tool, M640.2 R<n>=release, M640.4=dock, M640.7 L=lock, M640.7 U=unlock, M640.8 T A<n>=select tool by index. Always paired with M641 to end the operation.',
+    params: [
+      { letter: 'S', name: 'Begin tool operation', example: '' },
+    ],
+    example: 'M640 S ; begin tool operation\nM640.8 T A0 ; select tool 0\nM640.7 L ; lock tool\nM641 ; end operation',
+    template: 'M640 S\nM640.8 T A0\nM640.7 L\nM641',
+    firmware: { bambu: 'Inferred — H2C tool changer only.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'G150', name: 'Nozzle Wipe Position (H2 Series)', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Toolhead positioning for nozzle wipe sequences on H2 series printers. G150 moves to main wipe position (with T for temperature setpoint), G150.1 wipe mouth movement, G150.2 wipe variant, G150.3 return to safe position. F parameter controls speed.',
+    params: [
+      { letter: 'T', name: 'Temperature setpoint (°C)', example: '220' },
+      { letter: 'F', name: 'Movement speed', example: '18000' },
+    ],
+    example: 'G150 T220 ; move to wipe position at 220°C\nG150.1 F18000 ; wipe mouth\nG150.3 ; return to safe position',
+    template: 'G150.3',
+    firmware: { bambu: 'Inferred — H2 series nozzle wipe system.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M142', name: 'Chamber Auto-Cooling Control', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Configures the chamber auto-cooling profile for enclosed Bambu printers. Sets temperature thresholds and PID-like parameters for automatic chamber fan control. Used to prevent filament heat creep on PLA/PETG.',
+    params: [
+      { letter: 'P', name: 'Profile number', example: '1' },
+      { letter: 'R', name: 'Min temperature threshold (°C)', example: '35' },
+      { letter: 'S', name: 'Target temperature (°C)', example: '40' },
+      { letter: 'T', name: 'Max temperature (°C)', example: '45' },
+      { letter: 'O', name: 'Temperature limit (°C)', example: '45' },
+    ],
+    example: 'M142 P1 R35 S40 T45 U0.3 V0.5 W0.8 O45 ; set PETG chamber autocooling',
+    template: 'M142 P1 R35 S40',
+    firmware: { bambu: 'Inferred — enclosed printer chamber cooling. X1C/P1S/H2 series.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M145', name: 'Airduct Mode', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Sets the airduct mode for enclosed H2 series printers. P0 sets cooling mode (for PLA/PETG), P1 sets heating mode (for ABS/ASA/PC). Controls how air is circulated in the chamber.',
+    params: [
+      { letter: 'P', name: 'Mode: 0=cooling, 1=heating', example: '0' },
+    ],
+    example: 'M145 P0 ; set airduct mode to cooling\nM145 P1 ; set airduct mode to heating',
+    template: 'M145 P0',
+    firmware: { bambu: 'Inferred — H2 series airduct control.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M632', name: 'Begin Nozzle Change', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Opens a nozzle change block on H2C dual-nozzle prints. Wraps the NOZZLE_CHANGE_START section around prime tower moves. The firmware switches to the target nozzle within this block. Always paired with M633.',
+    params: [
+      { letter: 'S', name: 'Target nozzle index', example: '3' },
+      { letter: 'M', name: 'Flag', example: '' },
+      { letter: 'N', name: 'Flag', example: '' },
+    ],
+    example: 'M632 S3 M N ; begin nozzle change to nozzle 3',
+    template: 'M632 S0 M N',
+    firmware: { bambu: 'Inferred — H2C dual-nozzle only.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M633', name: 'End Nozzle Change', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Closes a nozzle change block opened by M632. The firmware finalizes the nozzle switch at this point. Always paired with a preceding M632.',
+    params: [],
+    example: 'M633 ; end nozzle change',
+    template: 'M633',
+    firmware: { bambu: 'Inferred — H2C dual-nozzle only.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'M620.15', name: 'Flush Temperature Params', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Sets flush temperature parameters during nozzle changes on H2C dual-nozzle prints. P sets the pre-flush temperature, C sets the cool-down temperature. Appears within nozzle change blocks (M632/M633).',
+    params: [
+      { letter: 'P', name: 'Pre-flush temperature (°C)', example: '205' },
+      { letter: 'C', name: 'Cool-down temperature (°C)', example: '235' },
+    ],
+    example: 'M620.15 P205 ; set pre-flush temp\nM620.15 C235 ; set cool-down temp',
+    template: 'M620.15 P205',
+    firmware: { bambu: 'Inferred — H2C dual-nozzle flush control.', klipper: null, marlin: null, reprap: null }
+  },
+  { code: 'G387', name: 'Safe Y Travel', category: 'Bambu Lab Extended',
+    supportedBy: ['bambu'],
+    description: 'Safe Y-axis travel with collision avoidance for H2C dual-nozzle prints. The J flag enables collision checking to prevent nozzle-to-nozzle contact during Y moves. Used during nozzle change sequences.',
+    params: [
+      { letter: 'Y', name: 'Y position (mm)', example: '295' },
+      { letter: 'J', name: 'Collision avoidance flag (1=enabled)', example: '1' },
+      { letter: 'F', name: 'Feed rate (mm/min)', example: '30000' },
+    ],
+    example: 'G387 Y295 J1 F30000 ; safe Y travel with collision avoidance',
+    template: 'G387 Y295 J1 F30000',
+    firmware: { bambu: 'Inferred — H2C dual-nozzle collision avoidance.', klipper: null, marlin: null, reprap: null }
   },
 ];
 
@@ -4457,22 +4921,34 @@ const GCODE_COMMANDS = {
   'M500': { name: 'Save Settings to EEPROM', params: {} },
   // Bambu Lab — AMS & Material Management
   'M620':    { name: 'AMS Material Control', params: { S: 'Slot index', M: 'Enable remap', N: 'Enable hotend remap', T: 'Print/position config' } },
+  'M620.1':  { name: 'Set Flush Extrusion Params', params: { E: 'Extrusion mode', F: 'Flush speed', T: 'Flush temp (°C)' } },
+  'M620.3':  { name: 'Filament Tangle Detection', params: { W: 'Enable (0/1)' } },
   'M620.6':  { name: 'AMS Air Printing Detect', params: { I: 'Extruder index', W: 'Enable (1) / Disable (0)' } },
   'M620.10': { name: 'AMS Flush Config', params: { A: 'Phase (0=pre, 1=post)', F: 'Flush feedrate', L: 'Flush length', H: 'Nozzle diameter', T: 'Flush temp', P: 'Pre-flush temp', S: 'Mode' } },
   'M620.11': { name: 'AMS Retraction/Cut Config', params: { P: 'Enable long retraction', S: 'Enable cut', I: 'Extruder index', E: 'Retract distance', F: 'Retract feedrate', K: 'Enable EC retraction', R: 'EC retract distance', L: 'Level', D: 'Distance', O: 'Option', T: 'Retract length NC', H: 'Home offset compensation' } },
   'M620.14': { name: 'AMS Wipe Tower Position', params: { X: 'Tower center X', Y: 'Tower center Y' } },
   'M620.15': { name: 'AMS Pre-Cooling Temp', params: { P: 'Pre-cooling temp', C: 'Cooling target' } },
+  'M620.17': { name: 'Unknown H2D AMS Variant', params: {} },
   'M621':    { name: 'Switch AMS Material', params: { S: 'Slot index' } },
   'M622':    { name: 'Conditional Block Start', params: { S: 'Flag value', J: 'Jump flag index' } },
+  'M622.1':  { name: 'Set Default Flag Value', params: { S: 'Default (0/1)' } },
   'M623':    { name: 'Conditional Block End', params: {} },
   'M628':    { name: 'Filament Change Start', params: { S: 'Mode' } },
   'M629':    { name: 'Filament Change End', params: {} },
   'M630':    { name: 'Tool Change Config', params: { S: 'Slot', P: 'Parameter' } },
+  'M632':    { name: 'Begin Nozzle Change', params: { S: 'Target nozzle index', M: 'Flag', N: 'Flag' } },
+  'M633':    { name: 'End Nozzle Change', params: {} },
   // Bambu Lab — Toolhead & Motion
+  'G150':    { name: 'Nozzle Wipe Position', params: { T: 'Temperature' } },
   'G150.1':  { name: 'Wipe Nozzle Position 1', params: { F: 'Feed rate' } },
   'G150.2':  { name: 'Wipe Nozzle Position 2', params: { F: 'Feed rate' } },
   'G150.3':  { name: 'Wipe Nozzle Position 3', params: { F: 'Feed rate' } },
+  'G151':    { name: 'Unknown H2D Motion', params: {} },
   'G380':    { name: 'Move Z Stepper', params: { S: 'Stepper index', Z: 'Z distance', F: 'Feed rate' } },
+  'G383':    { name: 'Toolhead Offset Calibration', params: { O: 'Mode', U: 'Parameter', L: 'Extruder' } },
+  'G383.3':  { name: 'Offset Calibration Variant', params: { U: 'Parameter', L: 'Extruder' } },
+  'G383.7':  { name: 'Post-Wipe Offset Check', params: { U: 'Parameter', J: 'Mode' } },
+  'G387':    { name: 'Safe Y Travel', params: { Y: 'Y position', J: 'Collision flag', F: 'Speed' } },
   'G392':    { name: 'Toolhead Protection', params: { S: 'Mode' } },
   'M640':    { name: 'Toolhead Movement', params: { S: 'Start movement' } },
   'M640.1':  { name: 'Toolhead Move Config', params: { R: 'Reset', S: 'Start' } },
@@ -4482,17 +4958,27 @@ const GCODE_COMMANDS = {
   'M640.8':  { name: 'Toolhead Move Config 3', params: { T: 'Target', A: 'Acceleration' } },
   'M641':    { name: 'Toolhead Movement End', params: {} },
   // Bambu Lab — Calibration & Compensation
+  'G28.14':  { name: 'Pre-Extrude Z Calibration', params: { R: 'Reset', D: 'Mode' } },
   'G28.140': { name: 'Calibrate Pre-Extrude Z', params: { S: 'Calibration mode', D: 'Reset' } },
   'G29.1':   { name: 'Set/Clear Z-Trim', params: { Z: 'Z offset' } },
   'G29.2':   { name: 'Position Compensation', params: { S: 'Enable (1) / Disable (0)' } },
+  'G29.4':   { name: 'ABL Variant', params: {} },
   'G29.7':   { name: 'Bed Mesh Probe Mode', params: { S: 'Enable (1) / Disable (0)' } },
+  'G29.9':   { name: 'Leveling Data Record', params: {} },
+  'G29.20':  { name: 'ABL Mode Selection', params: { A: 'Mode' } },
   'G29.99':  { name: 'Apply Bed Leveling Mesh', params: {} },
+  'G39':     { name: 'Nozzle Clog Detection Scan', params: { S: 'Start scan', X: 'Scan X pos', Y: 'Scan Y pos' } },
   'G39.1':   { name: 'Nozzle Detection Calibration', params: {} },
+  'G39.3':   { name: 'Mass Exceed Detection', params: { S: 'Start scan' } },
+  'G39.4':   { name: 'Build Plate Detection', params: {} },
   'M201.2':  { name: 'Set Accel (Bambu)', params: { X: 'X accel', Y: 'Y accel', Z: 'Z accel', E: 'E accel' } },
   'M481':    { name: 'Cutter Position Compensation', params: { S: 'Enable (1) / Disable (0)' } },
+  'M983':    { name: 'Extrusion Compensation Calibration', params: { F: 'Flow speed', A: 'Compensation factor', H: 'Nozzle dia (mm)' } },
   'M983.1':  { name: 'Motor Config', params: { M: 'Mode' } },
   'M983.3':  { name: 'Dynamic Extrusion Calibration', params: { F: 'Flow rate', A: 'Factor', R: 'Retract length' } },
   'M983.4':  { name: 'Deformation Compensation', params: { S: 'Enable (1) / Disable (0)' } },
+  'M984':    { name: 'Apply Extrusion Compensation', params: { A: 'Adjustment', E: 'Extrusion param', S: 'Apply mode', F: 'Flow speed', H: 'Nozzle dia (mm)' } },
+  'M9833':   { name: 'Extrusion Comp (Tool Change)', params: { F: 'Flow speed', A: 'Compensation factor' } },
   // Bambu Lab — Detection & Safety
   'M73.2':   { name: 'Reset Time Estimate', params: { R: 'Magnitude' } },
   'M901':    { name: 'TMC Driver Config', params: { D: 'Parameter' } },
@@ -4503,13 +4989,34 @@ const GCODE_COMMANDS = {
   'M982.2':  { name: 'Cog Noise Reduction', params: { S: 'Enable (1) / Disable (0)' } },
   'M991':    { name: 'Notify Layer Change', params: { S: 'State', P: 'Parameter' } },
   'M993':    { name: 'Nozzle Cam Detection', params: { A: 'Mode A', B: 'Mode B', C: 'Mode C' } },
+  // Bambu Lab — Lidar & Scanning
+  'M963':    { name: 'Lidar Calibration Trigger', params: { S: 'Enable (0/1)' } },
+  'M964':    { name: 'Lidar Calibration Process', params: {} },
+  'M969':    { name: 'Lidar Scanning Mode', params: { S: 'Enable (0/1)', N: 'Scan count', A: 'Parameter' } },
+  'M970':    { name: 'Lidar Calibration Scan', params: { Q: 'Scan type', A: 'Area param', B: 'Area param', C: 'Area param', H: 'Height', K: 'Param', M: 'Resolution', O: 'Output mode' } },
+  'M970.3':  { name: 'Edge Detection Scan', params: { Q: 'Scan type', A: 'Sensitivity', K: 'Param', O: 'Output mode' } },
+  'M971':    { name: 'Camera Capture', params: { S: 'Capture mode', C: 'Config', O: 'Output target' } },
+  'M973':    { name: 'Camera/Scanner Stream', params: { S: 'Mode', P: 'Parameter' } },
+  'M974':    { name: 'Process Scan Results', params: { Q: 'Scan type', S: 'Processing mode', P: 'Param' } },
+  'M976':    { name: 'First Layer Scan', params: { S: 'Scan type', P: 'Mode' } },
+  'M977':    { name: 'Register First Layer Scan', params: { S: 'Enable (0/1)', P: 'Parameter' } },
+  'M980.3':  { name: 'Lidar Scan Parameters', params: { A: 'Param', B: 'Speed', C: 'Param', D: 'Speed', E: 'Param', F: 'Param', H: 'Param', I: 'Param', J: 'Param', K: 'Param' } },
+  // Bambu Lab — Temperature & Cooling
+  'M142':    { name: 'Chamber Auto-Cooling', params: { P: 'Profile', R: 'Min temp', S: 'Target temp', T: 'Max temp', O: 'Limit' } },
+  'M145':    { name: 'Airduct Mode', params: { P: 'Mode (0=cool, 1=heat)' } },
+  'M145.2':  { name: 'Airduct Mode Variant', params: {} },
   // Bambu Lab — System Control
+  'M562':    { name: 'Extruder Selection', params: { P: 'Position', E: 'Extruder index', B: 'Enable' } },
+  'M710':    { name: 'MC Fan Control', params: { A: 'Fan', S: 'Speed (0-255)' } },
   'M1002':   { name: 'System Control', params: {} },
   'M1003':   { name: 'System Info', params: {} },
+  'M1004':   { name: 'External Camera Shutter', params: { S: 'Shutter mode', P: 'Trigger (0/1)' } },
   'M1006':   { name: 'LED / Sound Pattern', params: { S: 'Start', A: 'Note freq', B: 'Duration', L: 'Level', W: 'Wait for completion' } },
+  'M1007':   { name: 'Unknown Enable/Disable', params: { S: 'Enable (0/1)' } },
   'M1009':   { name: 'System Config', params: { Q: 'Query', L: 'Level' } },
   'M1015.3': { name: 'TPU Clog Detection', params: { S: 'Enable (1) / Disable (0)' } },
   'M1015.4': { name: 'Extrusion Air Print Detect', params: { S: 'Enable (1) / Disable (0)', K: 'Mode', H: 'Nozzle diameter' } },
+  'M1028':   { name: 'Unknown H2S Enable/Disable', params: { S: 'Enable (0/1)' } },
 };
 
 function decodeLine(text) {
@@ -10492,6 +10999,262 @@ const ContextMenu = {
   }
 };
 
+// ===== PRESSURE ADVANCE TUNER =====
+const PA_K_MAX = 0.2; // Max K-factor for direct-drive; Bowden setups may need higher
+
+class PaTuner {
+  constructor() {
+    this.baseK = 0;
+    this._featureOverrides = {};
+  }
+
+  getFeatureOverrides() {
+    return { ...this._featureOverrides };
+  }
+
+  setBaseK(k) {
+    this.baseK = Math.min(PA_K_MAX, Math.max(0, k));
+  }
+
+  setFeatureK(typeName, k) {
+    this._featureOverrides[typeName] = Math.min(PA_K_MAX, Math.max(0, k));
+  }
+
+  removeFeatureK(typeName) {
+    delete this._featureOverrides[typeName];
+  }
+
+  clearFeatureOverrides() {
+    this._featureOverrides = {};
+  }
+
+  /**
+   * Resolve K for a given feature type.
+   * Returns per-feature override if set, otherwise base K.
+   */
+  _resolveK(typeName) {
+    if (typeName in this._featureOverrides) return this._featureOverrides[typeName];
+    return this.baseK;
+  }
+
+  /**
+   * Format a PA G-code command for a given K value, feature type, and firmware.
+   * @param {number} k
+   * @param {string} typeName
+   * @param {string} firmware - 'klipper', 'marlin', 'bambu', or 'rrf'
+   * @returns {string}
+   */
+  _formatPaCommand(k, typeName, firmware) {
+    const kStr = k.toFixed(3);
+    const comment = `; PA: ${typeName}`;
+    if (firmware === 'klipper') {
+      return `SET_PRESSURE_ADVANCE ADVANCE=${kStr} ${comment}`;
+    }
+    return `M900 K${kStr} ${comment}`;
+  }
+
+  /**
+   * Scan layerMoves for type transitions and compile PA commands.
+   * @param {Object} layerMoves - { layerNum: [ {type, extrude, lineIndex}, ... ] }
+   * @param {string} firmware - 'klipper', 'marlin', 'bambu', or 'rrf'
+   * @returns {Array<{layer: number, gcode: string}>}
+   */
+  compile(layerMoves, firmware) {
+    const results = [];
+    let lastK = null;
+    const layerNums = Object.keys(layerMoves).map(Number).sort((a, b) => a - b);
+
+    for (const layerNum of layerNums) {
+      const moves = layerMoves[layerNum];
+      const commands = [];
+
+      for (const move of moves) {
+        if (!move.extrude) continue;
+        const k = this._resolveK(move.type);
+        if (k === lastK) continue;
+        commands.push(this._formatPaCommand(k, move.type, firmware));
+        lastK = k;
+      }
+
+      if (commands.length > 0) {
+        results.push({ layer: layerNum, gcode: commands.join('\n') });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Generate a complete G-code calibration pattern for pressure advance tuning.
+   * Prints a series of lines at increasing K values, each with a slow then fast segment.
+   * @param {Object} opts - Configuration options
+   * @param {number} [opts.kStart=0] - Starting K value
+   * @param {number} [opts.kEnd=0.1] - Ending K value
+   * @param {number} [opts.kStep=0.005] - K increment per line
+   * @param {number} [opts.nozzleTemp=200] - Nozzle temperature in °C
+   * @param {number} [opts.bedTemp=60] - Bed temperature in °C
+   * @param {number} [opts.filamentDiameter=1.75] - Filament diameter (1.75 or 2.85)
+   * @param {string} [opts.firmware='marlin'] - Firmware type ('marlin' or 'klipper')
+   * @returns {string} Complete G-code file as a string
+   */
+  generateCalibrationPattern(opts = {}) {
+    const kStart = opts.kStart ?? 0;
+    const kEnd = opts.kEnd ?? 0.1;
+    const kStep = opts.kStep ?? 0.005;
+    const nozzleTemp = opts.nozzleTemp ?? 200;
+    const bedTemp = opts.bedTemp ?? 60;
+    const filamentDiameter = opts.filamentDiameter ?? 1.75;
+    const firmware = opts.firmware ?? 'marlin';
+
+    // Print geometry
+    const lineWidth = 0.4;
+    const layerHeight = 0.2;
+    const lineLength = 80;
+    const slowLength = 40;
+    const lineSpacing = 3;
+    const startX = 10;
+    const startY = 10;
+    const retractDist = 0.8;    // retraction distance in mm
+    const retractSpeed = 2400;  // retraction speed F (40mm/s)
+    const zHop = 0.4;           // Z hop height for travel moves
+
+    // E per mm = (lineWidth * layerHeight) / (π * (filamentDiameter/2)²)
+    const filamentArea = Math.PI * (filamentDiameter / 2) ** 2;
+    const ePerMm = (lineWidth * layerHeight) / filamentArea;
+
+    let e = 0;
+
+    const paCmd = (k) => {
+      const kStr = k.toFixed(3);
+      if (firmware === 'klipper') return `SET_PRESSURE_ADVANCE ADVANCE=${kStr}`;
+      return `M900 K${kStr}`;
+    };
+
+    // Retract + Z-hop before travel
+    const retract = () => {
+      e -= retractDist;
+      return [
+        `G1 E${e.toFixed(4)} F${retractSpeed} ; Retract`,
+        `G1 Z${(layerHeight + zHop).toFixed(2)} F600 ; Z-hop`,
+      ];
+    };
+
+    // Un-retract + lower Z after travel
+    const unretract = () => {
+      e += retractDist;
+      return [
+        `G1 Z${layerHeight} F600 ; Lower Z`,
+        `G1 E${e.toFixed(4)} F${retractSpeed} ; Un-retract`,
+      ];
+    };
+
+    const lines = [];
+
+    // --- Header ---
+    lines.push('; Pressure Advance Calibration Pattern');
+    lines.push(`; Generated by G-Code Modifier PA Tuner`);
+    lines.push(`; K range: ${kStart.toFixed(3)} to ${kEnd.toFixed(3)}, step ${kStep.toFixed(3)}`);
+    lines.push(`; Nozzle: ${nozzleTemp}°C, Bed: ${bedTemp}°C`);
+    lines.push(`; Line width: ${lineWidth}mm, Layer height: ${layerHeight}mm`);
+    lines.push(`; Filament: ${filamentDiameter}mm diameter`);
+    lines.push(`; Firmware: ${firmware}`);
+    lines.push(';');
+    lines.push('; Each line prints slow (25mm/s) then fast (100mm/s).');
+    lines.push('; Look for the K value where the transition is smoothest.');
+    lines.push('');
+
+    // --- Startup ---
+    lines.push('; --- Startup ---');
+    lines.push(`M140 S${bedTemp} ; Set bed temperature`);
+    lines.push(`M104 S${nozzleTemp} ; Set nozzle temperature`);
+    lines.push(`M190 S${bedTemp} ; Wait for bed temperature`);
+    lines.push(`M109 S${nozzleTemp} ; Wait for nozzle temperature`);
+    lines.push('G28 ; Home all axes');
+    lines.push('G90 ; Absolute positioning');
+    lines.push('M82 ; Absolute extrusion mode');
+    lines.push(`G1 Z${layerHeight} F300 ; Move to first layer height`);
+    lines.push('G92 E0 ; Reset extruder position');
+    lines.push('M106 S153 ; Part cooling fan 60%');
+    lines.push('');
+
+    // --- Purge line ---
+    lines.push('; --- Purge line ---');
+    lines.push(`G1 X5 Y5 F3000 ; Move to purge start`);
+    const purgeLen = 50;
+    e += ePerMm * purgeLen;
+    lines.push(`G1 X5 Y${5 + purgeLen} E${e.toFixed(4)} F1000 ; Purge line`);
+    lines.push('G92 E0 ; Reset extruder after purge');
+    e = 0;
+    lines.push(...retract());
+    lines.push('');
+
+    // --- Calibration lines ---
+    lines.push('; --- Calibration lines ---');
+
+    let lineIndex = 0;
+    for (let k = kStart; k <= kEnd + kStep * 0.01; k += kStep) {
+      const kClamped = Math.min(k, kEnd);
+      const y = startY + lineIndex * lineSpacing;
+
+      lines.push(`; --- K = ${kClamped.toFixed(3)} ---`);
+      lines.push(`${paCmd(kClamped)} ; Set PA K factor`);
+
+      // Travel to line start (with un-retract)
+      lines.push(`G1 X${startX} Y${y.toFixed(1)} F3000 ; Travel to line start`);
+      lines.push(...unretract());
+
+      // Slow segment: first half at 25mm/s (F1500)
+      e += ePerMm * slowLength;
+      lines.push(`G1 X${startX + slowLength} Y${y.toFixed(1)} E${e.toFixed(4)} F1500 ; Slow segment (25mm/s)`);
+
+      // Fast segment: second half at 100mm/s (F6000)
+      e += ePerMm * (lineLength - slowLength);
+      lines.push(`G1 X${startX + lineLength} Y${y.toFixed(1)} E${e.toFixed(4)} F6000 ; Fast segment (100mm/s)`);
+
+      // Retract + Z-hop after line
+      lines.push(...retract());
+      lines.push('');
+      lineIndex++;
+    }
+
+    // --- Footer ---
+    lines.push('; --- Finish ---');
+    lines.push(`${paCmd(0)} ; Reset PA to 0`);
+    lines.push('M107 ; Fan off');
+    lines.push('G1 Z10 F600 ; Raise Z');
+    lines.push('G28 X Y ; Home X and Y');
+    lines.push('M104 S0 ; Nozzle off');
+    lines.push('M140 S0 ; Bed off');
+    lines.push('M84 ; Disable steppers');
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Gather speed ranges per motion type from analysis results.
+   * @param {Map<number, Array>} motionResults - Map of layerNum to result arrays
+   * @returns {Object} e.g. { 'Outer Wall': { min: 30, max: 60 }, ... }
+   */
+  gatherSpeedHints(motionResults) {
+    const hints = {};
+    for (const [, results] of motionResults) {
+      for (const r of results) {
+        if (!r.move.extrude) continue;
+        const type = r.move.type;
+        const speed = r.requestedSpeed;
+        if (!hints[type]) {
+          hints[type] = { min: speed, max: speed };
+        } else {
+          if (speed < hints[type].min) hints[type].min = speed;
+          if (speed > hints[type].max) hints[type].max = speed;
+        }
+      }
+    }
+    return hints;
+  }
+}
+
+
 // ===== GCODE VIEWER (old Canvas 2D removed — now using GcodeViewer3D) =====
 
 class GcodeViewer3D {
@@ -15076,9 +15839,7 @@ function navigateToFinding(findingId) {
 async function switchTab(tabName) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
   document.querySelectorAll('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === 'tab-' + tabName));
-  if (tabName === 'reference' && document.getElementById('refContent').children.length === 0) {
-    renderReference();
-  }
+
   if (tabName === 'analysis') {
     if (!analysisManager.isAllAnalyzed()) {
       const container = document.getElementById('analysisResults');
@@ -15100,6 +15861,9 @@ async function switchTab(tabName) {
     renderFanRules();
     renderFanCurve();
   }
+  if (tabName === 'pa-tuner') {
+    renderPaTuner();
+  }
 }
 
 // ===== REFERENCE TAB =====
@@ -15118,9 +15882,19 @@ function renderReference() {
     catMap[cmd.category].push(cmd);
   });
 
+  // Build sidebar
+  let sidebarHtml = '';
+  categories.forEach(cat => {
+    const catId = 'ref-cat-' + cat.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    sidebarHtml += '<a class="ref-sidebar-item" data-cat="' + catId + '" onclick="scrollToRefCategory(\'' + catId + '\')">' + cat + '</a>';
+  });
+  document.getElementById('refSidebar').innerHTML = sidebarHtml;
+
+  // Build cards
   let html = '';
   categories.forEach(cat => {
-    html += '<div class="ref-category" data-category="' + cat + '">';
+    const catId = 'ref-cat-' + cat.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    html += '<div class="ref-category" data-category="' + cat + '" id="' + catId + '">';
     html += '<div class="ref-category-header" onclick="this.parentElement.classList.toggle(\'collapsed\')">' + cat + '</div>';
     html += '<div class="ref-category-cards">';
     catMap[cat].forEach(cmd => {
@@ -15136,8 +15910,12 @@ function renderReference() {
         });
         badgeHtml += '</span>';
       }
+      const canInsertAtCursor = selectedLayer !== null && parser.lines;
       html += '<div class="ref-card-head"><span class="ref-card-code">' + cmd.code + '</span><span class="ref-card-name">' + cmd.name + '</span>' + badgeHtml;
-      html += '<button class="ref-card-insert" onclick="insertRefCommand(\'' + cmd.code.replace(/'/g, "\\'") + '\');event.stopPropagation()">Insert</button></div>';
+      html += '<span class="ref-card-actions">';
+      html += '<button class="ref-card-insert" onclick="insertRefCommand(\'' + cmd.code.replace(/'/g, "\\'") + '\');event.stopPropagation()" title="Insert into Custom G-code tab">Insert</button>';
+      html += '<button class="ref-card-insert' + (canInsertAtCursor ? '' : ' disabled') + '" onclick="insertRefCommandAtCursor(\'' + cmd.code.replace(/'/g, "\\'") + '\');event.stopPropagation()" title="' + (canInsertAtCursor ? 'Insert at current layer' : 'Load a file and select a layer first') + '">Insert at Cursor</button>';
+      html += '</span></div>';
       html += '<div class="ref-card-desc">' + cmd.description + '</div>';
       if (cmd.params.length > 0) {
         html += '<table class="ref-card-params"><tr><th>Param</th><th>Description</th><th>Example</th></tr>';
@@ -15156,6 +15934,43 @@ function renderReference() {
   });
 
   document.getElementById('refContent').innerHTML = html;
+
+  // Set up intersection observer for sidebar active tracking
+  setupRefSidebarObserver();
+}
+
+function scrollToRefCategory(catId) {
+  const el = document.getElementById(catId);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+let _refObserver = null;
+function setupRefSidebarObserver() {
+  if (_refObserver) _refObserver.disconnect();
+  const cardsArea = document.querySelector('.ref-cards-area');
+  if (!cardsArea) return;
+
+  const catHeaders = cardsArea.querySelectorAll('.ref-category');
+  if (catHeaders.length === 0) return;
+
+  _refObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const catId = entry.target.id;
+        document.querySelectorAll('.ref-sidebar-item').forEach(item => {
+          item.classList.toggle('active', item.dataset.cat === catId);
+        });
+      }
+    });
+  }, {
+    root: cardsArea,
+    rootMargin: '0px 0px -80% 0px',
+    threshold: 0
+  });
+
+  catHeaders.forEach(cat => _refObserver.observe(cat));
 }
 
 function filterReferenceCards() {
@@ -15173,6 +15988,12 @@ function filterReferenceCards() {
     });
     cat.style.display = catVisible ? '' : 'none';
     if (catVisible) anyVisible = true;
+  });
+
+  // Also filter sidebar items
+  document.querySelectorAll('.ref-sidebar-item').forEach(item => {
+    const catEl = document.getElementById(item.dataset.cat);
+    item.style.display = catEl && catEl.style.display !== 'none' ? '' : 'none';
   });
 
   let noRes = document.getElementById('refNoResults');
@@ -15193,6 +16014,13 @@ function filterReferenceCards() {
 function insertRefCommand(code) {
   const cmd = GCODE_REFERENCE.find(c => c.code === code);
   if (!cmd) return;
+
+  // Auto-expand right panel if collapsed
+  const panelRight = document.getElementById('panelRight');
+  if (panelRight && panelRight.offsetWidth < 50) {
+    panelRight.style.width = '400px';
+  }
+
   switchTab('custom');
   const textarea = document.getElementById('customGcode');
   textarea.value = cmd.template;
@@ -15201,6 +16029,23 @@ function insertRefCommand(code) {
     layerInput.value = selectedLayer;
   }
   showToast(cmd.code + ' inserted into Custom G-code tab', 'success');
+}
+
+function insertRefCommandAtCursor(code) {
+  const cmd = GCODE_REFERENCE.find(c => c.code === code);
+  if (!cmd) return;
+  if (selectedLayer === null || !parser.lines) {
+    showToast('Select a layer first to insert at cursor', 'warning');
+    return;
+  }
+
+  const layer = parser.getLayerByNumber(selectedLayer);
+  if (!layer) { showToast('Layer not found', 'error'); return; }
+
+  // Insert command at end of selected layer's block
+  modifier.addCustom(selectedLayer, cmd.template);
+  refreshAfterMod();
+  showToast(cmd.code + ' inserted at layer ' + selectedLayer, 'success');
 }
 
 // ===== COOLING TAB =====
@@ -15590,6 +16435,149 @@ function refreshFanOverlay() {
   }
 }
 
+// ===== PA TUNING TAB =====
+
+function renderPaTuner() {
+  renderPaFirmwareInfo();
+  renderPaFeatureTable();
+  updatePaSummary();
+}
+
+function renderPaFirmwareInfo() {
+  const el = document.getElementById('paFirmwareInfo');
+  if (!el) return;
+  const fw = typeof currentFirmware !== 'undefined' ? currentFirmware : 'marlin';
+  const cmd = fw === 'klipper' ? 'SET_PRESSURE_ADVANCE ADVANCE=X' : 'M900 KX';
+  el.textContent = 'Firmware: ' + fw + ' — uses ' + cmd;
+}
+
+function renderPaFeatureTable() {
+  const container = document.getElementById('paFeatureTable');
+  if (!container) return;
+
+  if (typeof motionAnalyzer === 'undefined' || !motionAnalyzer.results || motionAnalyzer.results.size === 0) {
+    container.innerHTML = '<div style="opacity:0.5;font-size:12px;padding:8px">Load a file to see motion types</div>';
+    return;
+  }
+
+  const hints = paTuner.gatherSpeedHints(motionAnalyzer.results);
+  const types = Object.keys(hints).sort();
+
+  if (types.length === 0) {
+    container.innerHTML = '<div style="opacity:0.5;font-size:12px;padding:8px">No extrusion moves found</div>';
+    return;
+  }
+
+  const overrides = paTuner.getFeatureOverrides();
+
+  container.innerHTML = types.map(type => {
+    const hint = hints[type];
+    const speedStr = hint.min === hint.max
+      ? Math.round(hint.min) + ' mm/s'
+      : Math.round(hint.min) + '-' + Math.round(hint.max) + ' mm/s';
+    const kVal = type in overrides ? overrides[type] : paTuner.baseK;
+    return '<div class="pa-feature-row">' +
+      '<span class="pa-type-name" title="' + type + '">' + type + '</span>' +
+      '<span class="pa-speed-hint">' + speedStr + '</span>' +
+      '<input type="number" class="input" min="0" max="0.2" step="0.001" value="' + kVal.toFixed(3) + '"' +
+      ' onchange="updatePaFeatureK(\'' + type.replace(/'/g, "\\'") + '\', this.value)">' +
+      '</div>';
+  }).join('');
+}
+
+function updatePaBaseK(val) {
+  const k = parseFloat(val) || 0;
+  paTuner.setBaseK(k);
+  renderPaFeatureTable();
+  updatePaSummary();
+}
+
+function updatePaFeatureK(type, val) {
+  const k = parseFloat(val) || 0;
+  paTuner.setFeatureK(type, k);
+  updatePaSummary();
+}
+
+function resetPaOverrides() {
+  paTuner.clearFeatureOverrides();
+  document.getElementById('paBaseK').value = '0';
+  paTuner.setBaseK(0);
+  renderPaFeatureTable();
+  updatePaSummary();
+}
+
+function togglePaCalibration() {
+  const section = document.getElementById('paCalibSection');
+  const btn = document.getElementById('paCalibToggle');
+  if (!section || !btn) return;
+  const hidden = section.style.display === 'none';
+  section.style.display = hidden ? 'block' : 'none';
+  btn.textContent = hidden ? 'Hide' : 'Show';
+}
+
+function updatePaSummary() {
+  const el = document.getElementById('paSummary');
+  if (!el) return;
+
+  if (typeof parser === 'undefined' || !parser.layerMoves) {
+    el.textContent = 'Load a file to see command count';
+    return;
+  }
+
+  const fw = typeof currentFirmware !== 'undefined' ? currentFirmware : 'marlin';
+  const commands = paTuner.compile(parser.layerMoves, fw);
+  const totalCmds = commands.reduce((sum, c) => sum + c.gcode.split('\n').length, 0);
+  el.textContent = 'Will insert ' + totalCmds + ' PA command' + (totalCmds !== 1 ? 's' : '') + ' across ' + commands.length + ' layer' + (commands.length !== 1 ? 's' : '');
+}
+
+function applyPaCommands() {
+  if (typeof parser === 'undefined' || !parser.layerMoves) return;
+  if (typeof modifier === 'undefined') return;
+
+  const fw = typeof currentFirmware !== 'undefined' ? currentFirmware : 'marlin';
+  const commands = paTuner.compile(parser.layerMoves, fw);
+
+  if (commands.length === 0) {
+    updatePaSummary();
+    return;
+  }
+
+  for (const cmd of commands) {
+    modifier.addCustom(cmd.layer, cmd.gcode);
+  }
+
+  refreshAfterMod();
+
+  const totalCmds = commands.reduce((sum, c) => sum + c.gcode.split('\n').length, 0);
+  const el = document.getElementById('paSummary');
+  if (el) el.textContent = 'Applied ' + totalCmds + ' PA command' + (totalCmds !== 1 ? 's' : '') + ' across ' + commands.length + ' layer' + (commands.length !== 1 ? 's' : '');
+}
+
+function generatePaCalibration() {
+  const kStart = parseFloat(document.getElementById('paCalibKStart')?.value) || 0;
+  const kEnd = parseFloat(document.getElementById('paCalibKEnd')?.value) || 0.1;
+  const kStep = parseFloat(document.getElementById('paCalibKStep')?.value) || 0.005;
+  const nozzleTemp = parseInt(document.getElementById('paCalibNozzle')?.value) || 200;
+  const bedTemp = parseInt(document.getElementById('paCalibBed')?.value) || 60;
+  const filamentDiameter = parseFloat(document.getElementById('paCalibFilament')?.value) || 1.75;
+  const fw = typeof currentFirmware !== 'undefined' ? currentFirmware : 'marlin';
+
+  const gcode = paTuner.generateCalibrationPattern({
+    kStart, kEnd, kStep, nozzleTemp, bedTemp, filamentDiameter, firmware: fw,
+  });
+
+  // Download as .gcode file
+  const blob = new Blob([gcode], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'pa-calibration-K' + kStart.toFixed(3) + '-' + kEnd.toFixed(3) + '.gcode';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ===== ADD MODIFICATIONS =====
 function addPause() {
   const layer = parseInt(document.getElementById('pauseLayer').value);
@@ -15866,16 +16854,35 @@ function onModDragEnd() {
 function setView(view) {
   currentView = view;
   const isViewer = view === 'visual' || view === 'warp';
+  const isRef = view === 'reference';
   document.getElementById('viewCodeBtn').classList.toggle('active', view === 'code');
   document.getElementById('viewVisualBtn').classList.toggle('active', view === 'visual');
   document.getElementById('viewWarpBtn').classList.toggle('active', view === 'warp');
-  document.getElementById('gcodePreview').classList.toggle('hidden', isViewer);
+  document.getElementById('viewRefBtn').classList.toggle('active', isRef);
+  document.getElementById('gcodePreview').classList.toggle('hidden', isViewer || isRef);
   document.getElementById('viewerWrap').classList.toggle('active', isViewer);
+  document.getElementById('referenceView').classList.toggle('hidden', !isRef);
   document.getElementById('warpControls').classList.toggle('hidden', view !== 'warp');
 
   // Stats overlay visibility
   if (typeof StatsOverlay !== 'undefined') {
     if (isViewer) StatsOverlay.show(); else StatsOverlay.hide();
+  }
+
+  // Hide toolbar tools when in reference view
+  const toolbarTools = ['holeDetectToggle', 'measureToggle', 'pauseSelectToggle', 'editModeToggle', 'crossSectionToggle', 'colorPickerRow'];
+  toolbarTools.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isRef ? 'none' : '';
+  });
+  const jumpControls = document.querySelectorAll('.preview-toolbar > span, .preview-toolbar > .jump-input');
+  jumpControls.forEach(el => el.style.display = isRef ? 'none' : '');
+  const previewInfo = document.getElementById('previewInfo');
+  if (previewInfo) previewInfo.style.display = isRef ? 'none' : '';
+
+  // Render reference content on first switch
+  if (isRef && document.getElementById('refContent').children.length === 0) {
+    renderReference();
   }
 
   // Set viewer warp mode
@@ -15897,7 +16904,6 @@ function setView(view) {
       stopSimulation();
       hideSimControls();
     }
-    // Show legend with warping-risk colors + deformation slider when in warp view
     if (view === 'warp') {
       updateWarpLegend();
       // Auto-trigger thermal analysis if not yet run (warp mesh requires it)
@@ -16814,6 +17820,7 @@ function executeInsightAction(id) {
 
 
 
+
 let currentFirmware = 'bambu';
 
 // ===== APP STATE =====
@@ -16835,6 +17842,7 @@ analysisManager.register(retractionAnalyzer);
 analysisManager.register(flowAnalyzer);
 const fanProfileEngine = new FanProfileEngine();
 analysisManager.register(fanProfileEngine);
+const paTuner = new PaTuner();
 analysisManager.markEager('motion');
 analysisManager.markEager('flow');
 
@@ -17283,7 +18291,7 @@ window.addEventListener('keydown', e => {
   }
 
   // Tab switching: 1-8
-  const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts', '7': 'reference', '8': 'recovery', '9': 'analysis' };
+  const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts', '7': 'recovery', '8': 'cooling', '9': 'pa-tuner', '0': 'analysis' };
   if (tabKeys[e.key]) { switchTab(tabKeys[e.key]); return; }
 
   // Layer navigation
@@ -17307,6 +18315,7 @@ window.addEventListener('keydown', e => {
 
   // Warp view
   if (e.key === 'w') { setView(currentView === 'warp' ? 'visual' : 'warp'); return; }
+  if (e.key === 'r') { setView(currentView === 'reference' ? 'code' : 'reference'); return; }
 
   // Reset camera
   const isViewerView = currentView === 'visual' || currentView === 'warp';

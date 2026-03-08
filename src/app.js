@@ -18,6 +18,7 @@ import { FlowAnalyzer } from './flow-analyzer.js';
 import { MATERIAL_PROFILES, inferMaterial, getMaterialProfile, DEFAULT_THRESHOLDS } from './material-profiles.js';
 import { computeSelectionBounds, transformPoint, transformMoves, transformGcodeLine } from './transform.js';
 import { FanProfileEngine } from './fan-profile.js';
+import { PaTuner } from './pa-tuner.js';
 
 let currentFirmware = 'bambu';
 
@@ -40,6 +41,7 @@ analysisManager.register(retractionAnalyzer);
 analysisManager.register(flowAnalyzer);
 const fanProfileEngine = new FanProfileEngine();
 analysisManager.register(fanProfileEngine);
+const paTuner = new PaTuner();
 analysisManager.markEager('motion');
 analysisManager.markEager('flow');
 
@@ -488,7 +490,7 @@ window.addEventListener('keydown', e => {
   }
 
   // Tab switching: 1-8
-  const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts', '7': 'reference', '8': 'recovery', '9': 'analysis' };
+  const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts', '7': 'recovery', '8': 'cooling', '9': 'pa-tuner', '0': 'analysis' };
   if (tabKeys[e.key]) { switchTab(tabKeys[e.key]); return; }
 
   // Layer navigation
@@ -512,6 +514,7 @@ window.addEventListener('keydown', e => {
 
   // Warp view
   if (e.key === 'w') { setView(currentView === 'warp' ? 'visual' : 'warp'); return; }
+  if (e.key === 'r') { setView(currentView === 'reference' ? 'code' : 'reference'); return; }
 
   // Reset camera
   const isViewerView = currentView === 'visual' || currentView === 'warp';
