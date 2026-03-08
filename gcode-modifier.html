@@ -64,6 +64,54 @@ main { display: flex; flex: 1; overflow: hidden; }
 .layer-z { color: var(--text-dim); font-size: 12px; }
 .layer-lines { margin-left: auto; color: var(--text-dim); font-size: 11px; }
 .layer-mod-badge { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); flex-shrink: 0; }
+.layer-item.range-selected {
+  background: rgba(100,181,246,0.12) !important;
+  border-left: 3px solid #64b5f6;
+}
+.range-action-bar {
+  padding: 8px 10px;
+  background: rgba(100,181,246,0.08);
+  border: 1px solid rgba(100,181,246,0.2);
+  border-radius: 6px;
+  margin: 6px 4px;
+}
+.range-label {
+  font-size: 11px;
+  color: #64b5f6;
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+.range-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.range-actions button {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  border: 1px solid rgba(100,181,246,0.3);
+  background: rgba(100,181,246,0.1);
+  color: #90caf9;
+  cursor: pointer;
+}
+.range-actions button:hover {
+  background: rgba(100,181,246,0.2);
+}
+[data-theme="light"] .layer-item.range-selected {
+  background: rgba(25,118,210,0.08) !important;
+  border-left-color: #1976d2;
+}
+[data-theme="light"] .range-action-bar {
+  background: rgba(25,118,210,0.06);
+  border-color: rgba(25,118,210,0.15);
+}
+[data-theme="light"] .range-label { color: #1976d2; }
+[data-theme="light"] .range-actions button {
+  border-color: rgba(25,118,210,0.25);
+  background: rgba(25,118,210,0.06);
+  color: #1565c0;
+}
 
 /* CENTER PANEL — PREVIEW */
 .panel-center { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -152,6 +200,81 @@ main { display: flex; flex: 1; overflow: hidden; }
 .syn-param { color: #c4b5fd; }
 .syn-value { color: #fbbf24; }
 
+/* VIEWER BOTTOM-LEFT STACK */
+.viewer-bottom-left {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* STATS OVERLAY */
+.stats-overlay {
+  background: rgba(0,0,0,0.75);
+  color: #e0e0e0;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  pointer-events: none;
+  line-height: 1.6;
+  max-width: 280px;
+  backdrop-filter: blur(4px);
+}
+[data-theme="light"] .stats-overlay {
+  background: rgba(255,255,255,0.85);
+  color: #333;
+}
+.stats-overlay .stat-label { color: #888; margin-right: 6px; }
+[data-theme="light"] .stats-overlay .stat-label { color: #666; }
+.stats-overlay .stat-value { color: #fff; font-weight: bold; }
+[data-theme="light"] .stats-overlay .stat-value { color: #111; }
+.stats-overlay .hover-divider {
+  border-top: 1px solid rgba(255,255,255,0.2);
+  margin: 4px 0;
+}
+[data-theme="light"] .stats-overlay .hover-divider {
+  border-top: 1px solid rgba(0,0,0,0.15);
+}
+.stats-overlay .stat-link {
+  pointer-events: auto;
+  cursor: pointer;
+  text-decoration: underline;
+  color: #64b5f6;
+}
+
+/* COMPARE CONTROLS */
+.compare-controls {
+  position: absolute;
+  top: 40px;
+  right: 12px;
+  background: rgba(0,0,0,0.8);
+  color: #e0e0e0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  z-index: 12;
+  font-size: 12px;
+  backdrop-filter: blur(4px);
+}
+[data-theme="light"] .compare-controls {
+  background: rgba(255,255,255,0.9);
+  color: #333;
+}
+.compare-controls input, .compare-controls button {
+  margin: 0 4px;
+  font-size: 11px;
+}
+.compare-diff-stats {
+  margin-top: 6px;
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  color: #aaa;
+}
+
 /* VIEWER */
 .viewer-wrap { position: relative; flex: 1; display: none; overflow: hidden; }
 .viewer-wrap.active { display: flex; flex-direction: column; }
@@ -200,10 +323,9 @@ main { display: flex; flex: 1; overflow: hidden; }
 .edit-mode-banner { display: none; position: absolute; top: 12px; left: 50%; transform: translateX(-50%); padding: 6px 16px; border-radius: 6px; font-size: 12px; font-weight: 600; background: rgba(251,146,60,.2); color: var(--orange); border: 1px solid rgba(251,146,60,.3); pointer-events: none; z-index: 10; white-space: nowrap; }
 .edit-mode-banner.visible { display: block; }
 .viewer-legend {
-  position: absolute; bottom: 12px; left: 12px; z-index: 5;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   min-width: 180px; max-width: 240px; pointer-events: auto; font-size: 12px;
-  max-height: calc(100% - 80px); display: flex; flex-direction: column;
+  max-height: calc(100vh - 200px); display: flex; flex-direction: column;
   color: var(--text);
 }
 .warp-controls { display: none; }
@@ -594,6 +716,398 @@ main { display: flex; flex: 1; overflow: hidden; }
 .threshold-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 11px; }
 .threshold-row label { color: var(--text-dim); white-space: nowrap; }
 .threshold-input { width: 46px; font-size: 11px; padding: 2px 4px; background: var(--bg-input, var(--bg)); border: 1px solid var(--border); border-radius: 3px; color: var(--text); text-align: center; }
+.measure-label {
+  position: absolute;
+  background: rgba(0,0,0,0.8);
+  color: #4fc3f7;
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 15;
+}
+[data-theme="light"] .measure-label {
+  background: rgba(255,255,255,0.9);
+  color: #0277bd;
+}
+
+/* INLINE TOOLTIPS */
+.tooltip-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  color: #888;
+  font-size: 9px;
+  cursor: help;
+  margin-left: 4px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+[data-theme="light"] .tooltip-badge {
+  background: rgba(0,0,0,0.08);
+}
+.tooltip-badge.pulse {
+  animation: tooltipPulse 2s ease-in-out 3;
+}
+@keyframes tooltipPulse {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 4px rgba(100,181,246,0.6); }
+}
+.inline-tooltip {
+  position: fixed;
+  background: #333;
+  color: #e0e0e0;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  max-width: 250px;
+  z-index: 1000;
+  pointer-events: none;
+  line-height: 1.4;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+[data-theme="light"] .inline-tooltip {
+  background: #fff;
+  color: #333;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* ===== COMMAND PALETTE ===== */
+.command-palette-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 2000;
+  display: flex;
+  justify-content: center;
+  padding-top: 15vh;
+}
+.command-palette-card {
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 8px;
+  width: 480px;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+[data-theme="light"] .command-palette-card {
+  background: #fff;
+  border: 1px solid #ddd;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+#cmdPaletteInput {
+  padding: 12px 16px;
+  font-size: 15px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #333;
+  color: #e0e0e0;
+  outline: none;
+  font-family: inherit;
+}
+[data-theme="light"] #cmdPaletteInput {
+  border-bottom-color: #eee;
+  color: #333;
+}
+#cmdPaletteInput::placeholder { color: #666; }
+[data-theme="light"] #cmdPaletteInput::placeholder { color: #999; }
+.command-palette-results {
+  overflow-y: auto;
+  flex: 1;
+}
+.cmd-result {
+  padding: 8px 16px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #ccc;
+}
+[data-theme="light"] .cmd-result { color: #333; }
+.cmd-result:hover, .cmd-result.selected {
+  background: rgba(100,181,246,0.15);
+}
+.cmd-result .cmd-label { flex: 1; }
+.cmd-result .cmd-category {
+  font-size: 11px;
+  color: #666;
+  margin-right: 12px;
+}
+.cmd-result .cmd-shortcut {
+  font-size: 11px;
+  color: #888;
+  background: rgba(255,255,255,0.08);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: 'Consolas', monospace;
+}
+[data-theme="light"] .cmd-result .cmd-shortcut {
+  background: rgba(0,0,0,0.06);
+  color: #666;
+}
+
+/* ===== CONTEXT MENU ===== */
+.viewer-context-menu {
+  position: fixed;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 220px;
+  z-index: 1500;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+[data-theme="light"] .viewer-context-menu {
+  background: #fff;
+  border: 1px solid #ddd;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+.ctx-item {
+  padding: 6px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #e0e0e0;
+  white-space: nowrap;
+}
+[data-theme="light"] .ctx-item { color: #333; }
+.ctx-item:hover { background: rgba(100,181,246,0.2); }
+.ctx-item.disabled {
+  color: #888;
+  cursor: default;
+  font-style: italic;
+  font-size: 12px;
+}
+.ctx-item.disabled:hover { background: none; }
+.ctx-divider {
+  height: 1px;
+  background: #444;
+  margin: 4px 0;
+}
+[data-theme="light"] .ctx-divider { background: #eee; }
+.diagnostic-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: bold;
+  margin-left: 8px;
+  cursor: pointer;
+  padding: 0 5px;
+  vertical-align: middle;
+}
+.badge-ok { background: #2e7d32; color: #fff; }
+.badge-warning { background: #f57f17; color: #fff; }
+.badge-critical { background: #c62828; color: #fff; }
+.badge-info { background: #1565c0; color: #fff; }
+
+/* INSIGHTS PANEL */
+.insights-badge {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: #f57f17;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 12;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.insights-badge.critical { background: #c62828; }
+.insights-badge.warning { background: #f57f17; }
+.insights-badge.info { background: #1565c0; }
+
+.insights-panel {
+  position: absolute;
+  top: 36px;
+  right: 12px;
+  width: 340px;
+  max-height: 320px;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 8px;
+  z-index: 13;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+[data-theme="light"] .insights-panel {
+  background: #fff;
+  border: 1px solid #ddd;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+.insights-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #333;
+  font-size: 13px;
+  font-weight: bold;
+  color: #e0e0e0;
+}
+[data-theme="light"] .insights-header {
+  border-bottom-color: #eee;
+  color: #333;
+}
+.insights-btn {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+}
+.insights-btn:hover { color: #fff; }
+[data-theme="light"] .insights-btn:hover { color: #333; }
+.insights-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+.insight-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #ccc;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+[data-theme="light"] .insight-item {
+  color: #444;
+  border-bottom-color: rgba(0,0,0,0.05);
+}
+.insight-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+.insight-msg { flex: 1; line-height: 1.4; }
+.insight-action {
+  background: rgba(100,181,246,0.15);
+  border: 1px solid rgba(100,181,246,0.3);
+  color: #64b5f6;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.insight-action:hover { background: rgba(100,181,246,0.25); }
+.insight-dismiss {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.insight-dismiss:hover { color: #e57373; }
+
+/* ===== GUIDED TOUR ===== */
+.tour-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 3000;
+}
+.tour-overlay.has-spotlight {
+  background: none;
+}
+.tour-overlay.has-spotlight::before {
+  content: '';
+  position: fixed;
+  left: var(--spot-x);
+  top: var(--spot-y);
+  width: var(--spot-w);
+  height: var(--spot-h);
+  border-radius: 6px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.6);
+  z-index: 3001;
+  pointer-events: none;
+}
+.tour-card {
+  position: fixed;
+  background: #1e1e1e;
+  border: 1px solid #555;
+  border-radius: 10px;
+  padding: 16px 20px;
+  width: 320px;
+  z-index: 3002;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  color: #e0e0e0;
+}
+[data-theme="light"] .tour-card {
+  background: #fff;
+  border-color: #ddd;
+  color: #333;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+.tour-title {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+.tour-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #bbb;
+  margin-bottom: 14px;
+}
+[data-theme="light"] .tour-text { color: #555; }
+.tour-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.tour-dots {
+  display: flex;
+  gap: 5px;
+}
+.tour-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #555;
+}
+.tour-dot.active { background: #64b5f6; }
+.tour-buttons {
+  display: flex;
+  gap: 6px;
+}
+.tour-btn {
+  padding: 5px 12px;
+  border-radius: 4px;
+  border: 1px solid #555;
+  background: transparent;
+  color: #ccc;
+  font-size: 12px;
+  cursor: pointer;
+}
+.tour-btn:hover { background: rgba(255,255,255,0.1); }
+.tour-btn.tour-next {
+  background: #1976d2;
+  border-color: #1976d2;
+  color: #fff;
+}
+.tour-btn.tour-next:hover { background: #1565c0; }
+[data-theme="light"] .tour-btn { border-color: #ccc; color: #555; }
+[data-theme="light"] .tour-btn:hover { background: rgba(0,0,0,0.05); }
+[data-theme="light"] .tour-btn.tour-next { color: #fff; }
 </style>
 </head>
 <body>
@@ -603,7 +1117,7 @@ main { display: flex; flex: 1; overflow: hidden; }
   <header>
     <button class="drawer-toggle" onclick="document.getElementById('panelLeft').classList.toggle('drawer-open')" title="Toggle layers">&#9776;</button>
     <div class="logo"><span>G</span>Code Modifier</div>
-    <select id="firmwareSelect" onchange="onFirmwareChange(this.value)">
+    <select id="firmwareSelect" onchange="onFirmwareChange(this.value)" data-tooltip="Select your printer firmware for correct pause commands">
       <option value="bambu">Bambu Lab</option>
       <option value="klipper">Klipper</option>
       <option value="marlin">Marlin</option>
@@ -618,7 +1132,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       <span class="fname" id="fileName"></span>&nbsp;&nbsp;
       <span id="fileMeta"></span>
     </div>
-    <button id="themeToggle" onclick="toggleTheme()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text-dim);font-size:14px;cursor:pointer" title="Toggle theme">
+    <button id="themeToggle" onclick="toggleTheme()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text-dim);font-size:14px;cursor:pointer" title="Toggle theme" data-tooltip="Switch between dark and light theme">
       <span id="themeIcon">&#9789;</span>
     </button>
     <button style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text-dim);font-weight:700;font-size:14px;cursor:pointer" onclick="toggleShortcutsOverlay()" title="Keyboard shortcuts">?</button>
@@ -655,10 +1169,12 @@ main { display: flex; flex: 1; overflow: hidden; }
         <span>Go to layer:</span>
         <input type="number" class="jump-input" id="jumpLayer" min="0" placeholder="#" onchange="jumpToLayer(+this.value)">
         <button class="hole-detect-btn" id="holeDetectToggle" onclick="toggleHoleMode()" title="Toggle hole detection mode">Hole Detect</button>
-        <button class="hole-detect-btn" id="measureToggle" onclick="toggleMeasureMode()" title="Measure distance">Measure</button>
+        <button class="hole-detect-btn" id="measureToggle" onclick="toggleMeasureMode()" title="Measure distance (M)" data-tooltip="Click two points to measure distance (M)">Measure</button>
         <button class="hole-detect-btn" id="pauseSelectToggle" onclick="togglePauseSelectMode()" title="Click in 3D view to select pause point">Pause Select</button>
         <button class="hole-detect-btn" id="editModeToggle" onclick="toggleEditMode()" title="Select and delete moves">Edit</button>
         <button class="hole-detect-btn" id="crossSectionToggle" onclick="toggleCrossSection()" title="Cross-section view (X)">Cross-Section</button>
+        <button class="hole-detect-btn" id="flowArrowsToggle" onclick="toggleFlowArrows()" title="Flow direction arrows (D)" data-tooltip="Show directional arrows along print paths (D)">Arrows</button>
+        <button class="hole-detect-btn" id="compareToggle" onclick="toggleCompareMode()" title="Layer comparison (C)" data-tooltip="Compare current layer with another layer or file (C)">Compare</button>
         <div class="color-picker-row" id="colorPickerRow">
           <button class="color-swatch active" data-color="#ff3333" style="background:#ff3333" onclick="setHighlightColor('#ff3333')" title="Red"></button>
           <button class="color-swatch" data-color="#ffdd00" style="background:#ffdd00" onclick="setHighlightColor('#ffdd00')" title="Yellow"></button>
@@ -687,9 +1203,34 @@ main { display: flex; flex: 1; overflow: hidden; }
       <div class="viewer-wrap" id="viewerWrap">
         <div class="viewer-canvas-area">
         <canvas id="viewerCanvas"></canvas>
+        <div id="insightsBadge" class="insights-badge" style="display:none;" onclick="toggleInsightsPanel()" data-tooltip="Contextual suggestions and diagnostic findings">
+          <span id="insightsCount">0</span> issues
+        </div>
+        <div id="insightsPanel" class="insights-panel" style="display:none;">
+          <div class="insights-header">
+            <span>Insights</span>
+            <div>
+              <button onclick="dismissAllInsights()" title="Dismiss all" class="insights-btn">Clear</button>
+              <button onclick="toggleInsightsPanel()" title="Close" class="insights-btn">&times;</button>
+            </div>
+          </div>
+          <div id="insightsList" class="insights-list"></div>
+        </div>
+        <div class="viewer-bottom-left">
+          <div id="statsOverlay" class="stats-overlay" style="display:none;">
+            <div id="statsLayerInfo"></div>
+            <div id="statsHoverInfo" style="display:none;"></div>
+          </div>
+          <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
+        </div>
+        <div id="compareControls" class="compare-controls" style="display:none;">
+          <label>Compare layer: <input type="number" id="compareLayerInput" min="0" style="width:60px;"></label>
+          <button id="compareFileBtn" class="hole-detect-btn" title="Compare with another file" style="margin-left:6px;">Compare File</button>
+          <input type="file" id="compareFileInput" accept=".gcode,.gco,.g" style="display:none;">
+          <div id="compareDiffStats" class="compare-diff-stats"></div>
+        </div>
         <div class="viewer-overlay" id="viewerOverlay"></div>
         <div class="edit-mode-banner" id="editModeBanner">Edit Mode — Experimental</div>
-        <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
         <div id="warpControls" class="warp-controls hidden">
           <label>Deformation: <span id="deformLabel">0x</span></label>
           <input type="range" id="deformSlider" min="0" max="50" value="0" step="1">
@@ -809,16 +1350,17 @@ main { display: flex; flex: 1; overflow: hidden; }
     <div class="panel-right" id="panelRight">
       <div class="panel-right-resize" id="panelRightResize"></div>
       <div class="tabs">
-        <button class="tab active" data-tab="pause" onclick="switchTab('pause')">Pause</button>
-        <button class="tab" data-tab="filament" onclick="switchTab('filament')">Filament</button>
-        <button class="tab" data-tab="eject" onclick="switchTab('eject')">Eject</button>
-        <button class="tab" data-tab="zoffset" onclick="switchTab('zoffset')">Z-Offset</button>
-        <button class="tab" data-tab="custom" onclick="switchTab('custom')">Custom</button>
-        <button class="tab" data-tab="inserts" onclick="switchTab('inserts')">Inserts</button>
-        <button class="tab" data-tab="recovery" onclick="switchTab('recovery')">Recovery</button>
-        <button class="tab" data-tab="cooling" onclick="switchTab('cooling')">Cooling</button>
-        <button class="tab" data-tab="pa-tuner" onclick="switchTab('pa-tuner')">PA Tuning</button>
-        <button class="tab" data-tab="analysis" onclick="switchTab('analysis')">Analysis</button>
+        <button class="tab active" data-tab="pause" onclick="switchTab('pause')" data-tooltip="Add pauses to stop the print at specific layers">Pause</button>
+        <button class="tab" data-tab="filament" onclick="switchTab('filament')" data-tooltip="Insert filament changes for multi-color prints">Filament</button>
+        <button class="tab" data-tab="eject" onclick="switchTab('eject')" data-tooltip="Auto-eject the print when finished">Eject</button>
+        <button class="tab" data-tab="zoffset" onclick="switchTab('zoffset')" data-tooltip="Adjust Z-height over a range of layers">Z-Offset</button>
+        <button class="tab" data-tab="custom" onclick="switchTab('custom')" data-tooltip="Insert custom G-code at any layer">Custom</button>
+        <button class="tab" data-tab="inserts" onclick="switchTab('inserts')" data-tooltip="Auto-detect holes for threaded inserts">Inserts</button>
+        <button class="tab" data-tab="reference" onclick="switchTab('reference')" data-tooltip="G-code command reference guide">Reference</button>
+        <button class="tab" data-tab="recovery" onclick="switchTab('recovery')" data-tooltip="Resume a failed print from a specific layer">Recovery</button>
+        <button class="tab" data-tab="cooling" onclick="switchTab('cooling')" data-tooltip="Fan speed profiles and cooling analysis">Cooling</button>
+        <button class="tab" data-tab="pa-tuner" onclick="switchTab('pa-tuner')" data-tooltip="Generate pressure advance calibration patterns">PA Tuning</button>
+        <button class="tab" data-tab="analysis" onclick="switchTab('analysis')" data-tooltip="Run diagnostics to find potential print problems">Analysis</button>
       </div>
 
       <!-- PAUSE TAB -->
@@ -1193,7 +1735,34 @@ main { display: flex; flex: 1; overflow: hidden; }
       <tr><td><kbd>?</kbd></td><td>This help</td></tr>
       <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>Find in file</td></tr>
       <tr><td><kbd>X</kbd></td><td>Toggle cross-section</td></tr>
+      <tr><td><kbd>M</kbd></td><td>Toggle measurement mode</td></tr>
+      <tr><td><kbd>D</kbd></td><td>Toggle flow direction arrows</td></tr>
+      <tr><td><kbd>C</kbd></td><td>Toggle layer comparison</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Command palette</td></tr>
     </table>
+    <button onclick="Onboarding.start(); toggleShortcutsOverlay();" style="margin-top:12px;padding:6px 14px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:6px;color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;">Replay Guided Tour</button>
+  </div>
+</div>
+
+<div id="commandPalette" class="command-palette-overlay" style="display:none;">
+  <div class="command-palette-card">
+    <input type="text" id="cmdPaletteInput" placeholder="Type a command..." autocomplete="off" spellcheck="false" />
+    <div id="cmdPaletteResults" class="command-palette-results"></div>
+  </div>
+</div>
+
+<div id="tourOverlay" class="tour-overlay" style="display:none;">
+  <div id="tourCard" class="tour-card">
+    <div id="tourTitle" class="tour-title"></div>
+    <div id="tourText" class="tour-text"></div>
+    <div class="tour-footer">
+      <div id="tourDots" class="tour-dots"></div>
+      <div class="tour-buttons">
+        <button id="tourPrev" class="tour-btn" onclick="Onboarding.prev()">Back</button>
+        <button class="tour-btn tour-skip" onclick="Onboarding.skip()">Skip</button>
+        <button id="tourNext" class="tour-btn tour-next" onclick="Onboarding.next()">Next</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -4281,7 +4850,7 @@ const GCODE_COMMANDS = {
   'M83':  { name: 'Relative Extrusion', params: {} },
   'M84':  { name: 'Disable Steppers', params: { S: 'Idle timeout (s)' } },
   'M104': { name: 'Set Hotend Temp', params: { S: 'Target temp (°C)', T: 'Extruder index' } },
-  'M106': { name: 'Set Fan Speed', params: { S: 'Speed (0–255)' } },
+  'M106': { name: 'Set Fan Speed', params: { S: 'Speed (0–255)', P: 'Fan index' } },
   'M107': { name: 'Fan Off', params: {} },
   'M109': { name: 'Wait for Hotend Temp', params: { S: 'Target temp (°C)', R: 'Wait for temp (°C)', T: 'Extruder index' } },
   'M140': { name: 'Set Bed Temp', params: { S: 'Target temp (°C)' } },
@@ -4343,96 +4912,111 @@ const GCODE_COMMANDS = {
   'M280': { name: 'Set Servo Position', params: { P: 'Servo index', S: 'Angle (0-180)' } },
   'M355': { name: 'Case Light', params: { S: 'On (1) / Off (0)', P: 'Brightness (0-255)' } },
   'M911': { name: 'Power Loss Recovery', params: {} },
-  // Bambu Lab Extended
-  'M620':  { name: 'AMS Filament Select', params: { S: 'Filament slot (0-3, 255=unload)' } },
-  'M620.1': { name: 'Set Flush Extrusion Params', params: { E: 'Extrusion mode', F: 'Flush speed', T: 'Flush temp (°C)' } },
-  'M620.3': { name: 'Filament Tangle Detection', params: { W: 'Enable (0/1)' } },
-  'M620.10': { name: 'Flush Sequence Control', params: { A: 'Phase (0=pre, 1=post)', F: 'Speed', L: 'Length (mm)', H: 'Nozzle dia (mm)', T: 'Temp (°C)' } },
-  'M620.11': { name: 'Long Retraction When Cut', params: { S: 'Enable (0/1)', I: 'Extruder', E: 'Retract dist (mm)', F: 'Speed (mm/min)' } },
-  'M621':  { name: 'End AMS Filament Select', params: { S: 'Filament slot' } },
-  'M622':  { name: 'Conditional If', params: { S: 'Flag value', J: 'Judge result (0/1)' } },
-  'M622.1': { name: 'Set Default Flag Value', params: { S: 'Default (0/1)' } },
-  'M623':  { name: 'End Conditional Block', params: {} },
-  'M628':  { name: 'Begin Flush Sequence', params: { S: 'Mode (0=standard, 1=cut)' } },
-  'M629':  { name: 'End Flush Sequence', params: { S: 'Mode' } },
-  'M630':  { name: 'Filament Sensor Reset', params: { S: 'Sensor index', P: 'Reset mode' } },
-  'M960':  { name: 'Laser/LED Control', params: { S: 'Device (1/2=laser, 5=logo)', P: 'State (0/1)' } },
-  'M970':  { name: 'Lidar Calibration Scan', params: { Q: 'Scan type', A: 'Area param', B: 'Area param', C: 'Area param', H: 'Height', K: 'Param', M: 'Resolution', O: 'Output mode' } },
-  'M970.3': { name: 'Edge Detection Scan', params: { Q: 'Scan type', A: 'Sensitivity', K: 'Param', O: 'Output mode' } },
-  'M971':  { name: 'Camera Capture', params: { S: 'Capture mode', C: 'Config', O: 'Output target' } },
-  'M974':  { name: 'Process Scan Results', params: { Q: 'Scan type', S: 'Processing mode', P: 'Param' } },
-  'M975':  { name: 'Vibration Suppression', params: { S: 'Enable (0/1)' } },
-  'M982.2': { name: 'Cog Noise Reduction', params: { S: 'Enable (0/1)' } },
-  'M983':  { name: 'Extrusion Compensation Calibration', params: { F: 'Flow speed', A: 'Compensation factor', H: 'Nozzle dia (mm)' } },
-  'M984':  { name: 'Apply Extrusion Compensation', params: { A: 'Adjustment', E: 'Extrusion param', S: 'Apply mode', F: 'Flow speed', H: 'Nozzle dia (mm)' } },
-  'M991':  { name: 'Layer Change Notification', params: { S: 'Type', P: 'Layer number' } },
-  'M1002': { name: 'System Control', params: {} },
-  'M1004': { name: 'External Camera Shutter', params: { S: 'Shutter mode', P: 'Trigger (0/1)' } },
-  'M1006': { name: 'Sound/Buzzer System', params: { S: 'Init', A: 'Ch1 note', B: 'Ch1 duration', L: 'Ch1 volume', C: 'Ch2 note', D: 'Ch2 duration', M: 'Ch2 volume', E: 'Ch3 note', F: 'Ch3 duration', N: 'Ch3 volume' } },
-  'M1007': { name: 'Unknown Enable/Disable', params: { S: 'Enable (0/1)' } },
-  'M9833': { name: 'Extrusion Comp (Tool Change)', params: { F: 'Flow speed', A: 'Compensation factor' } },
-  'G29.1': { name: 'Set Z Offset for Bed Type', params: { Z: 'Z offset (mm)' } },
-  'G29.2': { name: 'Enable/Disable ABL', params: { S: 'Enable (0/1)' } },
-  'G39':   { name: 'Nozzle Clog Detection Scan', params: { S: 'Start scan', X: 'Scan X pos', Y: 'Scan Y pos' } },
-  'G39.3': { name: 'Mass Exceed Detection', params: { S: 'Start scan' } },
-  'G39.4': { name: 'Build Plate Detection', params: {} },
-  'G380':  { name: 'Z Move with Endstop', params: { S: 'Mode (2=up, 3=down)', Z: 'Distance (mm)', F: 'Speed (mm/min)' } },
-  'G392':  { name: 'Toggle Clog Detection', params: { S: 'State (0/1)' } },
-  'M73.2': { name: 'Reset Time Estimate', params: { R: 'Magnitude (1.0=reset)' } },
-  'M201.2': { name: 'Reset Acceleration Magnitude', params: { K: 'Magnitude (1.0=reset)' } },
-  // Bambu Lab Extended (Phase 2 discoveries)
-  'M963':  { name: 'Lidar Calibration Trigger', params: { S: 'Enable (0/1)' } },
-  'M964':  { name: 'Lidar Calibration Process', params: {} },
-  'M969':  { name: 'Lidar Scanning Mode', params: { S: 'Enable (0/1)', N: 'Scan count', A: 'Parameter' } },
-  'M973':  { name: 'Camera/Scanner Stream', params: { S: 'Mode', P: 'Parameter' } },
-  'M976':  { name: 'First Layer Scan', params: { S: 'Scan type', P: 'Mode' } },
-  'M977':  { name: 'Register First Layer Scan', params: { S: 'Enable (0/1)', P: 'Parameter' } },
-  'M980.3': { name: 'Lidar Scan Parameters', params: { A: 'Param', B: 'Speed', C: 'Param', D: 'Speed', E: 'Param', F: 'Param', H: 'Param', I: 'Param', J: 'Param', K: 'Param' } },
-  'M993':  { name: 'Nozzle Cam Detection', params: { A: 'Mode', B: 'Mode', C: 'Mode' } },
-  'M640':  { name: 'Tool Changer Operation', params: { S: 'Start' } },
-  'M640.1': { name: 'Tool Retract/Select', params: { R: 'Retract', S: 'Select' } },
-  'M640.2': { name: 'Tool Release', params: { R: 'Release (0/1)' } },
-  'M640.4': { name: 'Tool Dock', params: {} },
-  'M640.7': { name: 'Tool Lock/Unlock', params: { L: 'Lock', U: 'Unlock' } },
-  'M640.8': { name: 'Select Tool by Index', params: { T: 'Tool', A: 'Index' } },
-  'M641':  { name: 'End Tool Operation', params: {} },
-  'G150':  { name: 'Nozzle Wipe Position', params: { T: 'Temperature' } },
-  'G150.1': { name: 'Wipe Mouth Move', params: { F: 'Speed' } },
-  'G150.2': { name: 'Wipe Variant', params: {} },
-  'G150.3': { name: 'Safe Position Return', params: { F: 'Speed' } },
-  'G151':  { name: 'Unknown H2D Motion', params: {} },
-  'M142':  { name: 'Chamber Auto-Cooling', params: { P: 'Profile', R: 'Min temp', S: 'Target temp', T: 'Max temp', O: 'Limit' } },
-  'M145':  { name: 'Airduct Mode', params: { P: 'Mode (0=cool, 1=heat)' } },
-  'M481':  { name: 'Cutter Position Compensation', params: { S: 'Enable (0/1)' } },
-  'M562':  { name: 'Extruder Selection', params: { P: 'Position', E: 'Extruder index', B: 'Enable' } },
-  'M710':  { name: 'MC Fan Control', params: { A: 'Fan', S: 'Speed (0-255)' } },
-  'M1028': { name: 'Unknown H2S Enable/Disable', params: { S: 'Enable (0/1)' } },
-  'M620.6': { name: 'AMS Air Print Detection', params: { I: 'Extruder', W: 'Enable (0/1)' } },
-  'M620.14': { name: 'Wipe Tower Center Position', params: { X: 'X position', Y: 'Y position' } },
+  // Standard commands (additional)
+  'G17':  { name: 'Select XY Plane', params: {} },
+  'M18':  { name: 'Disable Steppers', params: { X: 'Disable X', Y: 'Disable Y', Z: 'Disable Z', E: 'Disable E' } },
+  'M73':  { name: 'Set Print Progress', params: { P: 'Progress (%)', R: 'Remaining time (min)' } },
+  'M201': { name: 'Set Max Acceleration', params: { X: 'X accel (mm/s²)', Y: 'Y accel (mm/s²)', Z: 'Z accel (mm/s²)', E: 'E accel (mm/s²)' } },
+  'M203': { name: 'Set Max Feedrate', params: { X: 'X max (mm/s)', Y: 'Y max (mm/s)', Z: 'Z max (mm/s)', E: 'E max (mm/s)' } },
+  'M500': { name: 'Save Settings to EEPROM', params: {} },
+  // Bambu Lab — AMS & Material Management
+  'M620':    { name: 'AMS Material Control', params: { S: 'Slot index', M: 'Enable remap', N: 'Enable hotend remap', T: 'Print/position config' } },
+  'M620.1':  { name: 'Set Flush Extrusion Params', params: { E: 'Extrusion mode', F: 'Flush speed', T: 'Flush temp (°C)' } },
+  'M620.3':  { name: 'Filament Tangle Detection', params: { W: 'Enable (0/1)' } },
+  'M620.6':  { name: 'AMS Air Printing Detect', params: { I: 'Extruder index', W: 'Enable (1) / Disable (0)' } },
+  'M620.10': { name: 'AMS Flush Config', params: { A: 'Phase (0=pre, 1=post)', F: 'Flush feedrate', L: 'Flush length', H: 'Nozzle diameter', T: 'Flush temp', P: 'Pre-flush temp', S: 'Mode' } },
+  'M620.11': { name: 'AMS Retraction/Cut Config', params: { P: 'Enable long retraction', S: 'Enable cut', I: 'Extruder index', E: 'Retract distance', F: 'Retract feedrate', K: 'Enable EC retraction', R: 'EC retract distance', L: 'Level', D: 'Distance', O: 'Option', T: 'Retract length NC', H: 'Home offset compensation' } },
+  'M620.14': { name: 'AMS Wipe Tower Position', params: { X: 'Tower center X', Y: 'Tower center Y' } },
+  'M620.15': { name: 'AMS Pre-Cooling Temp', params: { P: 'Pre-cooling temp', C: 'Cooling target' } },
   'M620.17': { name: 'Unknown H2D AMS Variant', params: {} },
-  'M1015.3': { name: 'TPU Clog Detection', params: { S: 'Enable (0/1)' } },
-  'M1015.4': { name: 'E Air Printing Detection', params: { S: 'Enable (0/1)', K: 'Mode', H: 'Nozzle dia' } },
-  'M901':  { name: 'PA Config', params: { D: 'Parameter' } },
-  'M983.1': { name: 'Extrusion Calibration Variant', params: { M: 'Mode' } },
-  'M983.3': { name: 'Dynamic Extrusion Compensation', params: { F: 'Flow speed', A: 'Factor' } },
-  'M983.4': { name: 'Deformation Compensation', params: { S: 'Enable (0/1)' } },
-  'G383':  { name: 'Toolhead Offset Calibration', params: { O: 'Mode', U: 'Parameter', L: 'Extruder' } },
-  'G383.3': { name: 'Offset Calibration Variant', params: { U: 'Parameter', L: 'Extruder' } },
-  'G383.7': { name: 'Post-Wipe Offset Check', params: { U: 'Parameter', J: 'Mode' } },
-  'G39.1': { name: 'Nozzle Wrap Detection Cal', params: {} },
-  'G28.14': { name: 'Pre-Extrude Z Calibration', params: { R: 'Reset', D: 'Mode' } },
-  'G28.140': { name: 'Extended Z Calibration', params: { D: 'Mode', S: 'Mode' } },
-  'G29.20': { name: 'ABL Mode Selection', params: { A: 'Mode' } },
-  'G29.7': { name: 'Position Compensation', params: { S: 'Enable (0/1)' } },
-  'G29.9': { name: 'Leveling Data Record', params: {} },
-  'G29.99': { name: 'Final Leveling Step', params: {} },
-  'G29.4': { name: 'ABL Variant', params: {} },
-  'M145.2': { name: 'Airduct Mode Variant', params: {} },
-  // Bambu Lab Extended (Phase 2b — H2C dual-nozzle multi-material)
-  'M632':  { name: 'Begin Nozzle Change', params: { S: 'Target nozzle index', M: 'Flag', N: 'Flag' } },
-  'M633':  { name: 'End Nozzle Change', params: {} },
-  'M620.15': { name: 'Flush Temperature Params', params: { P: 'Pre-flush temp (°C)', C: 'Cool-down temp (°C)' } },
-  'G387':  { name: 'Safe Y Travel', params: { Y: 'Y position', J: 'Collision flag', F: 'Speed' } },
+  'M621':    { name: 'Switch AMS Material', params: { S: 'Slot index' } },
+  'M622':    { name: 'Conditional Block Start', params: { S: 'Flag value', J: 'Jump flag index' } },
+  'M622.1':  { name: 'Set Default Flag Value', params: { S: 'Default (0/1)' } },
+  'M623':    { name: 'Conditional Block End', params: {} },
+  'M628':    { name: 'Filament Change Start', params: { S: 'Mode' } },
+  'M629':    { name: 'Filament Change End', params: {} },
+  'M630':    { name: 'Tool Change Config', params: { S: 'Slot', P: 'Parameter' } },
+  'M632':    { name: 'Begin Nozzle Change', params: { S: 'Target nozzle index', M: 'Flag', N: 'Flag' } },
+  'M633':    { name: 'End Nozzle Change', params: {} },
+  // Bambu Lab — Toolhead & Motion
+  'G150':    { name: 'Nozzle Wipe Position', params: { T: 'Temperature' } },
+  'G150.1':  { name: 'Wipe Nozzle Position 1', params: { F: 'Feed rate' } },
+  'G150.2':  { name: 'Wipe Nozzle Position 2', params: { F: 'Feed rate' } },
+  'G150.3':  { name: 'Wipe Nozzle Position 3', params: { F: 'Feed rate' } },
+  'G151':    { name: 'Unknown H2D Motion', params: {} },
+  'G380':    { name: 'Move Z Stepper', params: { S: 'Stepper index', Z: 'Z distance', F: 'Feed rate' } },
+  'G383':    { name: 'Toolhead Offset Calibration', params: { O: 'Mode', U: 'Parameter', L: 'Extruder' } },
+  'G383.3':  { name: 'Offset Calibration Variant', params: { U: 'Parameter', L: 'Extruder' } },
+  'G383.7':  { name: 'Post-Wipe Offset Check', params: { U: 'Parameter', J: 'Mode' } },
+  'G387':    { name: 'Safe Y Travel', params: { Y: 'Y position', J: 'Collision flag', F: 'Speed' } },
+  'G392':    { name: 'Toolhead Protection', params: { S: 'Mode' } },
+  'M640':    { name: 'Toolhead Movement', params: { S: 'Start movement' } },
+  'M640.1':  { name: 'Toolhead Move Config', params: { R: 'Reset', S: 'Start' } },
+  'M640.2':  { name: 'Toolhead Move Config 2', params: { R: 'Config value' } },
+  'M640.4':  { name: 'Toolhead Calibrate', params: {} },
+  'M640.7':  { name: 'Toolhead Wipe', params: { L: 'Left wipe', U: 'Up wipe' } },
+  'M640.8':  { name: 'Toolhead Move Config 3', params: { T: 'Target', A: 'Acceleration' } },
+  'M641':    { name: 'Toolhead Movement End', params: {} },
+  // Bambu Lab — Calibration & Compensation
+  'G28.14':  { name: 'Pre-Extrude Z Calibration', params: { R: 'Reset', D: 'Mode' } },
+  'G28.140': { name: 'Calibrate Pre-Extrude Z', params: { S: 'Calibration mode', D: 'Reset' } },
+  'G29.1':   { name: 'Set/Clear Z-Trim', params: { Z: 'Z offset' } },
+  'G29.2':   { name: 'Position Compensation', params: { S: 'Enable (1) / Disable (0)' } },
+  'G29.4':   { name: 'ABL Variant', params: {} },
+  'G29.7':   { name: 'Bed Mesh Probe Mode', params: { S: 'Enable (1) / Disable (0)' } },
+  'G29.9':   { name: 'Leveling Data Record', params: {} },
+  'G29.20':  { name: 'ABL Mode Selection', params: { A: 'Mode' } },
+  'G29.99':  { name: 'Apply Bed Leveling Mesh', params: {} },
+  'G39':     { name: 'Nozzle Clog Detection Scan', params: { S: 'Start scan', X: 'Scan X pos', Y: 'Scan Y pos' } },
+  'G39.1':   { name: 'Nozzle Detection Calibration', params: {} },
+  'G39.3':   { name: 'Mass Exceed Detection', params: { S: 'Start scan' } },
+  'G39.4':   { name: 'Build Plate Detection', params: {} },
+  'M201.2':  { name: 'Set Accel (Bambu)', params: { X: 'X accel', Y: 'Y accel', Z: 'Z accel', E: 'E accel' } },
+  'M481':    { name: 'Cutter Position Compensation', params: { S: 'Enable (1) / Disable (0)' } },
+  'M983':    { name: 'Extrusion Compensation Calibration', params: { F: 'Flow speed', A: 'Compensation factor', H: 'Nozzle dia (mm)' } },
+  'M983.1':  { name: 'Motor Config', params: { M: 'Mode' } },
+  'M983.3':  { name: 'Dynamic Extrusion Calibration', params: { F: 'Flow rate', A: 'Factor', R: 'Retract length' } },
+  'M983.4':  { name: 'Deformation Compensation', params: { S: 'Enable (1) / Disable (0)' } },
+  'M984':    { name: 'Apply Extrusion Compensation', params: { A: 'Adjustment', E: 'Extrusion param', S: 'Apply mode', F: 'Flow speed', H: 'Nozzle dia (mm)' } },
+  'M9833':   { name: 'Extrusion Comp (Tool Change)', params: { F: 'Flow speed', A: 'Compensation factor' } },
+  // Bambu Lab — Detection & Safety
+  'M73.2':   { name: 'Reset Time Estimate', params: { R: 'Magnitude' } },
+  'M901':    { name: 'TMC Driver Config', params: { D: 'Parameter' } },
+  'M960':    { name: 'LED Control', params: { S: 'Function', P: 'Enable (1) / Disable (0)' } },
+  'M972':    { name: 'Detection System', params: { S: 'Feature ID', P: 'Enable (0/1)', T: 'Timeout (ms)', C: 'Config' } },
+  'M975':    { name: 'Input Shaping', params: { S: 'Enable (1) / Disable (0)' } },
+  'M981':    { name: 'Spaghetti Detector', params: { S: 'Enable (1) / Disable (0)', P: 'Sensitivity' } },
+  'M982.2':  { name: 'Cog Noise Reduction', params: { S: 'Enable (1) / Disable (0)' } },
+  'M991':    { name: 'Notify Layer Change', params: { S: 'State', P: 'Parameter' } },
+  'M993':    { name: 'Nozzle Cam Detection', params: { A: 'Mode A', B: 'Mode B', C: 'Mode C' } },
+  // Bambu Lab — Lidar & Scanning
+  'M963':    { name: 'Lidar Calibration Trigger', params: { S: 'Enable (0/1)' } },
+  'M964':    { name: 'Lidar Calibration Process', params: {} },
+  'M969':    { name: 'Lidar Scanning Mode', params: { S: 'Enable (0/1)', N: 'Scan count', A: 'Parameter' } },
+  'M970':    { name: 'Lidar Calibration Scan', params: { Q: 'Scan type', A: 'Area param', B: 'Area param', C: 'Area param', H: 'Height', K: 'Param', M: 'Resolution', O: 'Output mode' } },
+  'M970.3':  { name: 'Edge Detection Scan', params: { Q: 'Scan type', A: 'Sensitivity', K: 'Param', O: 'Output mode' } },
+  'M971':    { name: 'Camera Capture', params: { S: 'Capture mode', C: 'Config', O: 'Output target' } },
+  'M973':    { name: 'Camera/Scanner Stream', params: { S: 'Mode', P: 'Parameter' } },
+  'M974':    { name: 'Process Scan Results', params: { Q: 'Scan type', S: 'Processing mode', P: 'Param' } },
+  'M976':    { name: 'First Layer Scan', params: { S: 'Scan type', P: 'Mode' } },
+  'M977':    { name: 'Register First Layer Scan', params: { S: 'Enable (0/1)', P: 'Parameter' } },
+  'M980.3':  { name: 'Lidar Scan Parameters', params: { A: 'Param', B: 'Speed', C: 'Param', D: 'Speed', E: 'Param', F: 'Param', H: 'Param', I: 'Param', J: 'Param', K: 'Param' } },
+  // Bambu Lab — Temperature & Cooling
+  'M142':    { name: 'Chamber Auto-Cooling', params: { P: 'Profile', R: 'Min temp', S: 'Target temp', T: 'Max temp', O: 'Limit' } },
+  'M145':    { name: 'Airduct Mode', params: { P: 'Mode (0=cool, 1=heat)' } },
+  'M145.2':  { name: 'Airduct Mode Variant', params: {} },
+  // Bambu Lab — System Control
+  'M562':    { name: 'Extruder Selection', params: { P: 'Position', E: 'Extruder index', B: 'Enable' } },
+  'M710':    { name: 'MC Fan Control', params: { A: 'Fan', S: 'Speed (0-255)' } },
+  'M1002':   { name: 'System Control', params: {} },
+  'M1003':   { name: 'System Info', params: {} },
+  'M1004':   { name: 'External Camera Shutter', params: { S: 'Shutter mode', P: 'Trigger (0/1)' } },
+  'M1006':   { name: 'LED / Sound Pattern', params: { S: 'Start', A: 'Note freq', B: 'Duration', L: 'Level', W: 'Wait for completion' } },
+  'M1007':   { name: 'Unknown Enable/Disable', params: { S: 'Enable (0/1)' } },
+  'M1009':   { name: 'System Config', params: { Q: 'Query', L: 'Level' } },
+  'M1015.3': { name: 'TPU Clog Detection', params: { S: 'Enable (1) / Disable (0)' } },
+  'M1015.4': { name: 'Extrusion Air Print Detect', params: { S: 'Enable (1) / Disable (0)', K: 'Mode', H: 'Nozzle diameter' } },
+  'M1028':   { name: 'Unknown H2S Enable/Disable', params: { S: 'Enable (0/1)' } },
 };
 
 function decodeLine(text) {
@@ -6451,7 +7035,13 @@ class StructuralAnalyzer {
 
           bridgeScores.push(Math.min(1, risk));
 
-          if (spanMm > 5) {
+          // Only track bridge runs for wall/perimeter moves, not infill
+          const bType = (moves[i].type || '').toUpperCase();
+          const bIsInfill = bType.includes('FILL') || bType.includes('SPARSE')
+            || bType.includes('GRID') || bType.includes('GYROID')
+            || bType.includes('HONEYCOMB') || bType.includes('LIGHTNING')
+            || bType === 'SOLID' || bType === 'TOP' || bType === 'BOTTOM';
+          if (spanMm > 5 && !bIsInfill) {
             bridgeRun.push({ move: moves[i], index: i });
           } else {
             if (bridgeRun.length > 0) {
@@ -6462,11 +7052,21 @@ class StructuralAnalyzer {
         }
 
         if (overhang > 0.4) {
-          highOverhangCount++;
-          if (overhang > worstOverhang) {
-            worstOverhang = overhang;
-            worstOverhangMove = moves[i];
-            worstOverhangIdx = i;
+          // Skip infill/solid-fill moves — cross-hatch infill alternates angles
+          // between layers by design, so grid overlap is naturally low but NOT
+          // an overhang. Also skip top/bottom surfaces (same pattern, just denser).
+          const mType = (moves[i].type || '').toUpperCase();
+          const isInfill = mType.includes('FILL') || mType.includes('SPARSE')
+            || mType.includes('GRID') || mType.includes('GYROID')
+            || mType.includes('HONEYCOMB') || mType.includes('LIGHTNING')
+            || mType === 'SOLID' || mType === 'TOP' || mType === 'BOTTOM';
+          if (!isInfill) {
+            highOverhangCount++;
+            if (overhang > worstOverhang) {
+              worstOverhang = overhang;
+              worstOverhangMove = moves[i];
+              worstOverhangIdx = i;
+            }
           }
         }
       }
@@ -9515,6 +10115,890 @@ class FanProfileEngine {
 
 FanProfileEngine;
 
+// Print Readiness Diagnostics Engine.
+// Scans analysis results and generates actionable warnings.
+
+const Diagnostics = {
+  warnings: [],
+
+  // Run after eager analysis (motion + flow)
+  scan(parserRef) {
+    this.warnings = [];
+    this._checkLayerTime(parserRef);
+    this._checkFlow(parserRef);
+    this._checkFirstLayer(parserRef);
+    this._checkLongTravel(parserRef);
+  },
+
+  // Run after deep analysis (thermal, structural, retraction)
+  scanDeep() {
+    this._checkOverhangs();
+    this._checkRetraction();
+    this._checkWarpRisk();
+  },
+
+  getSeverityCounts() {
+    let info = 0, warning = 0, critical = 0;
+    for (const w of this.warnings) {
+      if (w.severity === 'critical') critical++;
+      else if (w.severity === 'warning') warning++;
+      else info++;
+    }
+    return { info, warning, critical, total: this.warnings.length };
+  },
+
+  _addWarning(id, category, severity, message, layers, action) {
+    // Don't add duplicates
+    if (this.warnings.find(w => w.id === id)) return;
+    this.warnings.push({ id, category, severity, message, layers: layers || [], action: action || null });
+  },
+
+  _checkLayerTime(parserRef) {
+    // Find layers with estimated time below material minimum
+    if (typeof motionAnalyzer === 'undefined' || !motionAnalyzer._layerTimes) return;
+    const minTime = (typeof analysisProfile !== 'undefined' && analysisProfile.material)
+      ? (analysisProfile.material.minLayerTime || 8) : 8;
+
+    const fastLayers = [];
+    motionAnalyzer._layerTimes.forEach((timeSecs, layerNum) => {
+      if (timeSecs > 0 && timeSecs < minTime && layerNum > 0) {
+        fastLayers.push(layerNum);
+      }
+    });
+
+    if (fastLayers.length > 0) {
+      // Group consecutive layers
+      const groups = this._groupConsecutive(fastLayers);
+      for (const group of groups) {
+        const rangeStr = group.length === 1 ? `Layer ${group[0]}` : `Layers ${group[0]}-${group[group.length - 1]}`;
+        const severity = group.length > 5 ? 'critical' : 'warning';
+        this._addWarning(
+          'fast-layer-' + group[0],
+          'Cooling',
+          severity,
+          `${rangeStr}: layer time under ${minTime}s minimum`,
+          group,
+          { type: 'navigate', label: 'Show in viewer', fn: () => { selectLayer(group[0]); } }
+        );
+      }
+    }
+  },
+
+  _checkFlow(parserRef) {
+    // Check for sudden flow rate changes >30% between adjacent extrusion moves
+    if (typeof flowAnalyzer === 'undefined' || !flowAnalyzer._findings) return;
+
+    const issueLayersSet = new Set();
+    for (let layerNum = 0; layerNum < parserRef.layers.length; layerNum++) {
+      const moves = parserRef.layerMoves[layerNum];
+      if (!moves || moves.length < 2) continue;
+
+      let prevFlow = null;
+      for (let i = 0; i < moves.length; i++) {
+        const m = moves[i];
+        if (!m.extrude || !m.eLength) continue;
+        const len = Math.hypot(m.x2 - m.x1, m.y2 - m.y1);
+        if (len < 0.1) continue;
+        const speed = (m.feedRate || 0) / 60;
+        if (speed < 0.1) continue;
+        const flow = (m.eLength / len) * speed;
+
+        if (prevFlow !== null && prevFlow > 0) {
+          const change = Math.abs(flow - prevFlow) / prevFlow;
+          if (change > 0.3) {
+            issueLayersSet.add(layerNum);
+            break; // One per layer is enough
+          }
+        }
+        prevFlow = flow;
+      }
+    }
+
+    const issueLayers = Array.from(issueLayersSet).sort((a, b) => a - b);
+    if (issueLayers.length > 5) {
+      const groups = this._groupConsecutive(issueLayers);
+      for (const group of groups.slice(0, 3)) { // Cap at 3 warnings
+        const rangeStr = group.length === 1 ? `Layer ${group[0]}` : `Layers ${group[0]}-${group[group.length - 1]}`;
+        this._addWarning(
+          'flow-var-' + group[0],
+          'Flow',
+          'warning',
+          `${rangeStr}: flow rate variance >30% between moves`,
+          group,
+          { type: 'navigate', label: 'Show flow heatmap', fn: () => { selectLayer(group[0]); setColorMode('volumetric-flow'); } }
+        );
+      }
+    }
+  },
+
+  _checkFirstLayer(parserRef) {
+    // Basic first layer checks
+    const moves = parserRef.layerMoves[0];
+    if (!moves || moves.length === 0) return;
+
+    const extMoves = moves.filter(m => m.extrude);
+    if (extMoves.length === 0) return;
+
+    // Check if first layer has very fast speeds (>60 mm/s)
+    const avgSpeed = extMoves.reduce((s, m) => s + (m.feedRate || 0) / 60, 0) / extMoves.length;
+    if (avgSpeed > 60) {
+      this._addWarning(
+        'first-layer-speed',
+        'First Layer',
+        'warning',
+        `First layer average speed is ${avgSpeed.toFixed(0)} mm/s (may cause adhesion issues)`,
+        [0],
+        { type: 'navigate', label: 'View first layer', fn: () => selectLayer(0) }
+      );
+    }
+  },
+
+  _checkLongTravel(parserRef) {
+    // Find travel moves >20mm - potential stringing
+    const longTravelLayers = new Set();
+    for (let layerNum = 1; layerNum < parserRef.layers.length; layerNum++) {
+      const moves = parserRef.layerMoves[layerNum];
+      if (!moves) continue;
+      for (const m of moves) {
+        if (m.extrude) continue;
+        const len = Math.hypot(m.x2 - m.x1, m.y2 - m.y1);
+        if (len > 20) {
+          longTravelLayers.add(layerNum);
+          break;
+        }
+      }
+    }
+
+    if (longTravelLayers.size > 10) {
+      this._addWarning(
+        'long-travel',
+        'Travel',
+        'info',
+        `${longTravelLayers.size} layers have travel moves >20mm (potential stringing)`,
+        Array.from(longTravelLayers).sort((a, b) => a - b).slice(0, 5),
+        { type: 'navigate', label: 'Check first occurrence', fn: () => {
+          const first = Math.min(...longTravelLayers);
+          selectLayer(first);
+        }}
+      );
+    }
+  },
+
+  _checkOverhangs() {
+    if (typeof structuralAnalyzer === 'undefined' || !structuralAnalyzer._findings) return;
+    const findings = structuralAnalyzer._findings;
+    if (!findings || findings.length === 0) return;
+
+    // Only report warning/critical overhang findings — info-level ones are minor
+    const overhangFindings = findings.filter(f =>
+      (f.category === 'overhang' || f.category === 'bridge') &&
+      (f.severity === 'warning' || f.severity === 'critical')
+    );
+    if (overhangFindings.length > 0) {
+      const layers = [...new Set(overhangFindings.map(f => f.location && f.location.layer).filter(l => l != null))].sort((a, b) => a - b);
+      if (layers.length === 0) return;
+      const hasCritical = overhangFindings.some(f => f.severity === 'critical');
+      this._addWarning(
+        'overhangs',
+        'Structure',
+        hasCritical ? 'critical' : 'warning',
+        `${overhangFindings.length} overhang/bridge issues detected across ${layers.length} layers`,
+        layers.slice(0, 10),
+        { type: 'navigate', label: 'Show overhang overlay', fn: () => { selectLayer(layers[0]); setColorMode('overhang-severity'); } }
+      );
+    }
+  },
+
+  _checkRetraction() {
+    if (typeof retractionAnalyzer === 'undefined' || !retractionAnalyzer._findings) return;
+    const findings = retractionAnalyzer._findings;
+    if (!findings || findings.length === 0) return;
+
+    if (findings.length > 5) {
+      const layers = [...new Set(findings.map(f => f.location && f.location.layer).filter(l => l != null))].sort((a, b) => a - b);
+      if (layers.length === 0) return;
+      this._addWarning(
+        'retraction-issues',
+        'Retraction',
+        'warning',
+        `${findings.length} retraction issues found (potential blobs or ooze)`,
+        layers.slice(0, 10),
+        { type: 'navigate', label: 'Show stringing risk overlay', fn: () => { selectLayer(layers[0]); setColorMode('stringing-risk'); } }
+      );
+    }
+  },
+
+  _checkWarpRisk() {
+    if (typeof thermalAnalyzer === 'undefined' || !thermalAnalyzer._findings) return;
+    const findings = thermalAnalyzer._findings;
+
+    // Check for warp-failure findings from the thermal analyzer
+    const warpFindings = findings.filter(f => f.category === 'warp-failure' && f.severity !== 'info');
+    if (warpFindings.length > 0) {
+      const worstSeverity = warpFindings.some(f => f.severity === 'critical') ? 'critical' : 'warning';
+      const descriptions = warpFindings.map(f => f.title).join('; ');
+      this._addWarning(
+        'warp-risk',
+        'Warping',
+        worstSeverity,
+        `Warp risk detected: ${descriptions}`,
+        [],
+        { type: 'navigate', label: 'Show warp view', fn: () => { if (typeof setView !== 'undefined') setView('warp'); } }
+      );
+    }
+  },
+
+  _groupConsecutive(nums) {
+    if (nums.length === 0) return [];
+    const sorted = nums.slice().sort((a, b) => a - b);
+    const groups = [[sorted[0]]];
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i] === sorted[i - 1] + 1) {
+        groups[groups.length - 1].push(sorted[i]);
+      } else {
+        groups.push([sorted[i]]);
+      }
+    }
+    return groups;
+  }
+};
+
+const Insights = {
+  items: [],
+  _dismissed: {},
+
+  generate(parserRef, diagnosticsRef) {
+    this.items = [];
+
+    // File key for tracking dismissed items
+    const fileKey = parserRef.lines.length + '_' + parserRef.layers.length;
+
+    // Load dismissed state
+    try { this._dismissed = JSON.parse(localStorage.getItem('gcode_dismissed_insights') || '{}'); } catch(e) { this._dismissed = {}; }
+
+    // Pull from diagnostics
+    for (const w of diagnosticsRef.warnings) {
+      if (this._dismissed[fileKey + ':' + w.id]) continue;
+      this.items.push({
+        id: w.id,
+        category: w.category,
+        severity: w.severity,
+        message: w.message,
+        action: w.action
+      });
+    }
+
+    // Smart suggestions
+    this._addSuggestions(parserRef, fileKey);
+    this._addTips(fileKey);
+
+    // Sort: critical > warning > info
+    const order = { critical: 0, warning: 1, info: 2 };
+    this.items.sort((a, b) => (order[a.severity] || 2) - (order[b.severity] || 2));
+
+    // Cap at 10
+    if (this.items.length > 10) this.items.length = 10;
+  },
+
+  _addSuggestions(parserRef, fileKey) {
+    // No pauses suggestion
+    if (typeof modifier !== 'undefined') {
+      const hasPauses = modifier.modifications.some(m => m.type === 'pause');
+      if (!hasPauses && !this._dismissed[fileKey + ':suggest-pause']) {
+        this.items.push({
+          id: 'suggest-pause',
+          category: 'Suggestion',
+          severity: 'info',
+          message: 'No pauses set \u2014 need to insert hardware or change filament?',
+          action: { type: 'navigate', label: 'Add pause', fn: () => switchTab('pause') }
+        });
+      }
+    }
+
+    // Large print recovery suggestion
+    if (parserRef.layers.length > 200 && !this._dismissed[fileKey + ':suggest-recovery']) {
+      this.items.push({
+        id: 'suggest-recovery',
+        category: 'Suggestion',
+        severity: 'info',
+        message: parserRef.layers.length + ' layers \u2014 consider setting up print recovery',
+        action: { type: 'navigate', label: 'Set up', fn: () => switchTab('recovery') }
+      });
+    }
+  },
+
+  _addTips(fileKey) {
+    if (!localStorage.getItem('gcode_measure_used') && !this._dismissed[fileKey + ':tip-measure']) {
+      this.items.push({
+        id: 'tip-measure',
+        category: 'Tip',
+        severity: 'info',
+        message: 'Try measurement mode (M) to verify part dimensions',
+        action: { type: 'navigate', label: 'Try it', fn: () => {
+          measureMode = true;
+          localStorage.setItem('gcode_measure_used', '1');
+          showToast('Measurement mode ON \u2014 click to place points');
+          if (typeof viewer !== 'undefined' && viewer) viewer.render(selectedLayer);
+        }}
+      });
+    }
+  },
+
+  dismiss(id) {
+    this.items = this.items.filter(i => i.id !== id);
+    const fileKey = parser.lines.length + '_' + parser.layers.length;
+    this._dismissed[fileKey + ':' + id] = true;
+    try { localStorage.setItem('gcode_dismissed_insights', JSON.stringify(this._dismissed)); } catch(e) {}
+  },
+
+  dismissAll() {
+    const fileKey = parser.lines.length + '_' + parser.layers.length;
+    for (const item of this.items) {
+      this._dismissed[fileKey + ':' + item.id] = true;
+    }
+    this.items = [];
+    try { localStorage.setItem('gcode_dismissed_insights', JSON.stringify(this._dismissed)); } catch(e) {}
+  }
+};
+
+// Live Stats Overlay — shows layer and hover info on the 3D viewer
+
+const StatsOverlay = {
+  _el: null,
+  _layerEl: null,
+  _hoverEl: null,
+
+  init() {
+    this._el = document.getElementById('statsOverlay');
+    this._layerEl = document.getElementById('statsLayerInfo');
+    this._hoverEl = document.getElementById('statsHoverInfo');
+  },
+
+  show() {
+    if (this._el) this._el.style.display = '';
+  },
+
+  hide() {
+    if (this._el) this._el.style.display = 'none';
+  },
+
+  updateLayerStats(layerNum) {
+    if (!this._layerEl) return;
+    const layer = parser.getLayerByNumber(layerNum);
+    if (!layer) { this._layerEl.innerHTML = ''; return; }
+
+    const totalLayers = parser.layers.length;
+    const zHeight = layer.zHeight !== null ? layer.zHeight.toFixed(2) : '?';
+
+    // Count extrusion vs travel moves
+    const moves = parser.layerMoves[layerNum];
+    let extrudeCount = 0, travelCount = 0;
+    let extrudeLen = 0, travelLen = 0;
+    let totalELen = 0;
+    if (moves) {
+      for (let i = 0; i < moves.length; i++) {
+        const m = moves[i];
+        const len = Math.hypot(m.x2 - m.x1, m.y2 - m.y1);
+        if (m.extrude) {
+          extrudeCount++;
+          extrudeLen += len;
+          if (m.eLength) totalELen += m.eLength;
+        } else {
+          travelCount++;
+          travelLen += len;
+        }
+      }
+    }
+
+    // Layer time from motionAnalyzer
+    let timeStr = '';
+    if (typeof motionAnalyzer !== 'undefined' && motionAnalyzer._layerTimes) {
+      const timeSecs = motionAnalyzer._layerTimes.get(layerNum);
+      if (timeSecs != null && timeSecs > 0) {
+        const secs = timeSecs;
+        if (secs >= 60) {
+          const m = Math.floor(secs / 60);
+          const s = Math.round(secs % 60);
+          timeStr = `${m}m ${s}s`;
+        } else {
+          timeStr = `${secs.toFixed(1)}s`;
+        }
+      }
+    }
+
+    let html = '';
+    html += `<span class="stat-label">Layer</span><span class="stat-value">${layerNum}</span><span class="stat-label"> / ${totalLayers - 1}</span>`;
+    html += `<span class="stat-label" style="margin-left:10px">Z</span><span class="stat-value">${zHeight} mm</span><br>`;
+    html += `<span class="stat-label">Extrude</span><span class="stat-value">${extrudeCount}</span>`;
+    html += `<span class="stat-label" style="margin-left:6px">(${extrudeLen.toFixed(1)} mm)</span>`;
+    html += `<span class="stat-label" style="margin-left:10px">Travel</span><span class="stat-value">${travelCount}</span>`;
+    html += `<span class="stat-label" style="margin-left:6px">(${travelLen.toFixed(1)} mm)</span><br>`;
+    if (totalELen > 0) {
+      html += `<span class="stat-label">Filament</span><span class="stat-value">${totalELen.toFixed(2)} mm</span>`;
+    }
+    if (timeStr) {
+      html += `<span class="stat-label" style="margin-left:10px">Time</span><span class="stat-value">${timeStr}</span>`;
+    }
+
+    // Comparison stats
+    if (typeof LayerComparison !== 'undefined' && LayerComparison.active) {
+      const compareMoves = LayerComparison.getCompareMoves(layerNum);
+      let cExtCount = 0, cTravelCount = 0, cExtLen = 0;
+      if (compareMoves) {
+        for (let i = 0; i < compareMoves.length; i++) {
+          const m = compareMoves[i];
+          if (m.extrude) { cExtCount++; cExtLen += Math.hypot(m.x2 - m.x1, m.y2 - m.y1); }
+          else cTravelCount++;
+        }
+      }
+      const label = LayerComparison.compareParser ? 'Compare file' : ('Compare L' + LayerComparison.compareLayerNum);
+      html += '<br><span class="stat-label" style="color:#fb923c;">' + label + '</span>';
+      html += `<span class="stat-label">Ext</span><span class="stat-value" style="color:#fb923c;">${cExtCount}</span>`;
+      html += `<span class="stat-label" style="margin-left:6px">(${cExtLen.toFixed(1)} mm)</span>`;
+      html += `<span class="stat-label" style="margin-left:10px">Travel</span><span class="stat-value" style="color:#fb923c;">${cTravelCount}</span>`;
+    }
+
+    this._layerEl.innerHTML = html;
+  },
+
+  showHoverInfo(move, layerNum, moveIndex) {
+    if (!this._hoverEl) return;
+    this._hoverEl.style.display = '';
+
+    const type = move.type || 'UNKNOWN';
+    const feedRate = move.feedRate || 0;
+    const speed = feedRate / 60; // mm/s
+    const moveLen = Math.hypot(move.x2 - move.x1, move.y2 - move.y1);
+    const eLen = move.eLength || 0;
+
+    // Flow rate: eLength / moveLen * speed (mm^3/s approximation)
+    let flowStr = '';
+    if (moveLen > 0.001 && eLen > 0 && speed > 0) {
+      const flow = (eLen / moveLen) * speed;
+      flowStr = flow.toFixed(2);
+    }
+
+    let html = '<div class="hover-divider"></div>';
+    html += `<span class="stat-label">Type</span><span class="stat-value">${type}</span>`;
+    html += `<span class="stat-label" style="margin-left:10px">Speed</span><span class="stat-value">${speed.toFixed(1)} mm/s</span><br>`;
+    html += `<span class="stat-label">Length</span><span class="stat-value">${moveLen.toFixed(2)} mm</span>`;
+    if (eLen > 0) {
+      html += `<span class="stat-label" style="margin-left:10px">E</span><span class="stat-value">${eLen.toFixed(4)} mm</span>`;
+    }
+    if (flowStr) {
+      html += `<br><span class="stat-label">Flow</span><span class="stat-value">${flowStr} mm\u00B3/s</span>`;
+    }
+    if (move.lineIndex != null) {
+      html += `<br><span class="stat-label">Line</span><span class="stat-link" onclick="goToLine(${move.lineIndex})">${move.lineIndex + 1}</span>`;
+    }
+
+    this._hoverEl.innerHTML = html;
+  },
+
+  clearHoverInfo() {
+    if (this._hoverEl) this._hoverEl.style.display = 'none';
+  }
+};
+
+// ===== MEASUREMENT TOOL =====
+
+const MeasureTool = {
+  points: [],
+  measurements: [],
+  _pending: null,
+  _labels: [],
+
+  reset() {
+    this.points = [];
+    this.measurements = [];
+    this._pending = null;
+    this._clearLabels();
+  },
+
+  addPoint(worldX, worldY, worldZ, nearestMove) {
+    let px = worldX, py = worldY, pz = worldZ;
+
+    // Snap to nearest endpoint if within 1mm
+    if (nearestMove) {
+      const d1 = Math.hypot(worldX - nearestMove.x1, worldY - nearestMove.y1);
+      const d2 = Math.hypot(worldX - nearestMove.x2, worldY - nearestMove.y2);
+      if (d1 <= d2 && d1 < 1) {
+        px = nearestMove.x1;
+        py = nearestMove.y1;
+      } else if (d2 < d1 && d2 < 1) {
+        px = nearestMove.x2;
+        py = nearestMove.y2;
+      }
+    }
+
+    const point = { x: px, y: py, z: pz };
+    this.points.push(point);
+
+    if (this._pending === null) {
+      this._pending = point;
+    } else {
+      const p1 = this._pending;
+      const p2 = point;
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const dz = p2.z - p1.z;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const distXY = Math.sqrt(dx * dx + dy * dy);
+      const deltaZ = Math.abs(dz);
+      this.measurements.push({ p1, p2, dist, distXY, deltaZ });
+      this._pending = null;
+    }
+  },
+
+  removeLast() {
+    if (this._pending !== null) {
+      // Remove the pending (unpaired) point
+      this.points.pop();
+      this._pending = null;
+    } else if (this.measurements.length > 0) {
+      // Remove the last completed measurement (both points)
+      this.measurements.pop();
+      this.points.pop();
+      this.points.pop();
+      // Clear any label for removed measurement
+      this._clearLabels();
+    }
+  },
+
+  getDrawData(layerZ) {
+    const color = [0.31, 0.76, 0.97, 1.0];
+    const verts = [];
+    const arm = 1; // 1mm crosshair arms
+    const zOff = 0.15; // float above geometry
+
+    // Draw crosshairs at all points
+    for (const pt of this.points) {
+      const z = pt.z + zOff;
+      // X arms
+      verts.push(pt.x - arm, pt.y, z, ...color);
+      verts.push(pt.x + arm, pt.y, z, ...color);
+      // Y arms
+      verts.push(pt.x, pt.y - arm, z, ...color);
+      verts.push(pt.x, pt.y + arm, z, ...color);
+    }
+
+    // Draw lines between measurement pairs
+    for (const m of this.measurements) {
+      const z1 = m.p1.z + zOff;
+      const z2 = m.p2.z + zOff;
+      verts.push(m.p1.x, m.p1.y, z1, ...color);
+      verts.push(m.p2.x, m.p2.y, z2, ...color);
+    }
+
+    if (verts.length === 0) return null;
+    return new Float32Array(verts);
+  },
+
+  updateLabels(viewer) {
+    // Ensure correct number of labels
+    while (this._labels.length < this.measurements.length) {
+      const el = document.createElement('div');
+      el.className = 'measure-label';
+      const container = document.querySelector('.viewer-canvas-area');
+      if (container) container.appendChild(el);
+      this._labels.push(el);
+    }
+    // Remove excess labels
+    while (this._labels.length > this.measurements.length) {
+      const el = this._labels.pop();
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }
+
+    // Position each label at midpoint of its measurement
+    for (let i = 0; i < this.measurements.length; i++) {
+      const m = this.measurements[i];
+      const midX = (m.p1.x + m.p2.x) / 2;
+      const midY = (m.p1.y + m.p2.y) / 2;
+      const midZ = (m.p1.z + m.p2.z) / 2 + 0.15;
+
+      const screen = viewer.worldToScreen(midX, midY, midZ);
+      const label = this._labels[i];
+
+      if (!screen) {
+        label.style.display = 'none';
+        continue;
+      }
+
+      label.style.display = '';
+      label.style.left = screen.x + 'px';
+      label.style.top = screen.y + 'px';
+      label.style.transform = 'translate(-50%, -100%) translateY(-6px)';
+
+      let text = m.dist.toFixed(2) + 'mm';
+      if (m.deltaZ > 0.01) {
+        text += ' (XY: ' + m.distXY.toFixed(2) + ', \u0394Z: ' + m.deltaZ.toFixed(2) + ')';
+      }
+      label.textContent = text;
+    }
+  },
+
+  _clearLabels() {
+    for (const el of this._labels) {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }
+    this._labels = [];
+  }
+};
+
+// ===== FLOW DIRECTION ARROWS =====
+// Renders directional arrow triangles along extrusion paths to visualize flow direction.
+
+const FlowArrows = {
+  enabled: false,
+  _arrowSpacing: 5.0, // mm between arrows
+
+  buildArrows(moves, layerZ, getColorFn) {
+    // Returns {verts: Float32Array, count: vertexCount} for gl.TRIANGLES
+    // Uses ribbon shader format: [x,y,z, r,g,b, alpha] per vertex
+
+    const verts = [];
+    const arrowLen = 0.6;  // arrow triangle length in mm
+    const arrowW = 0.3;    // arrow half-width in mm
+    const z = layerZ + 0.12; // slightly above path
+    let arrowCount = 0;
+    const MAX_ARROWS = 5000;
+
+    for (const move of moves) {
+      if (!move.extrude) continue;
+      const dx = move.x2 - move.x1, dy = move.y2 - move.y1;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < arrowLen * 2) continue; // skip very short moves
+
+      const ux = dx / len, uy = dy / len; // unit direction
+      const nx = -uy, ny = ux;            // perpendicular
+
+      const color = getColorFn ? getColorFn(move) : [0.7, 0.7, 0.7];
+      const alpha = 0.85;
+
+      const numArrows = Math.max(1, Math.floor(len / this._arrowSpacing));
+      const spacing = len / (numArrows + 1);
+
+      for (let i = 1; i <= numArrows && arrowCount < MAX_ARROWS; i++) {
+        const t = spacing * i;
+        // Arrow tip (forward)
+        const tipX = move.x1 + ux * (t + arrowLen * 0.5);
+        const tipY = move.y1 + uy * (t + arrowLen * 0.5);
+        // Arrow base corners
+        const baseX = move.x1 + ux * (t - arrowLen * 0.5);
+        const baseY = move.y1 + uy * (t - arrowLen * 0.5);
+        const lx = baseX + nx * arrowW, ly = baseY + ny * arrowW;
+        const rx = baseX - nx * arrowW, ry = baseY - ny * arrowW;
+
+        // Single triangle: tip, left, right
+        verts.push(tipX, tipY, z, ...color, alpha);
+        verts.push(lx, ly, z, ...color, alpha);
+        verts.push(rx, ry, z, ...color, alpha);
+        arrowCount++;
+      }
+    }
+
+    return { verts: new Float32Array(verts), count: arrowCount * 3 };
+  },
+
+  setZoomLevel(zoom) {
+    if (zoom > 200) this._arrowSpacing = 15;
+    else if (zoom > 100) this._arrowSpacing = 10;
+    else if (zoom > 50) this._arrowSpacing = 7;
+    else this._arrowSpacing = 5;
+  }
+};
+
+// Layer & File Comparison Mode
+// Allows comparing two layers side-by-side or comparing against a second file.
+
+const LayerComparison = {
+  active: false,
+  compareLayerNum: null,
+  compareParser: null,  // For file comparison (second parsed file)
+  compareTint: [1.0, 0.5, 0.2], // Orange tint for compare layer
+
+  activate(compareLayer) {
+    this.active = true;
+    this.compareLayerNum = compareLayer;
+  },
+
+  deactivate() {
+    this.active = false;
+    this.compareLayerNum = null;
+    this.compareParser = null;
+  },
+
+  loadCompareFile(file, callback) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const p = new GcodeParser();
+      p.parse(e.target.result);
+      this.compareParser = p;
+      if (callback) callback(p);
+    };
+    reader.readAsText(file);
+  },
+
+  getCompareMoves(layerNum) {
+    if (this.compareParser) {
+      return this.compareParser.layerMoves[layerNum] || [];
+    }
+    if (this.compareLayerNum != null) {
+      return parser.layerMoves[this.compareLayerNum] || [];
+    }
+    return [];
+  },
+
+  getCompareZ(layerNum) {
+    if (this.compareParser) {
+      const l = this.compareParser.layers[layerNum];
+      return l ? l.zHeight || 0 : 0;
+    }
+    if (this.compareLayerNum != null) {
+      const l = parser.layers[this.compareLayerNum];
+      return l ? l.zHeight || 0 : 0;
+    }
+    return 0;
+  },
+
+  computeDiffStats(movesA, movesB) {
+    let extCountA = 0, extCountB = 0, extLenA = 0, extLenB = 0;
+    for (const m of movesA) if (m.extrude) { extCountA++; extLenA += (m.eLength || 0); }
+    for (const m of movesB) if (m.extrude) { extCountB++; extLenB += (m.eLength || 0); }
+    return {
+      moveCountA: extCountA, moveCountB: extCountB,
+      moveDelta: extCountB - extCountA,
+      extLenA: extLenA.toFixed(1), extLenB: extLenB.toFixed(1),
+      extDelta: (extLenB - extLenA).toFixed(1)
+    };
+  }
+};
+
+// Right-click context menu for the 3D viewer canvas.
+
+const ContextMenu = {
+  _el: null,
+
+  init() {
+    this._el = document.createElement('div');
+    this._el.className = 'viewer-context-menu';
+    this._el.style.display = 'none';
+    document.body.appendChild(this._el);
+
+    // Close on any click outside the menu
+    document.addEventListener('click', () => this.close());
+
+    // Close on Escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') this.close();
+    });
+  },
+
+  show(x, y, items) {
+    // items: [{label, action, disabled?, divider?}]
+    this._el.innerHTML = '';
+    for (const item of items) {
+      if (item.divider) {
+        const div = document.createElement('div');
+        div.className = 'ctx-divider';
+        this._el.appendChild(div);
+        continue;
+      }
+      const row = document.createElement('div');
+      row.className = 'ctx-item' + (item.disabled ? ' disabled' : '');
+      row.textContent = item.label;
+      if (!item.disabled) {
+        row.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.close();
+          item.action();
+        });
+      }
+      this._el.appendChild(row);
+    }
+
+    this._el.style.display = '';
+    this._el.style.left = x + 'px';
+    this._el.style.top = y + 'px';
+
+    // Keep within viewport
+    requestAnimationFrame(() => {
+      const rect = this._el.getBoundingClientRect();
+      if (rect.right > window.innerWidth - 4) {
+        this._el.style.left = (x - rect.width) + 'px';
+      }
+      if (rect.bottom > window.innerHeight - 4) {
+        this._el.style.top = (y - rect.height) + 'px';
+      }
+    });
+  },
+
+  close() {
+    if (this._el) this._el.style.display = 'none';
+  },
+
+  /** Compute point-to-segment distance for a move */
+  _distToMove(px, py, move) {
+    const dx = move.x2 - move.x1, dy = move.y2 - move.y1;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return Math.hypot(px - move.x1, py - move.y1);
+    let t = ((px - move.x1) * dx + (py - move.y1) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const projX = move.x1 + t * dx, projY = move.y1 + t * dy;
+    return Math.hypot(px - projX, py - projY);
+  },
+
+  buildViewerMenu(move, layerNum) {
+    const items = [];
+
+    if (move) {
+      // Move info header (disabled, just for display)
+      const speed = ((move.feedRate || 0) / 60).toFixed(0);
+      items.push({ label: (move.type || 'Move') + ' \u2014 ' + speed + ' mm/s', disabled: true });
+
+      // Move actions
+      items.push({ label: 'Show in code', action: () => { if (typeof goToLine !== 'undefined') goToLine(move.lineIndex); }});
+      items.push({ label: 'Select move (edit mode)', action: () => {
+        editMode = true;
+        editSelectedMove = move;
+        if (typeof showEditInfoPanel !== 'undefined') showEditInfoPanel(move);
+        if (viewer) viewer.render(selectedLayer);
+      }});
+      items.push({ divider: true });
+    }
+
+    // Layer actions
+    items.push({ label: 'Add pause after layer ' + layerNum, action: () => {
+      switchTab('pause');
+      const input = document.getElementById('pauseLayer');
+      if (input) input.value = layerNum;
+    }});
+    items.push({ label: 'Add filament change at layer ' + layerNum, action: () => {
+      switchTab('filament');
+      const input = document.getElementById('filamentLayer');
+      if (input) input.value = layerNum;
+    }});
+
+    items.push({ divider: true });
+
+    // Measurement actions
+    if (typeof MeasureTool !== 'undefined' && MeasureTool.measurements.length > 0) {
+      items.push({ label: 'Clear measurements', action: () => {
+        MeasureTool.reset();
+        if (viewer) viewer.render(selectedLayer);
+      }});
+    }
+
+    // General actions
+    items.push({ label: 'Toggle measurement mode', action: () => {
+      if (typeof toggleMeasureMode !== 'undefined') toggleMeasureMode();
+    }});
+    items.push({ label: 'Fit view', action: () => { if (viewer) viewer.fitBounds(); }});
+
+    return items;
+  }
+};
+
 // ===== PRESSURE ADVANCE TUNER =====
 const PA_K_MAX = 0.2; // Max K-factor for direct-drive; Bowden setups may need higher
 
@@ -10185,6 +11669,83 @@ class GcodeViewer3D {
     return result;
   }
 
+  _drawCompareLayer(mvp) {
+    if (typeof LayerComparison === 'undefined' || !LayerComparison.active) return;
+
+    const compareMoves = LayerComparison.getCompareMoves(this.currentLayer);
+    if (!compareMoves || compareMoves.length === 0) return;
+
+    // Use the current layer's Z for overlay alignment so both layers appear at the same height
+    const layer = parser.getLayerByNumber(this.currentLayer);
+    const z = layer ? layer.zHeight || 0 : 0;
+    const halfW = 0.2;
+    const tint = LayerComparison.compareTint;
+
+    const ribbonVerts = [];
+
+    for (let i = 0; i < compareMoves.length; i++) {
+      const move = compareMoves[i];
+      if (!move.extrude) continue;
+
+      const dx = move.x2 - move.x1;
+      const dy = move.y2 - move.y1;
+      const len = Math.hypot(dx, dy);
+      if (len < 0.001) continue;
+
+      // Base color tinted with comparison orange
+      const baseColor = this._getTypeColor(move.type);
+      const r = baseColor[0] * tint[0];
+      const g = baseColor[1] * tint[1];
+      const b = baseColor[2] * tint[2];
+
+      // Perpendicular offset for ribbon width
+      const nx = -dy / len * halfW;
+      const ny = dx / len * halfW;
+
+      // Two triangles forming a ribbon
+      const verts = [
+        move.x1 + nx, move.y1 + ny, z,
+        move.x1 - nx, move.y1 - ny, z,
+        move.x2 + nx, move.y2 + ny, z,
+        move.x2 + nx, move.y2 + ny, z,
+        move.x1 - nx, move.y1 - ny, z,
+        move.x2 - nx, move.y2 - ny, z,
+      ];
+      for (let j = 0; j < 6; j++) {
+        ribbonVerts.push(
+          verts[j * 3], verts[j * 3 + 1], verts[j * 3 + 2],
+          r, g, b,
+          1.0
+        );
+      }
+    }
+
+    if (ribbonVerts.length === 0) return;
+
+    const gl = this.gl;
+    const data = new Float32Array(ribbonVerts);
+    const stride = 7 * 4;
+
+    gl.useProgram(this.prog);
+    gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+    gl.uniform4fv(this.u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
+    gl.uniform1f(this.u_alphaOverride, 0.5);
+
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STREAM_DRAW);
+
+    gl.enableVertexAttribArray(this.a_pos);
+    gl.vertexAttribPointer(this.a_pos, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(this.a_color);
+    gl.vertexAttribPointer(this.a_color, 3, gl.FLOAT, false, stride, 12);
+    gl.enableVertexAttribArray(this.a_alpha);
+    gl.vertexAttribPointer(this.a_alpha, 1, gl.FLOAT, false, stride, 24);
+
+    gl.drawArrays(gl.TRIANGLES, 0, ribbonVerts.length / 7);
+    gl.deleteBuffer(buf);
+  }
+
   clearBuffers() {
     if (this._broken) return;
     const gl = this.gl;
@@ -10619,7 +12180,12 @@ class GcodeViewer3D {
 
       } else {
         // Normal rendering (no simulation)
-        gl.uniform1f(this.u_alphaOverride, isCurrent ? -1.0 : dimAlpha);
+        const compareActive = typeof LayerComparison !== 'undefined' && LayerComparison.active;
+        const inRange = typeof layerRangeStart !== 'undefined' && layerRangeStart !== null &&
+                        typeof layerRangeEnd !== 'undefined' && layerRangeEnd !== null &&
+                        ln >= layerRangeStart && ln <= layerRangeEnd;
+        const layerAlpha = isCurrent ? (compareActive ? 0.5 : -1.0) : (inRange ? -1.0 : dimAlpha);
+        gl.uniform1f(this.u_alphaOverride, layerAlpha);
 
         // Draw extrusion ribbons
         if (buf.ribbonVao && buf.ribbonCount > 0) {
@@ -10643,6 +12209,11 @@ class GcodeViewer3D {
       }
     }
 
+    // Draw comparison overlay layer
+    this._drawCompareLayer(mvp);
+
+    // Draw flow direction arrows
+    this._drawFlowArrows(mvp);
     // Draw modification marker planes
     this._drawModMarkers(mvp);
     this._drawHoleHighlights(mvp);
@@ -10651,6 +12222,61 @@ class GcodeViewer3D {
     this._drawEditOverlays(mvp);
     this._drawEditPreview(mvp);
     this._drawClipPlaneQuad(mvp);
+  }
+
+  _drawFlowArrows(mvp) {
+    if (typeof FlowArrows === 'undefined' || !FlowArrows.enabled) return;
+
+    FlowArrows.setZoomLevel(this.cam.zoom);
+
+    const moves = parser.layerMoves[this.currentLayer];
+    if (!moves || moves.length === 0) return;
+
+    const layer = parser.layers[this.currentLayer];
+    const z = layer ? layer.zHeight || 0 : 0;
+
+    // Determine color function based on current color mode
+    const viewer = this;
+    let getColorFn;
+    if (colorMode === 'motion-type') {
+      getColorFn = (move) => viewer._getTypeColor(move.type);
+    } else {
+      // Heatmap mode — get stats and compute per-move color
+      const stats = typeof getHeatmapLayerStats !== 'undefined' ? getHeatmapLayerStats(this.currentLayer) : null;
+      if (stats) {
+        getColorFn = (move) => {
+          const idx = moves.indexOf(move);
+          const val = getHeatmapValue(move, viewer.currentLayer, idx);
+          if (val == null) return viewer._getTypeColor(move.type);
+          return viewer._getHeatmapColor(val, stats.min, stats.max, stats.invert);
+        };
+      } else {
+        getColorFn = (move) => viewer._getTypeColor(move.type);
+      }
+    }
+
+    const data = FlowArrows.buildArrows(moves, z, getColorFn);
+    if (data.count === 0) return;
+
+    const gl = this.gl;
+    gl.useProgram(this.prog);
+    gl.uniformMatrix4fv(this.u_mvp, false, mvp);
+    gl.uniform1f(this.u_alphaOverride, -1.0);
+    gl.uniform4fv(this.u_clipPlane, this.clipPlane || [0, 0, 0, 0]);
+
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, data.verts, gl.STREAM_DRAW);
+
+    gl.enableVertexAttribArray(this.a_pos);
+    gl.vertexAttribPointer(this.a_pos, 3, gl.FLOAT, false, 28, 0);
+    gl.enableVertexAttribArray(this.a_color);
+    gl.vertexAttribPointer(this.a_color, 3, gl.FLOAT, false, 28, 12);
+    gl.enableVertexAttribArray(this.a_alpha);
+    gl.vertexAttribPointer(this.a_alpha, 1, gl.FLOAT, false, 28, 24);
+
+    gl.drawArrays(gl.TRIANGLES, 0, data.count);
+    gl.deleteBuffer(buf);
   }
 
   _drawModMarkers(mvp) {
@@ -10825,6 +12451,24 @@ class GcodeViewer3D {
     return { x: near[0] + t * (far[0] - near[0]), y: near[1] + t * (far[1] - near[1]), z: layerZ };
   }
 
+  worldToScreen(wx, wy, wz) {
+    const mvp = this._getMVP();
+    const clip = [
+      mvp[0]*wx + mvp[4]*wy + mvp[8]*wz + mvp[12],
+      mvp[1]*wx + mvp[5]*wy + mvp[9]*wz + mvp[13],
+      mvp[2]*wx + mvp[6]*wy + mvp[10]*wz + mvp[14],
+      mvp[3]*wx + mvp[7]*wy + mvp[11]*wz + mvp[15]
+    ];
+    if (clip[3] <= 0) return null;
+    const ndcX = clip[0] / clip[3];
+    const ndcY = clip[1] / clip[3];
+    const canvas = this.gl.canvas;
+    return {
+      x: (ndcX * 0.5 + 0.5) * canvas.clientWidth,
+      y: (1 - (ndcY * 0.5 + 0.5)) * canvas.clientHeight
+    };
+  }
+
   findNearestMove(worldX, worldY, layerNum) {
     const moves = parser.layerMoves[layerNum];
     if (!moves || moves.length === 0) return null;
@@ -10848,24 +12492,13 @@ class GcodeViewer3D {
   }
 
   _drawMeasurement(mvp) {
-    if (!measureMode || measurePoints.length === 0) return;
+    if (!measureMode || MeasureTool.points.length === 0) return;
     const gl = this.gl;
-    const verts = [];
-    const color = [1.0, 1.0, 1.0, 1.0];
+    const layer = parser.getLayerByNumber(this.currentLayer);
+    const layerZ = layer?.zHeight || 0;
+    const data = MeasureTool.getDrawData(layerZ);
+    if (!data) return;
 
-    for (const pt of measurePoints) {
-      const s = 0.5;
-      verts.push(pt.x - s, pt.y, pt.z, ...color, pt.x + s, pt.y, pt.z, ...color);
-      verts.push(pt.x, pt.y - s, pt.z, ...color, pt.x, pt.y + s, pt.z, ...color);
-    }
-
-    if (measurePoints.length === 2) {
-      const [a, b] = measurePoints;
-      verts.push(a.x, a.y, a.z, ...color, b.x, b.y, b.z, ...color);
-    }
-
-    if (verts.length === 0) return;
-    const data = new Float32Array(verts);
     const stride = 7 * 4;
     gl.useProgram(this.lineProg);
     gl.uniformMatrix4fv(this.line_u_mvp, false, mvp);
@@ -10877,8 +12510,10 @@ class GcodeViewer3D {
     gl.vertexAttribPointer(this.line_a_pos, 3, gl.FLOAT, false, stride, 0);
     gl.enableVertexAttribArray(this.line_a_color);
     gl.vertexAttribPointer(this.line_a_color, 4, gl.FLOAT, false, stride, 12);
-    gl.drawArrays(gl.LINES, 0, verts.length / 7);
+    gl.drawArrays(gl.LINES, 0, data.length / 7);
     gl.deleteBuffer(vbo);
+
+    MeasureTool.updateLabels(this);
   }
 
   _drawMoveHighlight(mvp, move, color, alpha, lineOffset, crosshairSize) {
@@ -11135,7 +12770,30 @@ class GcodeViewer3D {
   _setupInteraction() {
     const c = this.canvas;
 
-    c.addEventListener('contextmenu', e => e.preventDefault());
+    c.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      if (typeof ContextMenu === 'undefined') return;
+
+      const rect = c.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const layer = parser.layers[this.currentLayer];
+      const z = layer ? layer.zHeight || 0 : 0;
+      const pt = this.screenToLayerPoint(sx, sy, z);
+
+      let move = null;
+      if (pt) {
+        move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
+        // Check if move is close enough (within 5mm) using point-to-segment distance
+        if (move) {
+          const dist = ContextMenu._distToMove(pt.x, pt.y, move);
+          if (dist > 5) move = null;
+        }
+      }
+
+      const items = ContextMenu.buildViewerMenu(move, this.currentLayer);
+      ContextMenu.show(e.clientX, e.clientY, items);
+    });
 
     c.addEventListener('mousedown', e => {
       this._dragging = true;
@@ -11281,6 +12939,48 @@ class GcodeViewer3D {
       });
     });
 
+    // Stats hover — active when visual view is showing and no special mode is active
+    let statsHoverRaf = false;
+    c.addEventListener('mousemove', e => {
+      if (this._dragging) return;
+      if (pauseSelectMode || editMode) return;
+      if (statsHoverRaf) return;
+      statsHoverRaf = true;
+      requestAnimationFrame(() => {
+        statsHoverRaf = false;
+        if (this._dragging || pauseSelectMode || editMode) return;
+        if (typeof StatsOverlay === 'undefined') return;
+        const rect = c.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const layer = parser.getLayerByNumber(this.currentLayer);
+        if (!layer) return;
+        const z = layer.zHeight || 0;
+        const pt = this.screenToLayerPoint(sx, sy, z);
+        if (!pt) { StatsOverlay.clearHoverInfo(); return; }
+        const move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
+        if (!move) { StatsOverlay.clearHoverInfo(); return; }
+        // Compute distance to nearest move for threshold check
+        const dx = move.x2 - move.x1, dy = move.y2 - move.y1;
+        const lenSq = dx * dx + dy * dy;
+        let dist;
+        if (lenSq === 0) {
+          dist = Math.hypot(pt.x - move.x1, pt.y - move.y1);
+        } else {
+          let t = ((pt.x - move.x1) * dx + (pt.y - move.y1) * dy) / lenSq;
+          t = Math.max(0, Math.min(1, t));
+          dist = Math.hypot(pt.x - (move.x1 + t * dx), pt.y - (move.y1 + t * dy));
+        }
+        if (dist < 2) {
+          const moves = parser.layerMoves[this.currentLayer];
+          const moveIndex = moves ? moves.indexOf(move) : -1;
+          StatsOverlay.showHoverInfo(move, this.currentLayer, moveIndex);
+        } else {
+          StatsOverlay.clearHoverInfo();
+        }
+      });
+    });
+
     c.addEventListener('mouseleave', () => {
       if (editHoveredMove) {
         editHoveredMove = null;
@@ -11291,6 +12991,7 @@ class GcodeViewer3D {
         hoveredMove = null;
         if (pauseSelectMode) this.render(this.currentLayer);
       }
+      if (typeof StatsOverlay !== 'undefined') StatsOverlay.clearHoverInfo();
     });
 
     window.addEventListener('mouseup', () => { this._dragging = false; });
@@ -11382,14 +13083,9 @@ class GcodeViewer3D {
       if (measureMode) {
         const pt = this.screenToLayerPoint(sx, sy, z);
         if (pt) {
-          measurePoints.push(pt);
-          if (measurePoints.length > 2) measurePoints = [measurePoints[measurePoints.length - 1]];
+          const nearest = this.findNearestMove(pt.x, pt.y, this.currentLayer);
+          MeasureTool.addPoint(pt.x, pt.y, z, nearest);
           this.render(this.currentLayer);
-          if (measurePoints.length === 2) {
-            const [a, b] = measurePoints;
-            const dist = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
-            showToast('Distance: ' + dist.toFixed(2) + ' mm', 'success', 6000);
-          }
         }
         return;
       }
@@ -11487,6 +13183,436 @@ function computeClipPlane(rotDeg, tiltDeg, sweep) {
   return [nx, ny, nz, -sweep];
 }
 
+// Inline tooltip system — attaches "?" badges to elements with data-tooltip attributes
+const Tooltips = {
+  _el: null,
+  _timeout: null,
+  _sessionCount: 0,
+
+  init() {
+    this._sessionCount = parseInt(localStorage.getItem('gcode_tooltip_sessions') || '0');
+    localStorage.setItem('gcode_tooltip_sessions', String(this._sessionCount + 1));
+
+    // Create shared tooltip element
+    this._el = document.createElement('div');
+    this._el.className = 'inline-tooltip';
+    this._el.style.display = 'none';
+    document.body.appendChild(this._el);
+
+    this._attachAll();
+  },
+
+  _attachAll() {
+    document.querySelectorAll('[data-tooltip]').forEach(el => {
+      if (el.querySelector('.tooltip-badge')) return; // already attached
+      const badge = document.createElement('span');
+      badge.className = 'tooltip-badge';
+      if (this._sessionCount < 3) badge.classList.add('pulse');
+      badge.textContent = '?';
+      badge.addEventListener('mouseenter', (e) => this._show(e, el.dataset.tooltip));
+      badge.addEventListener('mouseleave', () => this._hide());
+      el.appendChild(badge);
+    });
+  },
+
+  refresh() {
+    this._attachAll();
+  },
+
+  _show(e, text) {
+    clearTimeout(this._timeout);
+    this._el.textContent = text;
+    this._el.style.display = '';
+
+    // Position near the badge
+    const rect = e.target.getBoundingClientRect();
+    let left = rect.right + 8;
+    let top = rect.top - 4;
+
+    // Measure tooltip size
+    const tipW = this._el.offsetWidth;
+    const tipH = this._el.offsetHeight;
+
+    // Keep within viewport
+    if (left + tipW > window.innerWidth - 12) {
+      left = rect.left - tipW - 8;
+    }
+    if (top + tipH > window.innerHeight - 12) {
+      top = window.innerHeight - tipH - 12;
+    }
+    if (top < 4) top = 4;
+
+    this._el.style.left = left + 'px';
+    this._el.style.top = top + 'px';
+  },
+
+  _hide() {
+    this._timeout = setTimeout(() => {
+      if (this._el) this._el.style.display = 'none';
+    }, 100);
+  }
+};
+
+const CommandPalette = {
+  _commands: [],
+  _selectedIndex: 0,
+  _visible: false,
+  _recentIds: [],
+
+  register(commands) {
+    // commands: [{id, label, category, shortcut, action, condition}]
+    this._commands = this._commands.concat(commands);
+    // Load recent from localStorage
+    try {
+      this._recentIds = JSON.parse(localStorage.getItem('gcode_recent_commands') || '[]');
+    } catch(e) { this._recentIds = []; }
+  },
+
+  toggle() {
+    this._visible ? this.close() : this.open();
+  },
+
+  open() {
+    this._visible = true;
+    this._selectedIndex = 0;
+    const overlay = document.getElementById('commandPalette');
+    const input = document.getElementById('cmdPaletteInput');
+    if (!overlay || !input) return;
+    overlay.style.display = '';
+    input.value = '';
+    input.focus();
+    this._render(''); // show recent/all
+
+    // Close on overlay background click
+    overlay.onclick = (e) => { if (e.target === overlay) this.close(); };
+
+    // Key handling
+    input.onkeydown = (e) => this._onKey(e);
+    input.oninput = () => this._render(input.value);
+  },
+
+  close() {
+    this._visible = false;
+    const overlay = document.getElementById('commandPalette');
+    if (overlay) overlay.style.display = 'none';
+  },
+
+  _filter(query) {
+    let cmds = this._commands.filter(c => !c.condition || c.condition());
+
+    if (!query) {
+      // Show recent first, then all
+      const recent = [];
+      const rest = [];
+      for (const cmd of cmds) {
+        if (this._recentIds.includes(cmd.id)) recent.push(cmd);
+        else rest.push(cmd);
+      }
+      // Sort recent by recency
+      recent.sort((a, b) => this._recentIds.indexOf(a.id) - this._recentIds.indexOf(b.id));
+      return [...recent, ...rest];
+    }
+
+    const q = query.toLowerCase();
+    // Score by match quality
+    const scored = cmds.map(cmd => {
+      const label = cmd.label.toLowerCase();
+      const cat = (cmd.category || '').toLowerCase();
+      let score = 0;
+      if (label === q) score = 100;
+      else if (label.startsWith(q)) score = 80;
+      else if (label.includes(q)) score = 60;
+      else if (cat.includes(q)) score = 40;
+      else {
+        // Fuzzy: check if all query chars appear in order
+        let qi = 0;
+        for (let li = 0; li < label.length && qi < q.length; li++) {
+          if (label[li] === q[qi]) qi++;
+        }
+        if (qi === q.length) score = 20;
+      }
+      return { cmd, score };
+    }).filter(s => s.score > 0);
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.map(s => s.cmd);
+  },
+
+  _render(query) {
+    const results = document.getElementById('cmdPaletteResults');
+    if (!results) return;
+
+    const filtered = this._filter(query);
+    this._selectedIndex = Math.min(this._selectedIndex, Math.max(0, filtered.length - 1));
+
+    results.innerHTML = filtered.slice(0, 20).map((cmd, i) => {
+      const selected = i === this._selectedIndex ? ' selected' : '';
+      const shortcut = cmd.shortcut ? `<span class="cmd-shortcut">${cmd.shortcut}</span>` : '';
+      const category = cmd.category ? `<span class="cmd-category">${cmd.category}</span>` : '';
+      return `<div class="cmd-result${selected}" data-index="${i}">
+        <span class="cmd-label">${cmd.label}</span>
+        ${category}${shortcut}
+      </div>`;
+    }).join('');
+
+    // Click handlers
+    results.querySelectorAll('.cmd-result').forEach(el => {
+      el.addEventListener('click', () => {
+        const idx = parseInt(el.dataset.index);
+        this._execute(filtered[idx]);
+      });
+    });
+  },
+
+  _onKey(e) {
+    const input = document.getElementById('cmdPaletteInput');
+    const filtered = this._filter(input?.value || '');
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      this.close();
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      this._selectedIndex = Math.min(this._selectedIndex + 1, filtered.length - 1);
+      this._render(input?.value || '');
+      this._scrollToSelected();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      this._selectedIndex = Math.max(this._selectedIndex - 1, 0);
+      this._render(input?.value || '');
+      this._scrollToSelected();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (filtered[this._selectedIndex]) this._execute(filtered[this._selectedIndex]);
+    }
+  },
+
+  _scrollToSelected() {
+    const results = document.getElementById('cmdPaletteResults');
+    const selected = results?.querySelector('.cmd-result.selected');
+    if (selected) selected.scrollIntoView({ block: 'nearest' });
+  },
+
+  _execute(cmd) {
+    if (!cmd) return;
+    this.close();
+
+    // Track recent
+    this._recentIds = this._recentIds.filter(id => id !== cmd.id);
+    this._recentIds.unshift(cmd.id);
+    if (this._recentIds.length > 5) this._recentIds.length = 5;
+    localStorage.setItem('gcode_recent_commands', JSON.stringify(this._recentIds));
+
+    cmd.action();
+  }
+};
+
+// ===== FIRST-RUN GUIDED TOUR =====
+
+const Onboarding = {
+  _currentStep: 0,
+  _steps: [
+    {
+      target: '#dropZone',
+      title: 'Load a G-code File',
+      text: 'Drag and drop a .gcode file here, or click to browse. Supports Cura, PrusaSlicer, Bambu Studio, and more.'
+    },
+    {
+      target: '#layerList',
+      title: 'Layer Navigator',
+      text: 'Browse layers with the list, arrow keys, or [ ] bracket keys. Click a layer to view it.'
+    },
+    {
+      target: '#viewCodeBtn',
+      title: 'Switch Views',
+      text: 'Toggle between the code editor and 3D visual preview with Space. Press W for warp prediction view.'
+    },
+    {
+      target: '.tabs',
+      title: 'Modification Tools',
+      text: 'Add pauses, filament changes, Z-offsets, and custom G-code from these tabs. Use number keys 1-9 to switch.'
+    },
+    {
+      target: '[data-tab="analysis"]',
+      title: 'Analysis & Diagnostics',
+      text: 'Run diagnostics to detect cooling issues, overhangs, retraction problems, and more. Results appear as heatmap overlays.'
+    },
+    {
+      target: '.preview-toolbar',
+      title: 'Viewer Toolbar',
+      text: 'Measure distances (M), show flow arrows (D), compare layers (C), toggle cross-sections (X), and simulate prints (P).'
+    },
+    {
+      target: '#statsOverlay',
+      title: 'Live Stats',
+      text: 'Layer stats are shown here. Hover over moves in the 3D view to see speed, flow rate, and line number.'
+    },
+    {
+      target: null,
+      title: 'Keyboard Shortcuts',
+      text: 'Press ? anytime to see all keyboard shortcuts. Press Ctrl+K to open the command palette for quick access to any feature.'
+    }
+  ],
+
+  _keyHandler: null,
+
+  start() {
+    this._currentStep = 0;
+    this._attachKeyboard();
+    this._showStep();
+  },
+
+  next() {
+    this._currentStep++;
+    if (this._currentStep >= this._steps.length) {
+      this.complete();
+    } else {
+      this._showStep();
+    }
+  },
+
+  prev() {
+    if (this._currentStep > 0) {
+      this._currentStep--;
+      this._showStep();
+    }
+  },
+
+  skip() {
+    this.complete();
+  },
+
+  complete() {
+    localStorage.setItem('gcode_tour_completed', '1');
+    this._hideOverlay();
+    this._detachKeyboard();
+  },
+
+  _attachKeyboard() {
+    this._keyHandler = (e) => {
+      if (e.key === 'Enter' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.next();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.prev();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.skip();
+      }
+    };
+    document.addEventListener('keydown', this._keyHandler, true);
+  },
+
+  _detachKeyboard() {
+    if (this._keyHandler) {
+      document.removeEventListener('keydown', this._keyHandler, true);
+      this._keyHandler = null;
+    }
+  },
+
+  _showStep() {
+    const step = this._steps[this._currentStep];
+    const overlay = document.getElementById('tourOverlay');
+    const card = document.getElementById('tourCard');
+    const title = document.getElementById('tourTitle');
+    const text = document.getElementById('tourText');
+    const dots = document.getElementById('tourDots');
+    const prevBtn = document.getElementById('tourPrev');
+    const nextBtn = document.getElementById('tourNext');
+
+    if (!overlay || !card) return;
+
+    // Update content
+    title.textContent = step.title;
+    text.textContent = step.text;
+
+    // Progress dots
+    dots.innerHTML = this._steps.map(function(_, i) {
+      return '<span class="tour-dot' + (i === Onboarding._currentStep ? ' active' : '') + '"></span>';
+    }).join('');
+
+    // Show/hide prev button
+    prevBtn.style.display = this._currentStep === 0 ? 'none' : '';
+
+    // Update next button text on last step
+    nextBtn.textContent = this._currentStep === this._steps.length - 1 ? 'Finish' : 'Next';
+
+    // Show overlay
+    overlay.style.display = '';
+
+    // Clear previous transform
+    card.style.transform = '';
+
+    // Position spotlight and card
+    if (step.target) {
+      var targetEl = document.querySelector(step.target);
+      if (targetEl) {
+        var rect = targetEl.getBoundingClientRect();
+        var padding = 8;
+
+        // Set spotlight hole via CSS custom properties
+        overlay.style.setProperty('--spot-x', (rect.left - padding) + 'px');
+        overlay.style.setProperty('--spot-y', (rect.top - padding) + 'px');
+        overlay.style.setProperty('--spot-w', (rect.width + padding * 2) + 'px');
+        overlay.style.setProperty('--spot-h', (rect.height + padding * 2) + 'px');
+        overlay.classList.add('has-spotlight');
+
+        // Position card near target
+        this._positionCard(card, rect);
+      } else {
+        overlay.classList.remove('has-spotlight');
+        this._centerCard(card);
+      }
+    } else {
+      overlay.classList.remove('has-spotlight');
+      this._centerCard(card);
+    }
+  },
+
+  _positionCard(card, targetRect) {
+    card.style.position = 'fixed';
+    card.style.transform = '';
+
+    var cardW = 320;
+    var gap = 16;
+
+    // Prefer positioning below the target
+    var top = targetRect.bottom + gap;
+    var left = targetRect.left;
+
+    // If too low, position above
+    if (top + 200 > window.innerHeight) {
+      top = targetRect.top - 200 - gap;
+    }
+    // If too far right, shift left
+    if (left + cardW > window.innerWidth - 12) {
+      left = window.innerWidth - cardW - 12;
+    }
+    if (left < 12) left = 12;
+    if (top < 12) top = 12;
+
+    card.style.left = left + 'px';
+    card.style.top = top + 'px';
+  },
+
+  _centerCard(card) {
+    card.style.position = 'fixed';
+    card.style.left = '50%';
+    card.style.top = '40%';
+    card.style.transform = 'translate(-50%, -50%)';
+  },
+
+  _hideOverlay() {
+    var overlay = document.getElementById('tourOverlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+};
+
 // UI rendering and interaction functions.
 // References globals (parser, modifier, viewer, selectedLayer, etc.) from app.js.
 // In the built single-file output, everything shares one script scope.
@@ -11543,7 +13669,7 @@ function toggleMeasureMode() {
     document.getElementById('editModeBanner').classList.remove('visible');
     hideEditInfoPanel();
   }
-  measurePoints = [];
+  MeasureTool.reset();
   document.getElementById('measureToggle').classList.toggle('active', measureMode);
   document.getElementById('viewerCanvas').style.cursor = measureMode ? 'crosshair' : '';
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
@@ -11560,7 +13686,7 @@ function togglePauseSelectMode() {
   // Mutual exclusion with measure mode
   if (pauseSelectMode && measureMode) {
     measureMode = false;
-    measurePoints = [];
+    MeasureTool.reset();
     document.getElementById('measureToggle').classList.remove('active');
   }
   if (pauseSelectMode && editMode) {
@@ -11598,7 +13724,7 @@ function toggleEditMode() {
   if (editMode) {
     if (measureMode) {
       measureMode = false;
-      measurePoints = [];
+      MeasureTool.reset();
       document.getElementById('measureToggle').classList.remove('active');
     }
     if (pauseSelectMode) {
@@ -11630,6 +13756,88 @@ function toggleCrossSection() {
     onCrossSectionChange();
   } else {
     viewer.clearClipPlane();
+  }
+}
+
+function toggleFlowArrows() {
+  if (typeof FlowArrows === 'undefined') return;
+  FlowArrows.enabled = !FlowArrows.enabled;
+  const btn = document.getElementById('flowArrowsToggle');
+  if (btn) btn.classList.toggle('active', FlowArrows.enabled);
+  showToast(FlowArrows.enabled ? 'Flow arrows ON' : 'Flow arrows OFF');
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+// ===== Comparison mode =====
+
+function toggleCompareMode() {
+  if (typeof LayerComparison === 'undefined') return;
+  if (LayerComparison.active) {
+    LayerComparison.deactivate();
+    document.getElementById('compareControls').style.display = 'none';
+    const btn = document.getElementById('compareToggle');
+    if (btn) btn.classList.remove('active');
+    showToast('Comparison OFF');
+  } else {
+    const compareLayer = Math.min(selectedLayer + 1, parser.layers.length - 1);
+    LayerComparison.activate(compareLayer);
+    document.getElementById('compareControls').style.display = '';
+    document.getElementById('compareLayerInput').value = compareLayer;
+    const btn = document.getElementById('compareToggle');
+    if (btn) btn.classList.add('active');
+    showToast('Comparison ON \u2014 showing layer ' + compareLayer);
+    updateCompareDiffStats();
+  }
+  viewer.render(selectedLayer);
+}
+
+function updateCompareDiffStats() {
+  if (typeof LayerComparison === 'undefined' || !LayerComparison.active) return;
+  const el = document.getElementById('compareDiffStats');
+  if (!el) return;
+
+  const currentMoves = parser.layerMoves[selectedLayer] || [];
+  const compareMoves = LayerComparison.getCompareMoves(selectedLayer);
+  const stats = LayerComparison.computeDiffStats(currentMoves, compareMoves);
+
+  const sign = (v) => +v > 0 ? '+' + v : v;
+  let html = `Moves: ${stats.moveCountA} vs ${stats.moveCountB} (${sign(stats.moveDelta)})<br>`;
+  html += `E-length: ${stats.extLenA} vs ${stats.extLenB} (${sign(stats.extDelta)})`;
+
+  if (LayerComparison.compareParser) {
+    html = '<strong>File comparison</strong><br>' + html;
+  }
+
+  el.innerHTML = html;
+}
+
+function initCompareControls() {
+  const layerInput = document.getElementById('compareLayerInput');
+  if (layerInput) {
+    layerInput.addEventListener('change', () => {
+      if (typeof LayerComparison === 'undefined' || !LayerComparison.active) return;
+      const val = Math.max(0, Math.min(+layerInput.value, parser.layers.length - 1));
+      layerInput.value = val;
+      LayerComparison.compareLayerNum = val;
+      LayerComparison.compareParser = null; // Clear file comparison when layer is set manually
+      updateCompareDiffStats();
+      viewer.render(selectedLayer);
+    });
+  }
+
+  const fileBtn = document.getElementById('compareFileBtn');
+  const fileInput = document.getElementById('compareFileInput');
+  if (fileBtn && fileInput) {
+    fileBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      if (!fileInput.files || !fileInput.files[0]) return;
+      LayerComparison.loadCompareFile(fileInput.files[0], (p) => {
+        showToast('Comparison file loaded (' + p.layers.length + ' layers)', 'success');
+        updateCompareDiffStats();
+        viewer.render(selectedLayer);
+      });
+      fileInput.value = ''; // Reset so same file can be re-selected
+    });
   }
 }
 
@@ -12482,6 +14690,8 @@ function loadFile(file) {
     pauseSelectMode = false;
     selectedMove = null;
     hoveredMove = null;
+    layerRangeStart = null;
+    layerRangeEnd = null;
     document.getElementById('pauseSelectToggle').classList.remove('active');
     document.getElementById('viewerCanvas').style.cursor = '';
 
@@ -12527,6 +14737,11 @@ function loadFile(file) {
     else renderFullPreview();
 
     showOnboardHint('visual', 'viewVisualBtn', 'Try the 3D Visual view');
+
+    // Trigger guided tour on first file load
+    if (!localStorage.getItem('gcode_tour_completed')) {
+      setTimeout(function() { Onboarding.start(); }, 600);
+    }
   };
   if (isBgcode) reader.readAsArrayBuffer(file);
   else reader.readAsText(file);
@@ -12562,10 +14777,28 @@ function renderLayerList() {
   }
 
   let html = '';
+
+  // Range action bar when a range is selected
+  if (layerRangeStart !== null && layerRangeEnd !== null) {
+    const count = layerRangeEnd - layerRangeStart + 1;
+    html += `<div class="range-action-bar">
+      <div class="range-label">Layers ${layerRangeStart}-${layerRangeEnd} selected (${count} layers)</div>
+      <div class="range-actions">
+        <button onclick="addPauseAfterRange()">Add pause after</button>
+        <button onclick="addZOffsetToRange()">Z-offset</button>
+        <button onclick="showRangeStats()">Stats</button>
+        <button onclick="clearLayerRange()">Clear</button>
+      </div>
+    </div>`;
+  }
+
   for (const layer of parser.layers) {
     const active = selectedLayer === layer.number ? ' active' : '';
+    const inRange = layerRangeStart !== null && layerRangeEnd !== null &&
+                    layer.number >= layerRangeStart && layer.number <= layerRangeEnd;
+    const rangeClass = inRange ? ' range-selected' : '';
     const hasMod = moddedLayers.has(layer.number);
-    html += `<div class="layer-item${active}" data-layer="${layer.number}" onclick="selectLayer(${layer.number})">
+    html += `<div class="layer-item${active}${rangeClass}" data-layer="${layer.number}" onclick="selectLayerClick(event, ${layer.number})">
       ${hasMod ? '<div class="layer-mod-badge"></div>' : ''}
       <span class="layer-num">${layer.number}</span>
       <span class="layer-z">${layer.zHeight !== null ? 'Z' + layer.zHeight.toFixed(2) : ''}</span>
@@ -12613,6 +14846,14 @@ function selectLayer(num) {
     updateWarpLegend();
   }
 
+  // Update stats overlay
+  if ((currentView === 'visual' || currentView === 'warp') && typeof StatsOverlay !== 'undefined') {
+    StatsOverlay.updateLayerStats(num);
+  }
+
+  // Update comparison diff stats if active
+  if (typeof updateCompareDiffStats === 'function') updateCompareDiffStats();
+
   // Fill layer number into active tab's layer input
   const activeTab = document.querySelector('.tab.active')?.dataset.tab;
   if (activeTab === 'pause') document.getElementById('pauseLayer').value = num;
@@ -12624,6 +14865,70 @@ function selectLayer(num) {
   if (holeDetector.scannedHoles.length > 0 || holeDetector.holes.has(num)) {
     renderHoleList();
   }
+}
+
+function selectLayerClick(event, layerNum) {
+  if (event.shiftKey && selectedLayer !== null) {
+    // Range selection
+    layerRangeStart = Math.min(selectedLayer, layerNum);
+    layerRangeEnd = Math.max(selectedLayer, layerNum);
+    renderLayerList();
+    if (viewer) viewer.render(selectedLayer);
+    showToast('Selected layers ' + layerRangeStart + '-' + layerRangeEnd);
+  } else {
+    // Normal click — clear range and select
+    layerRangeStart = null;
+    layerRangeEnd = null;
+    selectLayer(layerNum);
+  }
+}
+
+function clearLayerRange() {
+  layerRangeStart = null;
+  layerRangeEnd = null;
+  renderLayerList();
+  if (viewer) viewer.render(selectedLayer);
+}
+
+function showRangeStats() {
+  if (layerRangeStart === null || layerRangeEnd === null) return;
+  let totalMoves = 0, totalExt = 0, totalTravel = 0;
+  for (let i = layerRangeStart; i <= layerRangeEnd; i++) {
+    const moves = parser.layerMoves[i] || [];
+    for (const m of moves) {
+      totalMoves++;
+      if (m.extrude) {
+        totalExt += (m.eLength || 0);
+      } else {
+        totalTravel += Math.hypot(m.x2 - m.x1, m.y2 - m.y1);
+      }
+    }
+  }
+  const zStart = (parser.layers[layerRangeStart]?.zHeight || 0).toFixed(2);
+  const zEnd = (parser.layers[layerRangeEnd]?.zHeight || 0).toFixed(2);
+  const count = layerRangeEnd - layerRangeStart + 1;
+  showToast(
+    'Layers ' + layerRangeStart + '-' + layerRangeEnd + ': ' +
+    count + ' layers, ' + totalMoves + ' moves, ' +
+    totalExt.toFixed(1) + 'mm extrusion, ' +
+    totalTravel.toFixed(0) + 'mm travel, Z: ' + zStart + '-' + zEnd + 'mm'
+  );
+}
+
+function addPauseAfterRange() {
+  if (layerRangeEnd === null) return;
+  switchTab('pause');
+  const input = document.getElementById('pauseLayer');
+  if (input) input.value = layerRangeEnd;
+}
+
+function addZOffsetToRange() {
+  if (layerRangeStart === null || layerRangeEnd === null) return;
+  switchTab('zoffset');
+  const startInput = document.getElementById('zoffsetLayer');
+  const endInput = document.getElementById('zoffsetEndLayer');
+  if (startInput) startInput.value = layerRangeStart;
+  if (endInput) endInput.value = layerRangeEnd;
 }
 
 function jumpToLayer(num) {
@@ -12736,6 +15041,33 @@ function hideSearchBar() {
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
 
   renderSectionPreview();
+}
+
+function goToLine(lineIndex) {
+  // Switch to code view
+  setView('code');
+
+  // Find the section containing this line and expand it
+  for (let s = 0; s < sectionStates.length; s++) {
+    const sec = sectionStates[s];
+    if (lineIndex >= sec.startLine && lineIndex <= sec.endLine) {
+      sec.expanded = true;
+    } else if (sec.type === 'layer' && sec.expanded && sec.layerNum !== selectedLayer) {
+      sec.expanded = false;
+    }
+  }
+
+  renderSectionPreview();
+
+  requestAnimationFrame(() => {
+    const row = document.querySelector(`tr[data-line="${lineIndex}"]`);
+    if (row) {
+      row.scrollIntoView({ block: 'center', behavior: 'instant' });
+      // Brief highlight
+      row.classList.add('search-active');
+      setTimeout(() => row.classList.remove('search-active'), 1500);
+    }
+  });
 }
 
 function updateSearchCount() {
@@ -13198,6 +15530,37 @@ function showToast(message, type = 'success', duration = 4000) {
 
 // ===== ANALYSIS PANEL =====
 
+function updateDiagnosticBadge() {
+  if (typeof Diagnostics === 'undefined') return;
+  const counts = Diagnostics.getSeverityCounts();
+  let badge = document.getElementById('diagnosticBadge');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.id = 'diagnosticBadge';
+    const parent = document.getElementById('fileName');
+    if (parent && parent.parentElement) parent.parentElement.appendChild(badge);
+  }
+  if (!badge) return;
+
+  if (counts.total === 0) {
+    badge.className = 'diagnostic-badge badge-ok';
+    badge.textContent = '\u2713';
+    badge.title = 'No issues detected';
+  } else if (counts.critical > 0) {
+    badge.className = 'diagnostic-badge badge-critical';
+    badge.textContent = String(counts.total);
+    badge.title = counts.critical + ' critical, ' + counts.warning + ' warnings';
+  } else if (counts.warning > 0) {
+    badge.className = 'diagnostic-badge badge-warning';
+    badge.textContent = String(counts.total);
+    badge.title = counts.warning + ' warnings, ' + counts.info + ' info';
+  } else {
+    badge.className = 'diagnostic-badge badge-info';
+    badge.textContent = String(counts.total);
+    badge.title = counts.info + ' info';
+  }
+}
+
 function renderAnalysisPanel() {
   const container = document.getElementById('analysisResults');
   if (!container) return;
@@ -13281,6 +15644,7 @@ function renderAnalysisPanel() {
   }
 
   container.innerHTML = html;
+  if (typeof Tooltips !== 'undefined') Tooltips.refresh();
 }
 
 function toggleAnalysisEngine(engineName) {
@@ -14500,6 +16864,11 @@ function setView(view) {
   document.getElementById('referenceView').classList.toggle('hidden', !isRef);
   document.getElementById('warpControls').classList.toggle('hidden', view !== 'warp');
 
+  // Stats overlay visibility
+  if (typeof StatsOverlay !== 'undefined') {
+    if (isViewer) StatsOverlay.show(); else StatsOverlay.hide();
+  }
+
   // Hide toolbar tools when in reference view
   const toolbarTools = ['holeDetectToggle', 'measureToggle', 'pauseSelectToggle', 'editModeToggle', 'crossSectionToggle', 'colorPickerRow'];
   toolbarTools.forEach(id => {
@@ -14537,6 +16906,17 @@ function setView(view) {
     }
     if (view === 'warp') {
       updateWarpLegend();
+      // Auto-trigger thermal analysis if not yet run (warp mesh requires it)
+      if (typeof analysisManager !== 'undefined' && !analysisManager.isAnalyzed('thermal')) {
+        showToast('Running thermal analysis for warp view...');
+        analysisManager.ensureEngineAsync('thermal', null).then(() => {
+          if (currentView === 'warp') {
+            viewer.clearBuffers();
+            viewer.render(selectedLayer);
+            updateWarpLegend();
+          }
+        });
+      }
     }
   } else {
     stopSimulation();
@@ -15358,6 +17738,67 @@ function initDecodeTooltip() {
   container.addEventListener('scroll', hideDecodeTooltip, true);
 }
 
+// ===== INSIGHTS PANEL =====
+
+function renderInsightsPanel() {
+  if (typeof Insights === 'undefined') return;
+  const badge = document.getElementById('insightsBadge');
+  const list = document.getElementById('insightsList');
+  if (!badge || !list) return;
+
+  if (Insights.items.length === 0) {
+    badge.style.display = 'none';
+    document.getElementById('insightsPanel').style.display = 'none';
+    return;
+  }
+
+  badge.style.display = '';
+  document.getElementById('insightsCount').textContent = Insights.items.length;
+
+  // Badge color
+  const hasCritical = Insights.items.some(i => i.severity === 'critical');
+  const hasWarning = Insights.items.some(i => i.severity === 'warning');
+  badge.className = 'insights-badge ' + (hasCritical ? 'critical' : hasWarning ? 'warning' : 'info');
+
+  // Render items
+  list.innerHTML = Insights.items.map(item => {
+    const icon = item.severity === 'critical' ? '\u26D4' : item.severity === 'warning' ? '\u26A0' : '\u2139';
+    const actionBtn = item.action
+      ? '<button class="insight-action" onclick="executeInsightAction(\'' + item.id + '\')">' + item.action.label + '</button>'
+      : '';
+    return '<div class="insight-item">' +
+      '<span class="insight-icon">' + icon + '</span>' +
+      '<span class="insight-msg">' + item.message + '</span>' +
+      actionBtn +
+      '<button class="insight-dismiss" onclick="dismissInsight(\'' + item.id + '\')" title="Dismiss">&times;</button>' +
+    '</div>';
+  }).join('');
+}
+
+function toggleInsightsPanel() {
+  const panel = document.getElementById('insightsPanel');
+  if (!panel) return;
+  panel.style.display = panel.style.display === 'none' ? '' : 'none';
+}
+
+function dismissInsight(id) {
+  if (typeof Insights !== 'undefined') Insights.dismiss(id);
+  renderInsightsPanel();
+}
+
+function dismissAllInsights() {
+  if (typeof Insights !== 'undefined') Insights.dismissAll();
+  renderInsightsPanel();
+}
+
+function executeInsightAction(id) {
+  if (typeof Insights === 'undefined') return;
+  const item = Insights.items.find(i => i.id === id);
+  if (item && item.action && item.action.fn) {
+    item.action.fn();
+  }
+}
+
 // App initialization, state, and event wiring.
 // UI functions are defined in ui.js and available via global scope in the built output.
 
@@ -15429,6 +17870,8 @@ let editPreviewParams = null;
 let editSelectedMoves = [];
 let editSelectionBounds = null;
 let editTransformState = null;
+let layerRangeStart = null;
+let layerRangeEnd = null;
 let crossSectionActive = false;
 let crossSectionFlipped = false;
 let reparsing = false;
@@ -15659,6 +18102,14 @@ function runEagerAnalysis() {
   analysisProfile._parsedLines = parser.lines;
   analysisManager.analyzeEager(parser.layerMoves, analysisProfile);
   heatmapLayerStats = {};
+  if (typeof Diagnostics !== 'undefined') {
+    Diagnostics.scan(parser);
+    if (typeof updateDiagnosticBadge !== 'undefined') updateDiagnosticBadge();
+  }
+  if (typeof Insights !== 'undefined') {
+    Insights.generate(parser, Diagnostics);
+    if (typeof renderInsightsPanel !== 'undefined') renderInsightsPanel();
+  }
 }
 
 async function runAnalysis() {
@@ -15682,8 +18133,16 @@ async function runAnalysis() {
   });
 
   heatmapLayerStats = {};
+  if (typeof Diagnostics !== 'undefined') {
+    Diagnostics.scanDeep();
+    if (typeof updateDiagnosticBadge !== 'undefined') updateDiagnosticBadge();
+  }
+  if (typeof Insights !== 'undefined') {
+    Insights.generate(parser, Diagnostics);
+    if (typeof renderInsightsPanel !== 'undefined') renderInsightsPanel();
+  }
   if (typeof renderAnalysisPanel === 'function') renderAnalysisPanel();
-  if (currentView === 'visual') {
+  if (currentView === 'visual' || currentView === 'warp') {
     viewer.clearBuffers();
     viewer.render(viewer.currentLayer);
   }
@@ -15726,6 +18185,61 @@ document.addEventListener('DOMContentLoaded', () => {
   if (heightInput) heightInput.addEventListener('input', updateComputedPauseInfo);
   if (unitSelect) unitSelect.addEventListener('change', updateComputedPauseInfo);
   initDecodeTooltip();
+  if (typeof StatsOverlay !== 'undefined') StatsOverlay.init();
+  if (typeof initCompareControls === 'function') initCompareControls();
+  if (typeof Tooltips !== 'undefined') Tooltips.init();
+  if (typeof ContextMenu !== 'undefined') ContextMenu.init();
+
+  // Register command palette commands
+  if (typeof CommandPalette !== 'undefined') {
+    CommandPalette.register([
+      // Navigation
+      { id: 'goto-layer', label: 'Go to layer...', category: 'Navigation', action: () => {
+        const num = prompt('Go to layer number:');
+        if (num != null && !isNaN(num)) selectLayer(parseInt(num));
+      }},
+      { id: 'goto-line', label: 'Go to line...', category: 'Navigation', action: () => {
+        const num = prompt('Go to line number:');
+        if (num != null && !isNaN(num)) goToLine(parseInt(num) - 1);
+      }},
+
+      // View
+      { id: 'toggle-view', label: 'Toggle Code/Visual view', category: 'View', shortcut: 'Space', action: () => setView(currentView === 'code' ? 'visual' : 'code') },
+      { id: 'code-view', label: 'Switch to code view', category: 'View', action: () => setView('code') },
+      { id: 'visual-view', label: 'Switch to visual view', category: 'View', action: () => setView('visual') },
+      { id: 'warp-view', label: 'Show warp view', category: 'View', shortcut: 'W', action: () => setView('warp') },
+      { id: 'fit-bounds', label: 'Fit camera to model', category: 'View', shortcut: 'F', action: () => { if (viewer) viewer.fitBounds(); }},
+
+      // Tools
+      { id: 'measure', label: 'Toggle measurement mode', category: 'Tools', shortcut: 'M', action: () => { if (typeof toggleMeasureMode !== 'undefined') toggleMeasureMode(); }},
+      { id: 'compare', label: 'Toggle layer comparison', category: 'Tools', shortcut: 'C', action: () => { if (typeof toggleCompareMode !== 'undefined') toggleCompareMode(); }},
+      { id: 'arrows', label: 'Toggle flow direction arrows', category: 'Tools', shortcut: 'D', action: () => { if (typeof toggleFlowArrows !== 'undefined') toggleFlowArrows(); }},
+      { id: 'cross-section', label: 'Toggle cross-section', category: 'Tools', shortcut: 'X', action: () => { if (typeof toggleCrossSection !== 'undefined') toggleCrossSection(); }},
+      { id: 'simulation', label: 'Play/pause simulation', category: 'Tools', shortcut: 'P', action: () => { if (typeof toggleSimulation !== 'undefined') toggleSimulation(); }},
+
+      // Modifications
+      { id: 'add-pause', label: 'Add pause at current layer', category: 'Modify', action: () => switchTab('pause') },
+      { id: 'add-filament', label: 'Add filament change', category: 'Modify', action: () => switchTab('filament') },
+      { id: 'add-custom', label: 'Insert custom G-code', category: 'Modify', action: () => switchTab('custom') },
+      { id: 'add-zoffset', label: 'Apply Z-offset', category: 'Modify', action: () => switchTab('zoffset') },
+
+      // Analysis
+      { id: 'run-analysis', label: 'Run all analyses', category: 'Analysis', action: () => { if (typeof runAnalysis !== 'undefined') runAnalysis(); }},
+      { id: 'heatmap-speed', label: 'Heatmap: Speed', category: 'Analysis', action: () => setColorMode('speed') },
+      { id: 'heatmap-accel', label: 'Heatmap: Acceleration', category: 'Analysis', action: () => setColorMode('acceleration') },
+      { id: 'heatmap-motion', label: 'Motion type colors', category: 'Analysis', action: () => setColorMode('motion-type') },
+
+      // Export/File
+      { id: 'export', label: 'Export G-code', category: 'File', shortcut: 'Ctrl+E', action: () => { if (typeof exportGcode !== 'undefined') exportGcode(); }},
+      { id: 'open-file', label: 'Open file', category: 'File', shortcut: 'Ctrl+O', action: () => document.getElementById('fileInput')?.click() },
+      { id: 'shortcuts', label: 'Show keyboard shortcuts', category: 'Help', shortcut: '?', action: () => { if (typeof toggleShortcutsOverlay !== 'undefined') toggleShortcutsOverlay(); }},
+
+      // Insights & Help
+      { id: 'insights', label: 'Show insights panel', category: 'View', action: () => toggleInsightsPanel() },
+      { id: 'guided-tour', label: 'Start guided tour', category: 'Help', action: () => Onboarding.start() },
+      { id: 'range-stats', label: 'Show range stats', category: 'Navigation', action: () => showRangeStats(), condition: () => layerRangeStart !== null },
+    ]);
+  }
 });
 
 window.addEventListener('keydown', e => {
@@ -15739,8 +18253,20 @@ window.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'e') { e.preventDefault(); exportGcode(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); document.getElementById('fileInput').click(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); if (currentView === 'code') showSearchBar(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); if (typeof CommandPalette !== 'undefined') CommandPalette.toggle(); return; }
 
   if (isInput) return;
+
+  // Measure mode Esc
+  if (measureMode && e.key === 'Escape') {
+    measureMode = false;
+    MeasureTool.reset();
+    document.getElementById('measureToggle').classList.remove('active');
+    document.getElementById('viewerCanvas').style.cursor = '';
+    showToast('Measurement mode OFF');
+    if (currentView === 'visual') viewer.render(viewer.currentLayer);
+    return;
+  }
 
   // Edit mode shortcuts
   if (editMode) {
@@ -15800,6 +18326,35 @@ window.addEventListener('keydown', e => {
 
   // Cross-section toggle
   if (e.key === 'x' && currentView === 'visual') { toggleCrossSection(); return; }
+
+  // Measurement mode toggle
+  if ((e.key === 'm' || e.key === 'M') && currentView === 'visual') {
+    measureMode = !measureMode;
+    if (!measureMode) MeasureTool.reset();
+    document.getElementById('measureToggle').classList.toggle('active', measureMode);
+    document.getElementById('viewerCanvas').style.cursor = measureMode ? 'crosshair' : '';
+    showToast(measureMode ? 'Measurement mode ON — click to place points' : 'Measurement mode OFF');
+    viewer.render(selectedLayer);
+    return;
+  }
+
+  // Flow direction arrows toggle
+  if ((e.key === 'd' || e.key === 'D') && currentView === 'visual') {
+    if (typeof FlowArrows !== 'undefined') {
+      FlowArrows.enabled = !FlowArrows.enabled;
+      const btn = document.getElementById('flowArrowsToggle');
+      if (btn) btn.classList.toggle('active', FlowArrows.enabled);
+      showToast(FlowArrows.enabled ? 'Flow arrows ON' : 'Flow arrows OFF');
+      viewer.render(selectedLayer);
+    }
+    return;
+  }
+
+  // Comparison mode toggle
+  if ((e.key === 'c' || e.key === 'C') && currentView === 'visual') {
+    toggleCompareMode();
+    return;
+  }
 
   // Help overlay
   if (e.key === '?') { toggleShortcutsOverlay(); return; }

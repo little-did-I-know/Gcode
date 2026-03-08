@@ -64,6 +64,54 @@ main { display: flex; flex: 1; overflow: hidden; }
 .layer-z { color: var(--text-dim); font-size: 12px; }
 .layer-lines { margin-left: auto; color: var(--text-dim); font-size: 11px; }
 .layer-mod-badge { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); flex-shrink: 0; }
+.layer-item.range-selected {
+  background: rgba(100,181,246,0.12) !important;
+  border-left: 3px solid #64b5f6;
+}
+.range-action-bar {
+  padding: 8px 10px;
+  background: rgba(100,181,246,0.08);
+  border: 1px solid rgba(100,181,246,0.2);
+  border-radius: 6px;
+  margin: 6px 4px;
+}
+.range-label {
+  font-size: 11px;
+  color: #64b5f6;
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+.range-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.range-actions button {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  border: 1px solid rgba(100,181,246,0.3);
+  background: rgba(100,181,246,0.1);
+  color: #90caf9;
+  cursor: pointer;
+}
+.range-actions button:hover {
+  background: rgba(100,181,246,0.2);
+}
+[data-theme="light"] .layer-item.range-selected {
+  background: rgba(25,118,210,0.08) !important;
+  border-left-color: #1976d2;
+}
+[data-theme="light"] .range-action-bar {
+  background: rgba(25,118,210,0.06);
+  border-color: rgba(25,118,210,0.15);
+}
+[data-theme="light"] .range-label { color: #1976d2; }
+[data-theme="light"] .range-actions button {
+  border-color: rgba(25,118,210,0.25);
+  background: rgba(25,118,210,0.06);
+  color: #1565c0;
+}
 
 /* CENTER PANEL — PREVIEW */
 .panel-center { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -152,6 +200,81 @@ main { display: flex; flex: 1; overflow: hidden; }
 .syn-param { color: #c4b5fd; }
 .syn-value { color: #fbbf24; }
 
+/* VIEWER BOTTOM-LEFT STACK */
+.viewer-bottom-left {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* STATS OVERLAY */
+.stats-overlay {
+  background: rgba(0,0,0,0.75);
+  color: #e0e0e0;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  pointer-events: none;
+  line-height: 1.6;
+  max-width: 280px;
+  backdrop-filter: blur(4px);
+}
+[data-theme="light"] .stats-overlay {
+  background: rgba(255,255,255,0.85);
+  color: #333;
+}
+.stats-overlay .stat-label { color: #888; margin-right: 6px; }
+[data-theme="light"] .stats-overlay .stat-label { color: #666; }
+.stats-overlay .stat-value { color: #fff; font-weight: bold; }
+[data-theme="light"] .stats-overlay .stat-value { color: #111; }
+.stats-overlay .hover-divider {
+  border-top: 1px solid rgba(255,255,255,0.2);
+  margin: 4px 0;
+}
+[data-theme="light"] .stats-overlay .hover-divider {
+  border-top: 1px solid rgba(0,0,0,0.15);
+}
+.stats-overlay .stat-link {
+  pointer-events: auto;
+  cursor: pointer;
+  text-decoration: underline;
+  color: #64b5f6;
+}
+
+/* COMPARE CONTROLS */
+.compare-controls {
+  position: absolute;
+  top: 40px;
+  right: 12px;
+  background: rgba(0,0,0,0.8);
+  color: #e0e0e0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  z-index: 12;
+  font-size: 12px;
+  backdrop-filter: blur(4px);
+}
+[data-theme="light"] .compare-controls {
+  background: rgba(255,255,255,0.9);
+  color: #333;
+}
+.compare-controls input, .compare-controls button {
+  margin: 0 4px;
+  font-size: 11px;
+}
+.compare-diff-stats {
+  margin-top: 6px;
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  color: #aaa;
+}
+
 /* VIEWER */
 .viewer-wrap { position: relative; flex: 1; display: none; overflow: hidden; }
 .viewer-wrap.active { display: flex; flex-direction: column; }
@@ -200,10 +323,9 @@ main { display: flex; flex: 1; overflow: hidden; }
 .edit-mode-banner { display: none; position: absolute; top: 12px; left: 50%; transform: translateX(-50%); padding: 6px 16px; border-radius: 6px; font-size: 12px; font-weight: 600; background: rgba(251,146,60,.2); color: var(--orange); border: 1px solid rgba(251,146,60,.3); pointer-events: none; z-index: 10; white-space: nowrap; }
 .edit-mode-banner.visible { display: block; }
 .viewer-legend {
-  position: absolute; bottom: 12px; left: 12px; z-index: 5;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   min-width: 180px; max-width: 240px; pointer-events: auto; font-size: 12px;
-  max-height: calc(100% - 80px); display: flex; flex-direction: column;
+  max-height: calc(100vh - 200px); display: flex; flex-direction: column;
   color: var(--text);
 }
 .warp-controls { display: none; }
@@ -594,6 +716,398 @@ main { display: flex; flex: 1; overflow: hidden; }
 .threshold-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 11px; }
 .threshold-row label { color: var(--text-dim); white-space: nowrap; }
 .threshold-input { width: 46px; font-size: 11px; padding: 2px 4px; background: var(--bg-input, var(--bg)); border: 1px solid var(--border); border-radius: 3px; color: var(--text); text-align: center; }
+.measure-label {
+  position: absolute;
+  background: rgba(0,0,0,0.8);
+  color: #4fc3f7;
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 15;
+}
+[data-theme="light"] .measure-label {
+  background: rgba(255,255,255,0.9);
+  color: #0277bd;
+}
+
+/* INLINE TOOLTIPS */
+.tooltip-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  color: #888;
+  font-size: 9px;
+  cursor: help;
+  margin-left: 4px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+[data-theme="light"] .tooltip-badge {
+  background: rgba(0,0,0,0.08);
+}
+.tooltip-badge.pulse {
+  animation: tooltipPulse 2s ease-in-out 3;
+}
+@keyframes tooltipPulse {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 4px rgba(100,181,246,0.6); }
+}
+.inline-tooltip {
+  position: fixed;
+  background: #333;
+  color: #e0e0e0;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  max-width: 250px;
+  z-index: 1000;
+  pointer-events: none;
+  line-height: 1.4;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+[data-theme="light"] .inline-tooltip {
+  background: #fff;
+  color: #333;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* ===== COMMAND PALETTE ===== */
+.command-palette-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 2000;
+  display: flex;
+  justify-content: center;
+  padding-top: 15vh;
+}
+.command-palette-card {
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 8px;
+  width: 480px;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+[data-theme="light"] .command-palette-card {
+  background: #fff;
+  border: 1px solid #ddd;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+#cmdPaletteInput {
+  padding: 12px 16px;
+  font-size: 15px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #333;
+  color: #e0e0e0;
+  outline: none;
+  font-family: inherit;
+}
+[data-theme="light"] #cmdPaletteInput {
+  border-bottom-color: #eee;
+  color: #333;
+}
+#cmdPaletteInput::placeholder { color: #666; }
+[data-theme="light"] #cmdPaletteInput::placeholder { color: #999; }
+.command-palette-results {
+  overflow-y: auto;
+  flex: 1;
+}
+.cmd-result {
+  padding: 8px 16px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #ccc;
+}
+[data-theme="light"] .cmd-result { color: #333; }
+.cmd-result:hover, .cmd-result.selected {
+  background: rgba(100,181,246,0.15);
+}
+.cmd-result .cmd-label { flex: 1; }
+.cmd-result .cmd-category {
+  font-size: 11px;
+  color: #666;
+  margin-right: 12px;
+}
+.cmd-result .cmd-shortcut {
+  font-size: 11px;
+  color: #888;
+  background: rgba(255,255,255,0.08);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: 'Consolas', monospace;
+}
+[data-theme="light"] .cmd-result .cmd-shortcut {
+  background: rgba(0,0,0,0.06);
+  color: #666;
+}
+
+/* ===== CONTEXT MENU ===== */
+.viewer-context-menu {
+  position: fixed;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 220px;
+  z-index: 1500;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+[data-theme="light"] .viewer-context-menu {
+  background: #fff;
+  border: 1px solid #ddd;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+.ctx-item {
+  padding: 6px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #e0e0e0;
+  white-space: nowrap;
+}
+[data-theme="light"] .ctx-item { color: #333; }
+.ctx-item:hover { background: rgba(100,181,246,0.2); }
+.ctx-item.disabled {
+  color: #888;
+  cursor: default;
+  font-style: italic;
+  font-size: 12px;
+}
+.ctx-item.disabled:hover { background: none; }
+.ctx-divider {
+  height: 1px;
+  background: #444;
+  margin: 4px 0;
+}
+[data-theme="light"] .ctx-divider { background: #eee; }
+.diagnostic-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: bold;
+  margin-left: 8px;
+  cursor: pointer;
+  padding: 0 5px;
+  vertical-align: middle;
+}
+.badge-ok { background: #2e7d32; color: #fff; }
+.badge-warning { background: #f57f17; color: #fff; }
+.badge-critical { background: #c62828; color: #fff; }
+.badge-info { background: #1565c0; color: #fff; }
+
+/* INSIGHTS PANEL */
+.insights-badge {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: #f57f17;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 12;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.insights-badge.critical { background: #c62828; }
+.insights-badge.warning { background: #f57f17; }
+.insights-badge.info { background: #1565c0; }
+
+.insights-panel {
+  position: absolute;
+  top: 36px;
+  right: 12px;
+  width: 340px;
+  max-height: 320px;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 8px;
+  z-index: 13;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+[data-theme="light"] .insights-panel {
+  background: #fff;
+  border: 1px solid #ddd;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+.insights-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #333;
+  font-size: 13px;
+  font-weight: bold;
+  color: #e0e0e0;
+}
+[data-theme="light"] .insights-header {
+  border-bottom-color: #eee;
+  color: #333;
+}
+.insights-btn {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+}
+.insights-btn:hover { color: #fff; }
+[data-theme="light"] .insights-btn:hover { color: #333; }
+.insights-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+.insight-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #ccc;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+[data-theme="light"] .insight-item {
+  color: #444;
+  border-bottom-color: rgba(0,0,0,0.05);
+}
+.insight-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+.insight-msg { flex: 1; line-height: 1.4; }
+.insight-action {
+  background: rgba(100,181,246,0.15);
+  border: 1px solid rgba(100,181,246,0.3);
+  color: #64b5f6;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.insight-action:hover { background: rgba(100,181,246,0.25); }
+.insight-dismiss {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.insight-dismiss:hover { color: #e57373; }
+
+/* ===== GUIDED TOUR ===== */
+.tour-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 3000;
+}
+.tour-overlay.has-spotlight {
+  background: none;
+}
+.tour-overlay.has-spotlight::before {
+  content: '';
+  position: fixed;
+  left: var(--spot-x);
+  top: var(--spot-y);
+  width: var(--spot-w);
+  height: var(--spot-h);
+  border-radius: 6px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.6);
+  z-index: 3001;
+  pointer-events: none;
+}
+.tour-card {
+  position: fixed;
+  background: #1e1e1e;
+  border: 1px solid #555;
+  border-radius: 10px;
+  padding: 16px 20px;
+  width: 320px;
+  z-index: 3002;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  color: #e0e0e0;
+}
+[data-theme="light"] .tour-card {
+  background: #fff;
+  border-color: #ddd;
+  color: #333;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+.tour-title {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+.tour-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #bbb;
+  margin-bottom: 14px;
+}
+[data-theme="light"] .tour-text { color: #555; }
+.tour-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.tour-dots {
+  display: flex;
+  gap: 5px;
+}
+.tour-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #555;
+}
+.tour-dot.active { background: #64b5f6; }
+.tour-buttons {
+  display: flex;
+  gap: 6px;
+}
+.tour-btn {
+  padding: 5px 12px;
+  border-radius: 4px;
+  border: 1px solid #555;
+  background: transparent;
+  color: #ccc;
+  font-size: 12px;
+  cursor: pointer;
+}
+.tour-btn:hover { background: rgba(255,255,255,0.1); }
+.tour-btn.tour-next {
+  background: #1976d2;
+  border-color: #1976d2;
+  color: #fff;
+}
+.tour-btn.tour-next:hover { background: #1565c0; }
+[data-theme="light"] .tour-btn { border-color: #ccc; color: #555; }
+[data-theme="light"] .tour-btn:hover { background: rgba(0,0,0,0.05); }
+[data-theme="light"] .tour-btn.tour-next { color: #fff; }
 </style>
 </head>
 <body>
@@ -603,7 +1117,7 @@ main { display: flex; flex: 1; overflow: hidden; }
   <header>
     <button class="drawer-toggle" onclick="document.getElementById('panelLeft').classList.toggle('drawer-open')" title="Toggle layers">&#9776;</button>
     <div class="logo"><span>G</span>Code Modifier</div>
-    <select id="firmwareSelect" onchange="onFirmwareChange(this.value)">
+    <select id="firmwareSelect" onchange="onFirmwareChange(this.value)" data-tooltip="Select your printer firmware for correct pause commands">
       <option value="bambu">Bambu Lab</option>
       <option value="klipper">Klipper</option>
       <option value="marlin">Marlin</option>
@@ -618,7 +1132,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       <span class="fname" id="fileName"></span>&nbsp;&nbsp;
       <span id="fileMeta"></span>
     </div>
-    <button id="themeToggle" onclick="toggleTheme()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text-dim);font-size:14px;cursor:pointer" title="Toggle theme">
+    <button id="themeToggle" onclick="toggleTheme()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text-dim);font-size:14px;cursor:pointer" title="Toggle theme" data-tooltip="Switch between dark and light theme">
       <span id="themeIcon">&#9789;</span>
     </button>
     <button style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text-dim);font-weight:700;font-size:14px;cursor:pointer" onclick="toggleShortcutsOverlay()" title="Keyboard shortcuts">?</button>
@@ -655,10 +1169,12 @@ main { display: flex; flex: 1; overflow: hidden; }
         <span>Go to layer:</span>
         <input type="number" class="jump-input" id="jumpLayer" min="0" placeholder="#" onchange="jumpToLayer(+this.value)">
         <button class="hole-detect-btn" id="holeDetectToggle" onclick="toggleHoleMode()" title="Toggle hole detection mode">Hole Detect</button>
-        <button class="hole-detect-btn" id="measureToggle" onclick="toggleMeasureMode()" title="Measure distance">Measure</button>
+        <button class="hole-detect-btn" id="measureToggle" onclick="toggleMeasureMode()" title="Measure distance (M)" data-tooltip="Click two points to measure distance (M)">Measure</button>
         <button class="hole-detect-btn" id="pauseSelectToggle" onclick="togglePauseSelectMode()" title="Click in 3D view to select pause point">Pause Select</button>
         <button class="hole-detect-btn" id="editModeToggle" onclick="toggleEditMode()" title="Select and delete moves">Edit</button>
         <button class="hole-detect-btn" id="crossSectionToggle" onclick="toggleCrossSection()" title="Cross-section view (X)">Cross-Section</button>
+        <button class="hole-detect-btn" id="flowArrowsToggle" onclick="toggleFlowArrows()" title="Flow direction arrows (D)" data-tooltip="Show directional arrows along print paths (D)">Arrows</button>
+        <button class="hole-detect-btn" id="compareToggle" onclick="toggleCompareMode()" title="Layer comparison (C)" data-tooltip="Compare current layer with another layer or file (C)">Compare</button>
         <div class="color-picker-row" id="colorPickerRow">
           <button class="color-swatch active" data-color="#ff3333" style="background:#ff3333" onclick="setHighlightColor('#ff3333')" title="Red"></button>
           <button class="color-swatch" data-color="#ffdd00" style="background:#ffdd00" onclick="setHighlightColor('#ffdd00')" title="Yellow"></button>
@@ -687,9 +1203,34 @@ main { display: flex; flex: 1; overflow: hidden; }
       <div class="viewer-wrap" id="viewerWrap">
         <div class="viewer-canvas-area">
         <canvas id="viewerCanvas"></canvas>
+        <div id="insightsBadge" class="insights-badge" style="display:none;" onclick="toggleInsightsPanel()" data-tooltip="Contextual suggestions and diagnostic findings">
+          <span id="insightsCount">0</span> issues
+        </div>
+        <div id="insightsPanel" class="insights-panel" style="display:none;">
+          <div class="insights-header">
+            <span>Insights</span>
+            <div>
+              <button onclick="dismissAllInsights()" title="Dismiss all" class="insights-btn">Clear</button>
+              <button onclick="toggleInsightsPanel()" title="Close" class="insights-btn">&times;</button>
+            </div>
+          </div>
+          <div id="insightsList" class="insights-list"></div>
+        </div>
+        <div class="viewer-bottom-left">
+          <div id="statsOverlay" class="stats-overlay" style="display:none;">
+            <div id="statsLayerInfo"></div>
+            <div id="statsHoverInfo" style="display:none;"></div>
+          </div>
+          <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
+        </div>
+        <div id="compareControls" class="compare-controls" style="display:none;">
+          <label>Compare layer: <input type="number" id="compareLayerInput" min="0" style="width:60px;"></label>
+          <button id="compareFileBtn" class="hole-detect-btn" title="Compare with another file" style="margin-left:6px;">Compare File</button>
+          <input type="file" id="compareFileInput" accept=".gcode,.gco,.g" style="display:none;">
+          <div id="compareDiffStats" class="compare-diff-stats"></div>
+        </div>
         <div class="viewer-overlay" id="viewerOverlay"></div>
         <div class="edit-mode-banner" id="editModeBanner">Edit Mode — Experimental</div>
-        <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
         <div id="warpControls" class="warp-controls hidden">
           <label>Deformation: <span id="deformLabel">0x</span></label>
           <input type="range" id="deformSlider" min="0" max="50" value="0" step="1">
@@ -809,16 +1350,17 @@ main { display: flex; flex: 1; overflow: hidden; }
     <div class="panel-right" id="panelRight">
       <div class="panel-right-resize" id="panelRightResize"></div>
       <div class="tabs">
-        <button class="tab active" data-tab="pause" onclick="switchTab('pause')">Pause</button>
-        <button class="tab" data-tab="filament" onclick="switchTab('filament')">Filament</button>
-        <button class="tab" data-tab="eject" onclick="switchTab('eject')">Eject</button>
-        <button class="tab" data-tab="zoffset" onclick="switchTab('zoffset')">Z-Offset</button>
-        <button class="tab" data-tab="custom" onclick="switchTab('custom')">Custom</button>
-        <button class="tab" data-tab="inserts" onclick="switchTab('inserts')">Inserts</button>
-        <button class="tab" data-tab="recovery" onclick="switchTab('recovery')">Recovery</button>
-        <button class="tab" data-tab="cooling" onclick="switchTab('cooling')">Cooling</button>
-        <button class="tab" data-tab="pa-tuner" onclick="switchTab('pa-tuner')">PA Tuning</button>
-        <button class="tab" data-tab="analysis" onclick="switchTab('analysis')">Analysis</button>
+        <button class="tab active" data-tab="pause" onclick="switchTab('pause')" data-tooltip="Add pauses to stop the print at specific layers">Pause</button>
+        <button class="tab" data-tab="filament" onclick="switchTab('filament')" data-tooltip="Insert filament changes for multi-color prints">Filament</button>
+        <button class="tab" data-tab="eject" onclick="switchTab('eject')" data-tooltip="Auto-eject the print when finished">Eject</button>
+        <button class="tab" data-tab="zoffset" onclick="switchTab('zoffset')" data-tooltip="Adjust Z-height over a range of layers">Z-Offset</button>
+        <button class="tab" data-tab="custom" onclick="switchTab('custom')" data-tooltip="Insert custom G-code at any layer">Custom</button>
+        <button class="tab" data-tab="inserts" onclick="switchTab('inserts')" data-tooltip="Auto-detect holes for threaded inserts">Inserts</button>
+        <button class="tab" data-tab="reference" onclick="switchTab('reference')" data-tooltip="G-code command reference guide">Reference</button>
+        <button class="tab" data-tab="recovery" onclick="switchTab('recovery')" data-tooltip="Resume a failed print from a specific layer">Recovery</button>
+        <button class="tab" data-tab="cooling" onclick="switchTab('cooling')" data-tooltip="Fan speed profiles and cooling analysis">Cooling</button>
+        <button class="tab" data-tab="pa-tuner" onclick="switchTab('pa-tuner')" data-tooltip="Generate pressure advance calibration patterns">PA Tuning</button>
+        <button class="tab" data-tab="analysis" onclick="switchTab('analysis')" data-tooltip="Run diagnostics to find potential print problems">Analysis</button>
       </div>
 
       <!-- PAUSE TAB -->
@@ -1193,7 +1735,34 @@ main { display: flex; flex: 1; overflow: hidden; }
       <tr><td><kbd>?</kbd></td><td>This help</td></tr>
       <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>Find in file</td></tr>
       <tr><td><kbd>X</kbd></td><td>Toggle cross-section</td></tr>
+      <tr><td><kbd>M</kbd></td><td>Toggle measurement mode</td></tr>
+      <tr><td><kbd>D</kbd></td><td>Toggle flow direction arrows</td></tr>
+      <tr><td><kbd>C</kbd></td><td>Toggle layer comparison</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Command palette</td></tr>
     </table>
+    <button onclick="Onboarding.start(); toggleShortcutsOverlay();" style="margin-top:12px;padding:6px 14px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:6px;color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;">Replay Guided Tour</button>
+  </div>
+</div>
+
+<div id="commandPalette" class="command-palette-overlay" style="display:none;">
+  <div class="command-palette-card">
+    <input type="text" id="cmdPaletteInput" placeholder="Type a command..." autocomplete="off" spellcheck="false" />
+    <div id="cmdPaletteResults" class="command-palette-results"></div>
+  </div>
+</div>
+
+<div id="tourOverlay" class="tour-overlay" style="display:none;">
+  <div id="tourCard" class="tour-card">
+    <div id="tourTitle" class="tour-title"></div>
+    <div id="tourText" class="tour-text"></div>
+    <div class="tour-footer">
+      <div id="tourDots" class="tour-dots"></div>
+      <div class="tour-buttons">
+        <button id="tourPrev" class="tour-btn" onclick="Onboarding.prev()">Back</button>
+        <button class="tour-btn tour-skip" onclick="Onboarding.skip()">Skip</button>
+        <button id="tourNext" class="tour-btn tour-next" onclick="Onboarding.next()">Next</button>
+      </div>
+    </div>
   </div>
 </div>
 

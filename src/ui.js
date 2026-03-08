@@ -54,7 +54,7 @@ function toggleMeasureMode() {
     document.getElementById('editModeBanner').classList.remove('visible');
     hideEditInfoPanel();
   }
-  measurePoints = [];
+  MeasureTool.reset();
   document.getElementById('measureToggle').classList.toggle('active', measureMode);
   document.getElementById('viewerCanvas').style.cursor = measureMode ? 'crosshair' : '';
   if (currentView === 'visual') viewer.render(viewer.currentLayer);
@@ -71,7 +71,7 @@ function togglePauseSelectMode() {
   // Mutual exclusion with measure mode
   if (pauseSelectMode && measureMode) {
     measureMode = false;
-    measurePoints = [];
+    MeasureTool.reset();
     document.getElementById('measureToggle').classList.remove('active');
   }
   if (pauseSelectMode && editMode) {
@@ -109,7 +109,7 @@ function toggleEditMode() {
   if (editMode) {
     if (measureMode) {
       measureMode = false;
-      measurePoints = [];
+      MeasureTool.reset();
       document.getElementById('measureToggle').classList.remove('active');
     }
     if (pauseSelectMode) {
@@ -141,6 +141,88 @@ function toggleCrossSection() {
     onCrossSectionChange();
   } else {
     viewer.clearClipPlane();
+  }
+}
+
+function toggleFlowArrows() {
+  if (typeof FlowArrows === 'undefined') return;
+  FlowArrows.enabled = !FlowArrows.enabled;
+  const btn = document.getElementById('flowArrowsToggle');
+  if (btn) btn.classList.toggle('active', FlowArrows.enabled);
+  showToast(FlowArrows.enabled ? 'Flow arrows ON' : 'Flow arrows OFF');
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+// ===== Comparison mode =====
+
+function toggleCompareMode() {
+  if (typeof LayerComparison === 'undefined') return;
+  if (LayerComparison.active) {
+    LayerComparison.deactivate();
+    document.getElementById('compareControls').style.display = 'none';
+    const btn = document.getElementById('compareToggle');
+    if (btn) btn.classList.remove('active');
+    showToast('Comparison OFF');
+  } else {
+    const compareLayer = Math.min(selectedLayer + 1, parser.layers.length - 1);
+    LayerComparison.activate(compareLayer);
+    document.getElementById('compareControls').style.display = '';
+    document.getElementById('compareLayerInput').value = compareLayer;
+    const btn = document.getElementById('compareToggle');
+    if (btn) btn.classList.add('active');
+    showToast('Comparison ON \u2014 showing layer ' + compareLayer);
+    updateCompareDiffStats();
+  }
+  viewer.render(selectedLayer);
+}
+
+function updateCompareDiffStats() {
+  if (typeof LayerComparison === 'undefined' || !LayerComparison.active) return;
+  const el = document.getElementById('compareDiffStats');
+  if (!el) return;
+
+  const currentMoves = parser.layerMoves[selectedLayer] || [];
+  const compareMoves = LayerComparison.getCompareMoves(selectedLayer);
+  const stats = LayerComparison.computeDiffStats(currentMoves, compareMoves);
+
+  const sign = (v) => +v > 0 ? '+' + v : v;
+  let html = `Moves: ${stats.moveCountA} vs ${stats.moveCountB} (${sign(stats.moveDelta)})<br>`;
+  html += `E-length: ${stats.extLenA} vs ${stats.extLenB} (${sign(stats.extDelta)})`;
+
+  if (LayerComparison.compareParser) {
+    html = '<strong>File comparison</strong><br>' + html;
+  }
+
+  el.innerHTML = html;
+}
+
+function initCompareControls() {
+  const layerInput = document.getElementById('compareLayerInput');
+  if (layerInput) {
+    layerInput.addEventListener('change', () => {
+      if (typeof LayerComparison === 'undefined' || !LayerComparison.active) return;
+      const val = Math.max(0, Math.min(+layerInput.value, parser.layers.length - 1));
+      layerInput.value = val;
+      LayerComparison.compareLayerNum = val;
+      LayerComparison.compareParser = null; // Clear file comparison when layer is set manually
+      updateCompareDiffStats();
+      viewer.render(selectedLayer);
+    });
+  }
+
+  const fileBtn = document.getElementById('compareFileBtn');
+  const fileInput = document.getElementById('compareFileInput');
+  if (fileBtn && fileInput) {
+    fileBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      if (!fileInput.files || !fileInput.files[0]) return;
+      LayerComparison.loadCompareFile(fileInput.files[0], (p) => {
+        showToast('Comparison file loaded (' + p.layers.length + ' layers)', 'success');
+        updateCompareDiffStats();
+        viewer.render(selectedLayer);
+      });
+      fileInput.value = ''; // Reset so same file can be re-selected
+    });
   }
 }
 
@@ -993,6 +1075,8 @@ function loadFile(file) {
     pauseSelectMode = false;
     selectedMove = null;
     hoveredMove = null;
+    layerRangeStart = null;
+    layerRangeEnd = null;
     document.getElementById('pauseSelectToggle').classList.remove('active');
     document.getElementById('viewerCanvas').style.cursor = '';
 
@@ -1038,6 +1122,11 @@ function loadFile(file) {
     else renderFullPreview();
 
     showOnboardHint('visual', 'viewVisualBtn', 'Try the 3D Visual view');
+
+    // Trigger guided tour on first file load
+    if (!localStorage.getItem('gcode_tour_completed')) {
+      setTimeout(function() { Onboarding.start(); }, 600);
+    }
   };
   if (isBgcode) reader.readAsArrayBuffer(file);
   else reader.readAsText(file);
@@ -1073,10 +1162,28 @@ function renderLayerList() {
   }
 
   let html = '';
+
+  // Range action bar when a range is selected
+  if (layerRangeStart !== null && layerRangeEnd !== null) {
+    const count = layerRangeEnd - layerRangeStart + 1;
+    html += `<div class="range-action-bar">
+      <div class="range-label">Layers ${layerRangeStart}-${layerRangeEnd} selected (${count} layers)</div>
+      <div class="range-actions">
+        <button onclick="addPauseAfterRange()">Add pause after</button>
+        <button onclick="addZOffsetToRange()">Z-offset</button>
+        <button onclick="showRangeStats()">Stats</button>
+        <button onclick="clearLayerRange()">Clear</button>
+      </div>
+    </div>`;
+  }
+
   for (const layer of parser.layers) {
     const active = selectedLayer === layer.number ? ' active' : '';
+    const inRange = layerRangeStart !== null && layerRangeEnd !== null &&
+                    layer.number >= layerRangeStart && layer.number <= layerRangeEnd;
+    const rangeClass = inRange ? ' range-selected' : '';
     const hasMod = moddedLayers.has(layer.number);
-    html += `<div class="layer-item${active}" data-layer="${layer.number}" onclick="selectLayer(${layer.number})">
+    html += `<div class="layer-item${active}${rangeClass}" data-layer="${layer.number}" onclick="selectLayerClick(event, ${layer.number})">
       ${hasMod ? '<div class="layer-mod-badge"></div>' : ''}
       <span class="layer-num">${layer.number}</span>
       <span class="layer-z">${layer.zHeight !== null ? 'Z' + layer.zHeight.toFixed(2) : ''}</span>
@@ -1124,6 +1231,14 @@ function selectLayer(num) {
     updateWarpLegend();
   }
 
+  // Update stats overlay
+  if ((currentView === 'visual' || currentView === 'warp') && typeof StatsOverlay !== 'undefined') {
+    StatsOverlay.updateLayerStats(num);
+  }
+
+  // Update comparison diff stats if active
+  if (typeof updateCompareDiffStats === 'function') updateCompareDiffStats();
+
   // Fill layer number into active tab's layer input
   const activeTab = document.querySelector('.tab.active')?.dataset.tab;
   if (activeTab === 'pause') document.getElementById('pauseLayer').value = num;
@@ -1135,6 +1250,70 @@ function selectLayer(num) {
   if (holeDetector.scannedHoles.length > 0 || holeDetector.holes.has(num)) {
     renderHoleList();
   }
+}
+
+function selectLayerClick(event, layerNum) {
+  if (event.shiftKey && selectedLayer !== null) {
+    // Range selection
+    layerRangeStart = Math.min(selectedLayer, layerNum);
+    layerRangeEnd = Math.max(selectedLayer, layerNum);
+    renderLayerList();
+    if (viewer) viewer.render(selectedLayer);
+    showToast('Selected layers ' + layerRangeStart + '-' + layerRangeEnd);
+  } else {
+    // Normal click — clear range and select
+    layerRangeStart = null;
+    layerRangeEnd = null;
+    selectLayer(layerNum);
+  }
+}
+
+function clearLayerRange() {
+  layerRangeStart = null;
+  layerRangeEnd = null;
+  renderLayerList();
+  if (viewer) viewer.render(selectedLayer);
+}
+
+function showRangeStats() {
+  if (layerRangeStart === null || layerRangeEnd === null) return;
+  let totalMoves = 0, totalExt = 0, totalTravel = 0;
+  for (let i = layerRangeStart; i <= layerRangeEnd; i++) {
+    const moves = parser.layerMoves[i] || [];
+    for (const m of moves) {
+      totalMoves++;
+      if (m.extrude) {
+        totalExt += (m.eLength || 0);
+      } else {
+        totalTravel += Math.hypot(m.x2 - m.x1, m.y2 - m.y1);
+      }
+    }
+  }
+  const zStart = (parser.layers[layerRangeStart]?.zHeight || 0).toFixed(2);
+  const zEnd = (parser.layers[layerRangeEnd]?.zHeight || 0).toFixed(2);
+  const count = layerRangeEnd - layerRangeStart + 1;
+  showToast(
+    'Layers ' + layerRangeStart + '-' + layerRangeEnd + ': ' +
+    count + ' layers, ' + totalMoves + ' moves, ' +
+    totalExt.toFixed(1) + 'mm extrusion, ' +
+    totalTravel.toFixed(0) + 'mm travel, Z: ' + zStart + '-' + zEnd + 'mm'
+  );
+}
+
+function addPauseAfterRange() {
+  if (layerRangeEnd === null) return;
+  switchTab('pause');
+  const input = document.getElementById('pauseLayer');
+  if (input) input.value = layerRangeEnd;
+}
+
+function addZOffsetToRange() {
+  if (layerRangeStart === null || layerRangeEnd === null) return;
+  switchTab('zoffset');
+  const startInput = document.getElementById('zoffsetLayer');
+  const endInput = document.getElementById('zoffsetEndLayer');
+  if (startInput) startInput.value = layerRangeStart;
+  if (endInput) endInput.value = layerRangeEnd;
 }
 
 function jumpToLayer(num) {
@@ -1247,6 +1426,33 @@ function hideSearchBar() {
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
 
   renderSectionPreview();
+}
+
+function goToLine(lineIndex) {
+  // Switch to code view
+  setView('code');
+
+  // Find the section containing this line and expand it
+  for (let s = 0; s < sectionStates.length; s++) {
+    const sec = sectionStates[s];
+    if (lineIndex >= sec.startLine && lineIndex <= sec.endLine) {
+      sec.expanded = true;
+    } else if (sec.type === 'layer' && sec.expanded && sec.layerNum !== selectedLayer) {
+      sec.expanded = false;
+    }
+  }
+
+  renderSectionPreview();
+
+  requestAnimationFrame(() => {
+    const row = document.querySelector(`tr[data-line="${lineIndex}"]`);
+    if (row) {
+      row.scrollIntoView({ block: 'center', behavior: 'instant' });
+      // Brief highlight
+      row.classList.add('search-active');
+      setTimeout(() => row.classList.remove('search-active'), 1500);
+    }
+  });
 }
 
 function updateSearchCount() {
@@ -1709,6 +1915,37 @@ function showToast(message, type = 'success', duration = 4000) {
 
 // ===== ANALYSIS PANEL =====
 
+function updateDiagnosticBadge() {
+  if (typeof Diagnostics === 'undefined') return;
+  const counts = Diagnostics.getSeverityCounts();
+  let badge = document.getElementById('diagnosticBadge');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.id = 'diagnosticBadge';
+    const parent = document.getElementById('fileName');
+    if (parent && parent.parentElement) parent.parentElement.appendChild(badge);
+  }
+  if (!badge) return;
+
+  if (counts.total === 0) {
+    badge.className = 'diagnostic-badge badge-ok';
+    badge.textContent = '\u2713';
+    badge.title = 'No issues detected';
+  } else if (counts.critical > 0) {
+    badge.className = 'diagnostic-badge badge-critical';
+    badge.textContent = String(counts.total);
+    badge.title = counts.critical + ' critical, ' + counts.warning + ' warnings';
+  } else if (counts.warning > 0) {
+    badge.className = 'diagnostic-badge badge-warning';
+    badge.textContent = String(counts.total);
+    badge.title = counts.warning + ' warnings, ' + counts.info + ' info';
+  } else {
+    badge.className = 'diagnostic-badge badge-info';
+    badge.textContent = String(counts.total);
+    badge.title = counts.info + ' info';
+  }
+}
+
 function renderAnalysisPanel() {
   const container = document.getElementById('analysisResults');
   if (!container) return;
@@ -1792,6 +2029,7 @@ function renderAnalysisPanel() {
   }
 
   container.innerHTML = html;
+  if (typeof Tooltips !== 'undefined') Tooltips.refresh();
 }
 
 function toggleAnalysisEngine(engineName) {
@@ -3011,6 +3249,11 @@ function setView(view) {
   document.getElementById('referenceView').classList.toggle('hidden', !isRef);
   document.getElementById('warpControls').classList.toggle('hidden', view !== 'warp');
 
+  // Stats overlay visibility
+  if (typeof StatsOverlay !== 'undefined') {
+    if (isViewer) StatsOverlay.show(); else StatsOverlay.hide();
+  }
+
   // Hide toolbar tools when in reference view
   const toolbarTools = ['holeDetectToggle', 'measureToggle', 'pauseSelectToggle', 'editModeToggle', 'crossSectionToggle', 'colorPickerRow'];
   toolbarTools.forEach(id => {
@@ -3048,6 +3291,17 @@ function setView(view) {
     }
     if (view === 'warp') {
       updateWarpLegend();
+      // Auto-trigger thermal analysis if not yet run (warp mesh requires it)
+      if (typeof analysisManager !== 'undefined' && !analysisManager.isAnalyzed('thermal')) {
+        showToast('Running thermal analysis for warp view...');
+        analysisManager.ensureEngineAsync('thermal', null).then(() => {
+          if (currentView === 'warp') {
+            viewer.clearBuffers();
+            viewer.render(selectedLayer);
+            updateWarpLegend();
+          }
+        });
+      }
     }
   } else {
     stopSimulation();
@@ -3867,4 +4121,65 @@ function initDecodeTooltip() {
   }, true);
 
   container.addEventListener('scroll', hideDecodeTooltip, true);
+}
+
+// ===== INSIGHTS PANEL =====
+
+function renderInsightsPanel() {
+  if (typeof Insights === 'undefined') return;
+  const badge = document.getElementById('insightsBadge');
+  const list = document.getElementById('insightsList');
+  if (!badge || !list) return;
+
+  if (Insights.items.length === 0) {
+    badge.style.display = 'none';
+    document.getElementById('insightsPanel').style.display = 'none';
+    return;
+  }
+
+  badge.style.display = '';
+  document.getElementById('insightsCount').textContent = Insights.items.length;
+
+  // Badge color
+  const hasCritical = Insights.items.some(i => i.severity === 'critical');
+  const hasWarning = Insights.items.some(i => i.severity === 'warning');
+  badge.className = 'insights-badge ' + (hasCritical ? 'critical' : hasWarning ? 'warning' : 'info');
+
+  // Render items
+  list.innerHTML = Insights.items.map(item => {
+    const icon = item.severity === 'critical' ? '\u26D4' : item.severity === 'warning' ? '\u26A0' : '\u2139';
+    const actionBtn = item.action
+      ? '<button class="insight-action" onclick="executeInsightAction(\'' + item.id + '\')">' + item.action.label + '</button>'
+      : '';
+    return '<div class="insight-item">' +
+      '<span class="insight-icon">' + icon + '</span>' +
+      '<span class="insight-msg">' + item.message + '</span>' +
+      actionBtn +
+      '<button class="insight-dismiss" onclick="dismissInsight(\'' + item.id + '\')" title="Dismiss">&times;</button>' +
+    '</div>';
+  }).join('');
+}
+
+function toggleInsightsPanel() {
+  const panel = document.getElementById('insightsPanel');
+  if (!panel) return;
+  panel.style.display = panel.style.display === 'none' ? '' : 'none';
+}
+
+function dismissInsight(id) {
+  if (typeof Insights !== 'undefined') Insights.dismiss(id);
+  renderInsightsPanel();
+}
+
+function dismissAllInsights() {
+  if (typeof Insights !== 'undefined') Insights.dismissAll();
+  renderInsightsPanel();
+}
+
+function executeInsightAction(id) {
+  if (typeof Insights === 'undefined') return;
+  const item = Insights.items.find(i => i.id === id);
+  if (item && item.action && item.action.fn) {
+    item.action.fn();
+  }
 }
