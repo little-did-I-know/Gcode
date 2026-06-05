@@ -156,7 +156,10 @@ export class GcodeViewer3D {
     const cy = (b.minY + b.maxY) / 2;
     const maxLayer = parser.layers[parser.layers.length - 1];
     const maxZ = maxLayer ? (maxLayer.zHeight || 0) : 0;
-    const cz = maxZ / 2;
+    // CNC: rendered geometry is shifted by -bounds.minZ so stock sits on the
+    // build plate. Camera target follows the shifted geometry.
+    const zShift = (parser.mode === 'cnc' && isFinite(b.minZ)) ? -b.minZ : 0;
+    const cz = (maxZ + zShift) / 2;
 
     const dist = Math.max(b.maxX - b.minX, b.maxY - b.minY, maxZ || 50) * 1.5 / this.cam.zoom;
 
@@ -226,6 +229,11 @@ export class GcodeViewer3D {
     'SKIRT': [0.655, 0.545, 0.980],
     'BRIM': [0.655, 0.545, 0.980],
     'CUSTOM': [0.655, 0.545, 0.980],
+    'RAPID':  [0.55, 0.55, 0.55],
+    'FEED':   [0.376, 0.647, 0.980],
+    'PLUNGE': [0.976, 0.310, 0.310],
+    'LIFT':   [0.980, 0.800, 0.082],
+    'ARC':    [0.133, 0.827, 0.933],
     'DEFAULT': [0.878, 0.886, 0.910],
   };
 
@@ -283,11 +291,48 @@ export class GcodeViewer3D {
     }
 
     const layer = parser.getLayerByNumber(layerNum);
-    const z = layer?.zHeight || 0;
+    // In CNC mode, stock sits ABOVE the build plate: the file's most-negative
+    // Z (deepest cut, i.e. stock bottom) is shifted to world Z=0 so the part
+    // doesn't render below the plate grid. Layer labels and tooltips keep the
+    // original G-code Z for the operator's reference.
+    const zShift = (parser.mode === 'cnc' && isFinite(parser.bounds.minZ)) ? -parser.bounds.minZ : 0;
+    const layerZ = (layer?.zHeight || 0) + zShift;
     const halfW = 0.2; // half ribbon width in mm
+    // CNC fill: each cutting move at world Z = z1/z2 represents removed
+    // material from that depth all the way up to the top of the stock
+    // (world Z = zShift, the file's Z=0 surface). The fin extends UPWARD from
+    // the cut to the top so the visualization reads as "material is gone from
+    // here up to the surface" rather than just a thin slice between layers.
+    const fillToZ = (parser.mode === 'cnc' && zShift > 0) ? zShift : null;
 
     // Extrusion ribbons: x,y,z, r,g,b, alpha per vertex
     const ribbonVerts = [];
+
+    // CNC stock block: a translucent box surrounding the cuts so the operator
+    // can see what's being carved out. Attached to layer 0 (the deepest) so
+    // it's always rendered. 20% margin on X/Y; Z spans world 0 → zShift
+    // (build plate up to top of stock at file Z=0).
+    if (parser.mode === 'cnc' && layerNum === 0 && zShift > 0) {
+      const b = parser.bounds;
+      const mx = (b.maxX - b.minX) * 0.2;
+      const my = (b.maxY - b.minY) * 0.2;
+      const x0 = b.minX - mx, x1 = b.maxX + mx;
+      const y0 = b.minY - my, y1 = b.maxY + my;
+      const z0 = 0, z1 = zShift;
+      // Warm beige with low alpha so cuts inside remain readable.
+      const sr = 0.82, sg = 0.74, sb = 0.58, sa = 0.07;
+      const pushQuad = (a, b_, c, d) => {
+        const tris = [a, b_, c, a, c, d];
+        for (const v of tris) ribbonVerts.push(v[0], v[1], v[2], sr, sg, sb, sa);
+      };
+      // 6 faces of the box
+      pushQuad([x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0]); // bottom
+      pushQuad([x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]); // top
+      pushQuad([x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1]); // front
+      pushQuad([x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1]); // back
+      pushQuad([x0,y0,z0],[x0,y1,z0],[x0,y1,z1],[x0,y0,z1]); // left
+      pushQuad([x1,y0,z0],[x1,y1,z0],[x1,y1,z1],[x1,y0,z1]); // right
+    }
     // Travel lines: x,y,z, r,g,b,a per vertex
     const travelVerts = [];
     // Per-move offset tracking for simulation
@@ -302,7 +347,9 @@ export class GcodeViewer3D {
     for (let moveIndex = 0; moveIndex < moves.length; moveIndex++) {
       const move = moves[moveIndex];
       // Skip hidden motion types (in motion-type mode) or non-extrusions (in heatmap mode)
-      const moveTypeUpper = move.extrude ? move.type.toUpperCase() : 'TRAVEL';
+      const isCNC = (typeof parser !== 'undefined' && parser.mode === 'cnc');
+      const isCuttingMove = move.extrude || (isCNC && move.type !== 'RAPID');
+      const moveTypeUpper = isCuttingMove ? move.type.toUpperCase() : 'TRAVEL';
       const normalizedMoveType = MOTION_TYPE_ALIASES[moveTypeUpper] || moveTypeUpper;
       if (!isHeatmap && motionTypeVisibility[normalizedMoveType] === false) {
         offsets.push({ triStart: ribbonVerts.length / 7, triCount: 0, lineStart: travelVerts.length / 7, lineCount: 0 });
@@ -312,8 +359,8 @@ export class GcodeViewer3D {
       const triStart = ribbonVerts.length / 7;
       const lineStart = travelVerts.length / 7;
 
-      if (move.extrude) {
-        const color = isHeatmap
+      if (isCuttingMove) {
+        const color = (isHeatmap && !(isCNC && !move.extrude))
           ? this._getHeatmapColor(getHeatmapValue(move, layerNum, moveIndex), heatStats.min, heatStats.max, invertColor)
           : this._getTypeColor(move.type);
         const dx = move.x2 - move.x1;
@@ -328,13 +375,15 @@ export class GcodeViewer3D {
         const ny = dx / len * halfW;
 
         // Two triangles forming a ribbon
+        const z1 = move.z1 != null ? move.z1 + zShift : layerZ;
+        const z2 = move.z2 != null ? move.z2 + zShift : layerZ;
         const verts = [
-          move.x1 + nx, move.y1 + ny, z,
-          move.x1 - nx, move.y1 - ny, z,
-          move.x2 + nx, move.y2 + ny, z,
-          move.x2 + nx, move.y2 + ny, z,
-          move.x1 - nx, move.y1 - ny, z,
-          move.x2 - nx, move.y2 - ny, z,
+          move.x1 + nx, move.y1 + ny, z1,
+          move.x1 - nx, move.y1 - ny, z1,
+          move.x2 + nx, move.y2 + ny, z2,
+          move.x2 + nx, move.y2 + ny, z2,
+          move.x1 - nx, move.y1 - ny, z1,
+          move.x2 - nx, move.y2 - ny, z2,
         ];
         for (let i = 0; i < 6; i++) {
           ribbonVerts.push(
@@ -343,12 +392,36 @@ export class GcodeViewer3D {
             1.0
           );
         }
+
+        // CNC fill: drop a translucent vertical quad along this move's path
+        // from its Z down to the next-deeper layer's Z. Skip PLUNGE/LIFT —
+        // those are themselves vertical motions, not in-plane cuts.
+        if (fillToZ != null && (move.type === 'FEED' || move.type === 'ARC')) {
+          const fillVerts = [
+            move.x1, move.y1, z1,
+            move.x2, move.y2, z2,
+            move.x2, move.y2, fillToZ,
+            move.x1, move.y1, z1,
+            move.x2, move.y2, fillToZ,
+            move.x1, move.y1, fillToZ,
+          ];
+          for (let i = 0; i < 6; i++) {
+            ribbonVerts.push(
+              fillVerts[i * 3], fillVerts[i * 3 + 1], fillVerts[i * 3 + 2],
+              color[0], color[1], color[2],
+              0.18
+            );
+          }
+        }
       } else {
-        // Travel move as a line (use custom color if set)
-        const tc = this._getTypeColor('TRAVEL');
+        const isCNC = (typeof parser !== 'undefined' && parser.mode === 'cnc');
+        const tc = isCNC ? this._getTypeColor(move.type) : this._getTypeColor('TRAVEL');
+        const alpha = isCNC ? (move.type === 'RAPID' ? 0.25 : 1.0) : 0.3;
+        const z1 = move.z1 != null ? move.z1 + zShift : layerZ;
+        const z2 = move.z2 != null ? move.z2 + zShift : layerZ;
         travelVerts.push(
-          move.x1, move.y1, z, tc[0], tc[1], tc[2], 0.3,
-          move.x2, move.y2, z, tc[0], tc[1], tc[2], 0.3,
+          move.x1, move.y1, z1, tc[0], tc[1], tc[2], alpha,
+          move.x2, move.y2, z2, tc[0], tc[1], tc[2], alpha,
         );
       }
 
@@ -1217,7 +1290,7 @@ export class GcodeViewer3D {
     if (!moves || moves.length === 0) return null;
     let best = null, bestDist = Infinity;
     for (const move of moves) {
-      if (!move.extrude) continue;
+      if (!move.extrude && !(typeof parser !== 'undefined' && parser.mode === 'cnc' && move.type !== 'RAPID')) continue;
       const dx = move.x2 - move.x1, dy = move.y2 - move.y1;
       const lenSq = dx * dx + dy * dy;
       let d;

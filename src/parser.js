@@ -24,10 +24,265 @@ export class GcodeParser {
     return 'unknown';
   }
 
+  _detectMode(lines) {
+    // FDM signals (any => fdm)
+    const slicer = this._detectSlicer(lines);
+    if (slicer !== 'unknown') return 'fdm';
+
+    const scanLines = Math.min(500, lines.length);
+    let hasExtrusionMode = false;
+    let hasEParam = false;
+    let hasSpindle = false;
+    let hasToolChange = false;
+    let hasArc = false;
+
+    for (let i = 0; i < scanLines; i++) {
+      // Strip line numbers (N<num>) and inline (...) comments, then insert a
+      // space between digit-letter pairs so concatenated tokens like "T4M06"
+      // or "G00G21G17" split into separate \b-bounded words.
+      const line = lines[i]
+        .replace(/^\s*N\d+\s*/i, '')
+        .replace(/\([^)]*\)/g, '')
+        .replace(/(\d)([A-Z])/gi, '$1 $2');
+      if (/\bM8[23]\b/.test(line)) hasExtrusionMode = true;
+      if (/\bG[01]\b.*\bE-?[\d.]+/i.test(line)) hasEParam = true;
+      if (/\bM0?[35]\b/.test(line)) hasSpindle = true;
+      if (/\bM0?6\b/.test(line)) hasToolChange = true;
+      if (/\bG0?[23]\b/.test(line)) hasArc = true;
+    }
+
+    if (hasExtrusionMode || hasEParam) return 'fdm';
+    if (hasSpindle || hasToolChange) return 'cnc';
+    if (hasArc) return 'cnc'; // arcs without E strongly suggest CNC
+    return 'fdm'; // safe default
+  }
+
+  async _parseCNC(lines, onProgress) {
+    const Z_EPSILON = 0.001;
+    this.layers = [];
+    this.layerMoves = {};
+    this.bounds = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity };
+    this.headerEnd = 0;
+    this.warnings = [];
+    this.skippedLines = 0;
+    this.tools = new Set();
+    this.spindleRPMs = new Set();
+    this.feedRates = new Set();
+
+    let curX = 0, curY = 0, curZ = 0;
+    let currentFeedRate = 0;
+    let currentSpindleRPM = 0;
+    let currentTool = null;
+    let spindleOn = false;
+    let foundFirstMove = false;
+    // Modal motion mode (G0/G1/G2/G3): subsequent lines with X/Y/Z but no G use
+    // the last motion code. VCarve/Vectric posts rely on this constantly.
+    let modalMotion = 0; // 0=G0 rapid, 1=G1 feed, 2=G2 CW arc, 3=G3 CCW arc
+
+    const zBands = new Map(); // zKey -> layer object
+    const getOrCreateBand = (z) => {
+      const zKey = Math.round(z / Z_EPSILON);
+      let layer = zBands.get(zKey);
+      if (!layer) {
+        layer = {
+          number: this.layers.length,
+          startLine: 0, endLine: null,
+          zHeight: z,
+          sectionTypes: ['FEED'],
+          lineCount: 0
+        };
+        this.layers.push(layer);
+        this.layerMoves[layer.number] = [];
+        zBands.set(zKey, layer);
+      }
+      return layer;
+    };
+
+    const recordMove = (x1, y1, z1, x2, y2, z2, type, lineIndex) => {
+      const bandZ = Math.max(z1, z2);
+      const layer = getOrCreateBand(bandZ);
+      layer.lineCount++;
+      if (!layer.sectionTypes.includes(type)) layer.sectionTypes.push(type);
+      this.layerMoves[layer.number].push({
+        x1, y1, x2, y2, z1, z2,
+        type, extrude: false, lineIndex,
+        feedRate: currentFeedRate,
+        spindleRPM: currentSpindleRPM,
+        tool: currentTool
+      });
+      this.bounds.minX = Math.min(this.bounds.minX, x1, x2);
+      this.bounds.maxX = Math.max(this.bounds.maxX, x1, x2);
+      this.bounds.minY = Math.min(this.bounds.minY, y1, y2);
+      this.bounds.maxY = Math.max(this.bounds.maxY, y1, y2);
+      this.bounds.minZ = Math.min(this.bounds.minZ, z1, z2);
+      this.bounds.maxZ = Math.max(this.bounds.maxZ, z1, z2);
+    };
+
+    const CHUNK = 50000;
+    const total = lines.length;
+
+    for (let start = 0; start < total; start += CHUNK) {
+      const end = Math.min(start + CHUNK, total);
+      for (let i = start; i < end; i++) {
+        // Normalize: strip leading N<num> (Vectric/Mach-style line numbers) and
+        // inline (...) comments, then insert a space between digit-letter pairs
+        // so concatenated tokens ("T4M06", "G00G21G17", "X0.000Y0.000") become
+        // \b-bounded words. matchAll patterns work either way; the spaces just
+        // ensure \b anchors fire between codes.
+        const raw = lines[i];
+        const line = raw
+          .replace(/^\s*N\d+\s*/i, '')
+          .replace(/\([^)]*\)/g, '')
+          .replace(/(\d)([A-Z])/gi, '$1 $2')
+          .trim();
+
+        if (!foundFirstMove && line && !line.startsWith(';') && /^[GMT]/.test(line)) {
+          this.headerEnd = i;
+          foundFirstMove = true;
+        }
+
+        // Spindle / tool changes can co-occur with G codes on the same line
+        // (e.g. "T4M06"). Detect them regardless of position.
+        if (/\bM0?3\b/.test(line)) {
+          spindleOn = true;
+          const sm = line.match(/\bS([\d.]+)/i);
+          if (sm) { currentSpindleRPM = parseFloat(sm[1]); this.spindleRPMs.add(currentSpindleRPM); }
+        }
+        if (/\bM0?5\b/.test(line)) { spindleOn = false; }
+        if (/\bM0?6\b/.test(line) || /\bT\d+\b/.test(line)) {
+          const tm = line.match(/\bT(\d+)/i);
+          if (tm) { currentTool = parseInt(tm[1]); this.tools.add(currentTool); }
+        }
+
+        // Update modal motion if a G0/G1/G2/G3 appears anywhere on the line.
+        // Match the LAST such code so "G00G21G17G90..." correctly sets motion
+        // from any leading motion code; CAM posts typically put motion first
+        // but consecutive G's on one line are valid.
+        const motionMatches = [...line.matchAll(/\bG0?([0123])\b/g)];
+        let motionExplicit = false;
+        if (motionMatches.length > 0) {
+          modalMotion = parseInt(motionMatches[0][1]);
+          motionExplicit = true;
+        }
+
+        // Has any axis/feed/arc params?
+        const hasAnyParam = /[XYZIJRF]-?[\d.]/i.test(line);
+        if (!hasAnyParam && !motionExplicit) continue;
+        // If a motion G code appears but no XYZ params (e.g. "G00G21G17G90..."
+        // setup line, or G80 cancel), nothing to draw — skip.
+        if (!hasAnyParam) continue;
+
+        if (modalMotion === 0 || modalMotion === 1) {
+          try {
+            const params = {};
+            for (const m of line.matchAll(/([XYZF])(-?[\d.]+)/gi)) params[m[1].toUpperCase()] = parseFloat(m[2]);
+
+            const newX = params.X !== undefined ? params.X : curX;
+            const newY = params.Y !== undefined ? params.Y : curY;
+            const newZ = params.Z !== undefined ? params.Z : curZ;
+            if (params.F !== undefined) { currentFeedRate = params.F; this.feedRates.add(currentFeedRate); }
+
+            const isG0 = modalMotion === 0;
+            const dx = newX - curX, dy = newY - curY, dz = newZ - curZ;
+            const hasXY = dx !== 0 || dy !== 0;
+            const hasZ = dz !== 0;
+
+            let type;
+            if (isG0) type = 'RAPID';
+            else if (hasZ && dz < 0 && !hasXY) type = 'PLUNGE';
+            else if (hasZ && dz > 0 && !hasXY) type = 'LIFT';
+            else type = 'FEED';
+
+            if (hasXY || hasZ) {
+              recordMove(curX, curY, curZ, newX, newY, newZ, type, i);
+            }
+
+            curX = newX; curY = newY; curZ = newZ;
+          } catch (err) { this.skippedLines++; }
+          continue;
+        }
+
+        if (modalMotion === 2 || modalMotion === 3) {
+          try {
+            const params = {};
+            for (const m of line.matchAll(/([XYZFIJR])(-?[\d.]+)/gi)) params[m[1].toUpperCase()] = parseFloat(m[2]);
+
+            const newX = params.X !== undefined ? params.X : curX;
+            const newY = params.Y !== undefined ? params.Y : curY;
+            const newZ = params.Z !== undefined ? params.Z : curZ;
+            if (params.F !== undefined) { currentFeedRate = params.F; this.feedRates.add(currentFeedRate); }
+            const isG2 = modalMotion === 2;
+
+            let cx, cy, r;
+            if (params.I !== undefined || params.J !== undefined) {
+              cx = curX + (params.I || 0);
+              cy = curY + (params.J || 0);
+              r = Math.hypot(params.I || 0, params.J || 0);
+            } else if (params.R !== undefined) {
+              const mx = (curX + newX) / 2, my = (curY + newY) / 2;
+              const dx = newX - curX, dy = newY - curY;
+              const d = Math.hypot(dx, dy);
+              r = Math.abs(params.R);
+              const h = Math.sqrt(Math.max(0, r * r - (d / 2) * (d / 2)));
+              const sign = (isG2 ? -1 : 1) * (params.R > 0 ? 1 : -1);
+              cx = mx + sign * (-dy / d) * h;
+              cy = my + sign * ( dx / d) * h;
+            } else {
+              curX = newX; curY = newY; curZ = newZ;
+              continue;
+            }
+
+            if (r > 0.01) {
+              let startAngle = Math.atan2(curY - cy, curX - cx);
+              let endAngle = Math.atan2(newY - cy, newX - cx);
+              if (isG2) {
+                if (endAngle >= startAngle) endAngle -= 2 * Math.PI;
+              } else {
+                if (endAngle <= startAngle) endAngle += 2 * Math.PI;
+              }
+              const segments = Math.max(4, Math.ceil(Math.abs(endAngle - startAngle) / (Math.PI / 12)));
+              let prevAX = curX, prevAY = curY, prevAZ = curZ;
+              for (let s = 1; s <= segments; s++) {
+                const t = s / segments;
+                const angle = startAngle + (endAngle - startAngle) * t;
+                const ax = s === segments ? newX : cx + r * Math.cos(angle);
+                const ay = s === segments ? newY : cy + r * Math.sin(angle);
+                const az = curZ + (newZ - curZ) * t;
+                recordMove(prevAX, prevAY, prevAZ, ax, ay, az, 'ARC', i);
+                prevAX = ax; prevAY = ay; prevAZ = az;
+              }
+            }
+
+            curX = newX; curY = newY; curZ = newZ;
+          } catch (err) { this.skippedLines++; }
+          continue;
+        }
+      }
+
+      if (onProgress) onProgress(Math.min(end / total, 1));
+      if (end < total) await new Promise(r => setTimeout(r, 0));
+    }
+
+    // Sort layers by Z ascending and renumber
+    this.layers.sort((a, b) => a.zHeight - b.zHeight);
+    const remap = new Map();
+    this.layers.forEach((layer, idx) => { remap.set(layer.number, idx); });
+    const newLayerMoves = {};
+    for (const [oldNum, moves] of Object.entries(this.layerMoves)) {
+      const newNum = remap.get(parseInt(oldNum));
+      newLayerMoves[newNum] = moves;
+    }
+    this.layerMoves = newLayerMoves;
+    this.layers.forEach((layer, idx) => { layer.number = idx; });
+
+    if (!isFinite(this.bounds.minX)) this.bounds = { minX: 0, maxX: 256, minY: 0, maxY: 256, minZ: 0, maxZ: 0 };
+  }
+
   async parseAsync(text, fileName, onProgress) {
     this.fileName = fileName;
     this.lines = text.split(/\r?\n/);
     this.slicerType = this._detectSlicer(this.lines);
+    this.mode = this._detectMode(this.lines);
     this.layers = [];
     this.layerMoves = {};
     this.bounds = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
@@ -46,6 +301,11 @@ export class GcodeParser {
     // Bambu Studio uses "; CHANGE_LAYER" as a marker, with layer number on a nearby line
     let pendingChangeLayer = false;
     let pendingZHeight = null;
+
+    if (this.mode === 'cnc') {
+      await this._parseCNC(this.lines, onProgress);
+      return this.layers;
+    }
 
     const CHUNK = 50000;
     const total = this.lines.length;

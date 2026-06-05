@@ -337,7 +337,7 @@ function showEditInfoPanel(move) {
   const typeLabel = MOTION_TYPE_LABELS[move.type] || move.type;
 
   lineText.textContent = rawLine.trim();
-  lineMeta.textContent = `Line ${move.lineIndex + 1} \u00b7 ${typeLabel} \u00b7 ${move.extrude ? 'Extrusion' : 'Travel'}`;
+  lineMeta.textContent = `Line ${move.lineIndex + 1} \u00b7 ${typeLabel} \u00b7 ${move.extrude ? 'Extrusion' : (typeof parser !== 'undefined' && parser.mode === 'cnc' && move.type !== 'RAPID' ? 'Cut' : 'Travel')}`;
 
   // Parse parameters and build input fields
   const parsed = parseGcodeParams(rawLine);
@@ -825,6 +825,8 @@ async function reparseAndRender(targetLayer, toastMsg) {
   try {
     const text = parser.lines.join('\n');
     await parser.parseAsync(text, parser.fileName);
+    document.body.dataset.gcodeMode = parser.mode;
+    updateCNCInfo();
     initMotionTypeState();
     viewer.clearBuffers();
     buildSections();
@@ -1051,6 +1053,8 @@ function loadFile(file) {
       barEl.style.width = (pct * 100).toFixed(0) + '%';
       labelEl.textContent = `Parsing... ${(pct * 100).toFixed(0)}%`;
     });
+    document.body.dataset.gcodeMode = parser.mode;
+    updateCNCInfo();
 
     progressEl.style.display = 'none';
 
@@ -3360,8 +3364,12 @@ function initWarpControls() {
 function onSliderChange(val) {
   // Map slider index to layer number
   if (parser.layers[val]) {
-    selectLayer(parser.layers[val].number);
-    document.getElementById('sliderLabel').textContent = `Layer ${parser.layers[val].number}`;
+    const layer = parser.layers[val];
+    selectLayer(layer.number);
+    const label = parser.mode === 'cnc'
+      ? `Z ${layer.zHeight != null ? layer.zHeight.toFixed(2) : '?'} mm`
+      : `Layer ${layer.number}`;
+    document.getElementById('sliderLabel').textContent = label;
   }
 }
 
@@ -3370,7 +3378,13 @@ function updateSlider() {
   slider.max = Math.max(0, parser.layers.length - 1);
   const idx = parser.layers.findIndex(l => l.number === selectedLayer);
   if (idx >= 0) slider.value = idx;
-  document.getElementById('sliderLabel').textContent = `Layer ${selectedLayer ?? 0}`;
+  if (parser.mode === 'cnc') {
+    const layer = parser.getLayerByNumber(selectedLayer);
+    document.getElementById('sliderLabel').textContent =
+      layer ? `Z ${layer.zHeight != null ? layer.zHeight.toFixed(2) : '?'} mm` : '—';
+  } else {
+    document.getElementById('sliderLabel').textContent = `Layer ${selectedLayer ?? 0}`;
+  }
   updateSliderTicks();
 }
 
@@ -4182,4 +4196,27 @@ function executeInsightAction(id) {
   if (item && item.action && item.action.fn) {
     item.action.fn();
   }
+}
+
+function updateCNCInfo() {
+  if (parser.mode !== 'cnc') return;
+  const tools = [...(parser.tools || [])];
+  const rpms = [...(parser.spindleRPMs || [])];
+  const feeds = [...(parser.feedRates || [])].sort((a, b) => a - b);
+  const b = parser.bounds;
+  let totalDist = 0;
+  for (const moves of Object.values(parser.layerMoves)) {
+    for (const m of moves) {
+      const dx = m.x2 - m.x1;
+      const dy = m.y2 - m.y1;
+      const dz = (m.z2 ?? 0) - (m.z1 ?? 0);
+      totalDist += Math.hypot(dx, dy, dz);
+    }
+  }
+  const $ = id => document.getElementById(id);
+  if ($('cnc-tools')) $('cnc-tools').textContent = tools.length ? tools.join(', ') : 'none';
+  if ($('cnc-rpm')) $('cnc-rpm').textContent = rpms.length ? `${Math.min(...rpms)}–${Math.max(...rpms)}` : '—';
+  if ($('cnc-feeds')) $('cnc-feeds').textContent = feeds.length ? `${feeds[0]}–${feeds[feeds.length - 1]}` : '—';
+  if ($('cnc-bounds')) $('cnc-bounds').textContent = `X ${b.minX.toFixed(1)}–${b.maxX.toFixed(1)} · Y ${b.minY.toFixed(1)}–${b.maxY.toFixed(1)} · Z ${b.minZ.toFixed(1)}–${b.maxZ.toFixed(1)}`;
+  if ($('cnc-dist')) $('cnc-dist').textContent = `${totalDist.toFixed(1)} mm`;
 }

@@ -1108,6 +1108,8 @@ main { display: flex; flex: 1; overflow: hidden; }
 [data-theme="light"] .tour-btn { border-color: #ccc; color: #555; }
 [data-theme="light"] .tour-btn:hover { background: rgba(0,0,0,0.05); }
 [data-theme="light"] .tour-btn.tour-next { color: #fff; }
+body[data-gcode-mode="cnc"] [data-mode="fdm"] { display: none !important; }
+body[data-gcode-mode="fdm"] [data-mode="cnc"] { display: none !important; }
 </style>
 </head>
 <body>
@@ -1125,9 +1127,9 @@ main { display: flex; flex: 1; overflow: hidden; }
     </select>
     <div id="dropZone" onclick="document.getElementById('fileInput').click()">
       <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-      <span>Drop .gcode or .bgcode file here or click to upload</span>
+      <span>Drop .gcode, .bgcode, .nc, .tap, or .txt file here or click to upload</span>
     </div>
-    <input type="file" id="fileInput" accept=".gcode,.gco,.g,.bgcode">
+    <input type="file" id="fileInput" accept=".gcode,.gco,.g,.bgcode,.nc,.ngc,.tap,.txt">
     <div id="fileInfo">
       <span class="fname" id="fileName"></span>&nbsp;&nbsp;
       <span id="fileMeta"></span>
@@ -1226,7 +1228,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div id="compareControls" class="compare-controls" style="display:none;">
           <label>Compare layer: <input type="number" id="compareLayerInput" min="0" style="width:60px;"></label>
           <button id="compareFileBtn" class="hole-detect-btn" title="Compare with another file" style="margin-left:6px;">Compare File</button>
-          <input type="file" id="compareFileInput" accept=".gcode,.gco,.g" style="display:none;">
+          <input type="file" id="compareFileInput" accept=".gcode,.gco,.g,.bgcode,.nc,.ngc,.tap,.txt" style="display:none;">
           <div id="compareDiffStats" class="compare-diff-stats"></div>
         </div>
         <div class="viewer-overlay" id="viewerOverlay"></div>
@@ -1351,16 +1353,17 @@ main { display: flex; flex: 1; overflow: hidden; }
       <div class="panel-right-resize" id="panelRightResize"></div>
       <div class="tabs">
         <button class="tab active" data-tab="pause" onclick="switchTab('pause')" data-tooltip="Add pauses to stop the print at specific layers">Pause</button>
-        <button class="tab" data-tab="filament" onclick="switchTab('filament')" data-tooltip="Insert filament changes for multi-color prints">Filament</button>
-        <button class="tab" data-tab="eject" onclick="switchTab('eject')" data-tooltip="Auto-eject the print when finished">Eject</button>
+        <button class="tab" data-tab="filament" data-mode="fdm" onclick="switchTab('filament')" data-tooltip="Insert filament changes for multi-color prints">Filament</button>
+        <button class="tab" data-tab="eject" data-mode="fdm" onclick="switchTab('eject')" data-tooltip="Auto-eject the print when finished">Eject</button>
         <button class="tab" data-tab="zoffset" onclick="switchTab('zoffset')" data-tooltip="Adjust Z-height over a range of layers">Z-Offset</button>
         <button class="tab" data-tab="custom" onclick="switchTab('custom')" data-tooltip="Insert custom G-code at any layer">Custom</button>
-        <button class="tab" data-tab="inserts" onclick="switchTab('inserts')" data-tooltip="Auto-detect holes for threaded inserts">Inserts</button>
+        <button class="tab" data-tab="inserts" data-mode="fdm" onclick="switchTab('inserts')" data-tooltip="Auto-detect holes for threaded inserts">Inserts</button>
         <button class="tab" data-tab="reference" onclick="switchTab('reference')" data-tooltip="G-code command reference guide">Reference</button>
         <button class="tab" data-tab="recovery" onclick="switchTab('recovery')" data-tooltip="Resume a failed print from a specific layer">Recovery</button>
-        <button class="tab" data-tab="cooling" onclick="switchTab('cooling')" data-tooltip="Fan speed profiles and cooling analysis">Cooling</button>
-        <button class="tab" data-tab="pa-tuner" onclick="switchTab('pa-tuner')" data-tooltip="Generate pressure advance calibration patterns">PA Tuning</button>
-        <button class="tab" data-tab="analysis" onclick="switchTab('analysis')" data-tooltip="Run diagnostics to find potential print problems">Analysis</button>
+        <button class="tab" data-tab="cooling" data-mode="fdm" onclick="switchTab('cooling')" data-tooltip="Fan speed profiles and cooling analysis">Cooling</button>
+        <button class="tab" data-tab="pa-tuner" data-mode="fdm" onclick="switchTab('pa-tuner')" data-tooltip="Generate pressure advance calibration patterns">PA Tuning</button>
+        <button class="tab" data-tab="analysis" data-mode="fdm" onclick="switchTab('analysis')" data-tooltip="Run diagnostics to find potential print problems">Analysis</button>
+        <button class="tab" data-tab="cnc-info" data-mode="cnc" onclick="switchTab('cnc-info')" data-tooltip="CNC toolpath info (tools, spindle, feeds, bounds)">CNC Info</button>
       </div>
 
       <!-- PAUSE TAB -->
@@ -1390,7 +1393,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       </div>
 
       <!-- FILAMENT TAB -->
-      <div class="tab-content" id="tab-filament">
+      <div class="tab-content" id="tab-filament" data-mode="fdm">
         <div class="form-group">
           <label>Layer Number</label>
           <input type="number" class="input" id="filamentLayer" min="0" placeholder="e.g. 10">
@@ -1415,7 +1418,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       </div>
 
       <!-- EJECT TAB -->
-      <div class="tab-content" id="tab-eject">
+      <div class="tab-content" id="tab-eject" data-mode="fdm">
         <div class="form-row">
           <div class="form-group">
             <label>Bed Y Position (mm)</label>
@@ -1484,7 +1487,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       </div>
 
       <!-- INSERTS TAB -->
-      <div class="tab-content" id="tab-inserts">
+      <div class="tab-content" id="tab-inserts" data-mode="fdm">
         <div class="section-label" style="border-top:none;padding-top:0">Detection</div>
         <div class="detect-controls">
           <button class="btn btn-primary" onclick="detectHolesOnLayer()" style="width:auto;flex:1">Detect (Layer)</button>
@@ -1564,7 +1567,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       </div>
 
       <!-- COOLING TAB -->
-      <div class="tab-content" id="tab-cooling">
+      <div class="tab-content" id="tab-cooling" data-mode="fdm">
         <div class="section-label">Fan Rules</div>
         <div id="fanRulesList" class="fan-rules-list"></div>
         <button class="std-btn" onclick="addFanRuleUI()" style="margin-top:6px;width:100%">+ Add Rule</button>
@@ -1587,7 +1590,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       </div>
 
       <!-- PA TUNING TAB -->
-      <div class="tab-content" id="tab-pa-tuner">
+      <div class="tab-content" id="tab-pa-tuner" data-mode="fdm">
         <div class="section-label">Firmware</div>
         <div id="paFirmwareInfo" class="pa-firmware-info"></div>
 
@@ -1638,7 +1641,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       </div>
 
       <!-- ANALYSIS TAB -->
-      <div class="tab-content" id="tab-analysis">
+      <div class="tab-content" id="tab-analysis" data-mode="fdm">
         <div class="analysis-config">
           <div class="field-row">
             <label>Printer</label>
@@ -1700,6 +1703,30 @@ main { display: flex; flex: 1; overflow: hidden; }
 
         <div id="analysisResults">
           <div class="analysis-empty">Load a G-code file and run analysis</div>
+        </div>
+      </div>
+
+      <!-- CNC INFO TAB -->
+      <div class="tab-content" id="tab-cnc-info" data-mode="cnc">
+        <div class="form-group">
+          <label>Tools used</label>
+          <div id="cnc-tools" style="font-size:12px;color:var(--text-dim)">—</div>
+        </div>
+        <div class="form-group">
+          <label>Spindle RPM</label>
+          <div id="cnc-rpm" style="font-size:12px;color:var(--text-dim)">—</div>
+        </div>
+        <div class="form-group">
+          <label>Feed rates (mm/min)</label>
+          <div id="cnc-feeds" style="font-size:12px;color:var(--text-dim)">—</div>
+        </div>
+        <div class="form-group">
+          <label>Bounds (mm)</label>
+          <div id="cnc-bounds" style="font-size:12px;color:var(--text-dim)">—</div>
+        </div>
+        <div class="form-group">
+          <label>Total path distance</label>
+          <div id="cnc-dist" style="font-size:12px;color:var(--text-dim)">—</div>
         </div>
       </div>
 

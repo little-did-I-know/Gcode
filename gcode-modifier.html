@@ -1108,6 +1108,8 @@ main { display: flex; flex: 1; overflow: hidden; }
 [data-theme="light"] .tour-btn { border-color: #ccc; color: #555; }
 [data-theme="light"] .tour-btn:hover { background: rgba(0,0,0,0.05); }
 [data-theme="light"] .tour-btn.tour-next { color: #fff; }
+body[data-gcode-mode="cnc"] [data-mode="fdm"] { display: none !important; }
+body[data-gcode-mode="fdm"] [data-mode="cnc"] { display: none !important; }
 </style>
 </head>
 <body>
@@ -1125,9 +1127,9 @@ main { display: flex; flex: 1; overflow: hidden; }
     </select>
     <div id="dropZone" onclick="document.getElementById('fileInput').click()">
       <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-      <span>Drop .gcode or .bgcode file here or click to upload</span>
+      <span>Drop .gcode, .bgcode, .nc, .tap, or .txt file here or click to upload</span>
     </div>
-    <input type="file" id="fileInput" accept=".gcode,.gco,.g,.bgcode">
+    <input type="file" id="fileInput" accept=".gcode,.gco,.g,.bgcode,.nc,.ngc,.tap,.txt">
     <div id="fileInfo">
       <span class="fname" id="fileName"></span>&nbsp;&nbsp;
       <span id="fileMeta"></span>
@@ -1226,7 +1228,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <div id="compareControls" class="compare-controls" style="display:none;">
           <label>Compare layer: <input type="number" id="compareLayerInput" min="0" style="width:60px;"></label>
           <button id="compareFileBtn" class="hole-detect-btn" title="Compare with another file" style="margin-left:6px;">Compare File</button>
-          <input type="file" id="compareFileInput" accept=".gcode,.gco,.g" style="display:none;">
+          <input type="file" id="compareFileInput" accept=".gcode,.gco,.g,.bgcode,.nc,.ngc,.tap,.txt" style="display:none;">
           <div id="compareDiffStats" class="compare-diff-stats"></div>
         </div>
         <div class="viewer-overlay" id="viewerOverlay"></div>
@@ -1351,16 +1353,17 @@ main { display: flex; flex: 1; overflow: hidden; }
       <div class="panel-right-resize" id="panelRightResize"></div>
       <div class="tabs">
         <button class="tab active" data-tab="pause" onclick="switchTab('pause')" data-tooltip="Add pauses to stop the print at specific layers">Pause</button>
-        <button class="tab" data-tab="filament" onclick="switchTab('filament')" data-tooltip="Insert filament changes for multi-color prints">Filament</button>
-        <button class="tab" data-tab="eject" onclick="switchTab('eject')" data-tooltip="Auto-eject the print when finished">Eject</button>
+        <button class="tab" data-tab="filament" data-mode="fdm" onclick="switchTab('filament')" data-tooltip="Insert filament changes for multi-color prints">Filament</button>
+        <button class="tab" data-tab="eject" data-mode="fdm" onclick="switchTab('eject')" data-tooltip="Auto-eject the print when finished">Eject</button>
         <button class="tab" data-tab="zoffset" onclick="switchTab('zoffset')" data-tooltip="Adjust Z-height over a range of layers">Z-Offset</button>
         <button class="tab" data-tab="custom" onclick="switchTab('custom')" data-tooltip="Insert custom G-code at any layer">Custom</button>
-        <button class="tab" data-tab="inserts" onclick="switchTab('inserts')" data-tooltip="Auto-detect holes for threaded inserts">Inserts</button>
+        <button class="tab" data-tab="inserts" data-mode="fdm" onclick="switchTab('inserts')" data-tooltip="Auto-detect holes for threaded inserts">Inserts</button>
         <button class="tab" data-tab="reference" onclick="switchTab('reference')" data-tooltip="G-code command reference guide">Reference</button>
         <button class="tab" data-tab="recovery" onclick="switchTab('recovery')" data-tooltip="Resume a failed print from a specific layer">Recovery</button>
-        <button class="tab" data-tab="cooling" onclick="switchTab('cooling')" data-tooltip="Fan speed profiles and cooling analysis">Cooling</button>
-        <button class="tab" data-tab="pa-tuner" onclick="switchTab('pa-tuner')" data-tooltip="Generate pressure advance calibration patterns">PA Tuning</button>
-        <button class="tab" data-tab="analysis" onclick="switchTab('analysis')" data-tooltip="Run diagnostics to find potential print problems">Analysis</button>
+        <button class="tab" data-tab="cooling" data-mode="fdm" onclick="switchTab('cooling')" data-tooltip="Fan speed profiles and cooling analysis">Cooling</button>
+        <button class="tab" data-tab="pa-tuner" data-mode="fdm" onclick="switchTab('pa-tuner')" data-tooltip="Generate pressure advance calibration patterns">PA Tuning</button>
+        <button class="tab" data-tab="analysis" data-mode="fdm" onclick="switchTab('analysis')" data-tooltip="Run diagnostics to find potential print problems">Analysis</button>
+        <button class="tab" data-tab="cnc-info" data-mode="cnc" onclick="switchTab('cnc-info')" data-tooltip="CNC toolpath info (tools, spindle, feeds, bounds)">CNC Info</button>
       </div>
 
       <!-- PAUSE TAB -->
@@ -1390,7 +1393,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       </div>
 
       <!-- FILAMENT TAB -->
-      <div class="tab-content" id="tab-filament">
+      <div class="tab-content" id="tab-filament" data-mode="fdm">
         <div class="form-group">
           <label>Layer Number</label>
           <input type="number" class="input" id="filamentLayer" min="0" placeholder="e.g. 10">
@@ -1415,7 +1418,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       </div>
 
       <!-- EJECT TAB -->
-      <div class="tab-content" id="tab-eject">
+      <div class="tab-content" id="tab-eject" data-mode="fdm">
         <div class="form-row">
           <div class="form-group">
             <label>Bed Y Position (mm)</label>
@@ -1484,7 +1487,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       </div>
 
       <!-- INSERTS TAB -->
-      <div class="tab-content" id="tab-inserts">
+      <div class="tab-content" id="tab-inserts" data-mode="fdm">
         <div class="section-label" style="border-top:none;padding-top:0">Detection</div>
         <div class="detect-controls">
           <button class="btn btn-primary" onclick="detectHolesOnLayer()" style="width:auto;flex:1">Detect (Layer)</button>
@@ -1564,7 +1567,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       </div>
 
       <!-- COOLING TAB -->
-      <div class="tab-content" id="tab-cooling">
+      <div class="tab-content" id="tab-cooling" data-mode="fdm">
         <div class="section-label">Fan Rules</div>
         <div id="fanRulesList" class="fan-rules-list"></div>
         <button class="std-btn" onclick="addFanRuleUI()" style="margin-top:6px;width:100%">+ Add Rule</button>
@@ -1587,7 +1590,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       </div>
 
       <!-- PA TUNING TAB -->
-      <div class="tab-content" id="tab-pa-tuner">
+      <div class="tab-content" id="tab-pa-tuner" data-mode="fdm">
         <div class="section-label">Firmware</div>
         <div id="paFirmwareInfo" class="pa-firmware-info"></div>
 
@@ -1638,7 +1641,7 @@ main { display: flex; flex: 1; overflow: hidden; }
       </div>
 
       <!-- ANALYSIS TAB -->
-      <div class="tab-content" id="tab-analysis">
+      <div class="tab-content" id="tab-analysis" data-mode="fdm">
         <div class="analysis-config">
           <div class="field-row">
             <label>Printer</label>
@@ -1700,6 +1703,30 @@ main { display: flex; flex: 1; overflow: hidden; }
 
         <div id="analysisResults">
           <div class="analysis-empty">Load a G-code file and run analysis</div>
+        </div>
+      </div>
+
+      <!-- CNC INFO TAB -->
+      <div class="tab-content" id="tab-cnc-info" data-mode="cnc">
+        <div class="form-group">
+          <label>Tools used</label>
+          <div id="cnc-tools" style="font-size:12px;color:var(--text-dim)">—</div>
+        </div>
+        <div class="form-group">
+          <label>Spindle RPM</label>
+          <div id="cnc-rpm" style="font-size:12px;color:var(--text-dim)">—</div>
+        </div>
+        <div class="form-group">
+          <label>Feed rates (mm/min)</label>
+          <div id="cnc-feeds" style="font-size:12px;color:var(--text-dim)">—</div>
+        </div>
+        <div class="form-group">
+          <label>Bounds (mm)</label>
+          <div id="cnc-bounds" style="font-size:12px;color:var(--text-dim)">—</div>
+        </div>
+        <div class="form-group">
+          <label>Total path distance</label>
+          <div id="cnc-dist" style="font-size:12px;color:var(--text-dim)">—</div>
         </div>
       </div>
 
@@ -4071,10 +4098,265 @@ class GcodeParser {
     return 'unknown';
   }
 
+  _detectMode(lines) {
+    // FDM signals (any => fdm)
+    const slicer = this._detectSlicer(lines);
+    if (slicer !== 'unknown') return 'fdm';
+
+    const scanLines = Math.min(500, lines.length);
+    let hasExtrusionMode = false;
+    let hasEParam = false;
+    let hasSpindle = false;
+    let hasToolChange = false;
+    let hasArc = false;
+
+    for (let i = 0; i < scanLines; i++) {
+      // Strip line numbers (N<num>) and inline (...) comments, then insert a
+      // space between digit-letter pairs so concatenated tokens like "T4M06"
+      // or "G00G21G17" split into separate \b-bounded words.
+      const line = lines[i]
+        .replace(/^\s*N\d+\s*/i, '')
+        .replace(/\([^)]*\)/g, '')
+        .replace(/(\d)([A-Z])/gi, '$1 $2');
+      if (/\bM8[23]\b/.test(line)) hasExtrusionMode = true;
+      if (/\bG[01]\b.*\bE-?[\d.]+/i.test(line)) hasEParam = true;
+      if (/\bM0?[35]\b/.test(line)) hasSpindle = true;
+      if (/\bM0?6\b/.test(line)) hasToolChange = true;
+      if (/\bG0?[23]\b/.test(line)) hasArc = true;
+    }
+
+    if (hasExtrusionMode || hasEParam) return 'fdm';
+    if (hasSpindle || hasToolChange) return 'cnc';
+    if (hasArc) return 'cnc'; // arcs without E strongly suggest CNC
+    return 'fdm'; // safe default
+  }
+
+  async _parseCNC(lines, onProgress) {
+    const Z_EPSILON = 0.001;
+    this.layers = [];
+    this.layerMoves = {};
+    this.bounds = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity };
+    this.headerEnd = 0;
+    this.warnings = [];
+    this.skippedLines = 0;
+    this.tools = new Set();
+    this.spindleRPMs = new Set();
+    this.feedRates = new Set();
+
+    let curX = 0, curY = 0, curZ = 0;
+    let currentFeedRate = 0;
+    let currentSpindleRPM = 0;
+    let currentTool = null;
+    let spindleOn = false;
+    let foundFirstMove = false;
+    // Modal motion mode (G0/G1/G2/G3): subsequent lines with X/Y/Z but no G use
+    // the last motion code. VCarve/Vectric posts rely on this constantly.
+    let modalMotion = 0; // 0=G0 rapid, 1=G1 feed, 2=G2 CW arc, 3=G3 CCW arc
+
+    const zBands = new Map(); // zKey -> layer object
+    const getOrCreateBand = (z) => {
+      const zKey = Math.round(z / Z_EPSILON);
+      let layer = zBands.get(zKey);
+      if (!layer) {
+        layer = {
+          number: this.layers.length,
+          startLine: 0, endLine: null,
+          zHeight: z,
+          sectionTypes: ['FEED'],
+          lineCount: 0
+        };
+        this.layers.push(layer);
+        this.layerMoves[layer.number] = [];
+        zBands.set(zKey, layer);
+      }
+      return layer;
+    };
+
+    const recordMove = (x1, y1, z1, x2, y2, z2, type, lineIndex) => {
+      const bandZ = Math.max(z1, z2);
+      const layer = getOrCreateBand(bandZ);
+      layer.lineCount++;
+      if (!layer.sectionTypes.includes(type)) layer.sectionTypes.push(type);
+      this.layerMoves[layer.number].push({
+        x1, y1, x2, y2, z1, z2,
+        type, extrude: false, lineIndex,
+        feedRate: currentFeedRate,
+        spindleRPM: currentSpindleRPM,
+        tool: currentTool
+      });
+      this.bounds.minX = Math.min(this.bounds.minX, x1, x2);
+      this.bounds.maxX = Math.max(this.bounds.maxX, x1, x2);
+      this.bounds.minY = Math.min(this.bounds.minY, y1, y2);
+      this.bounds.maxY = Math.max(this.bounds.maxY, y1, y2);
+      this.bounds.minZ = Math.min(this.bounds.minZ, z1, z2);
+      this.bounds.maxZ = Math.max(this.bounds.maxZ, z1, z2);
+    };
+
+    const CHUNK = 50000;
+    const total = lines.length;
+
+    for (let start = 0; start < total; start += CHUNK) {
+      const end = Math.min(start + CHUNK, total);
+      for (let i = start; i < end; i++) {
+        // Normalize: strip leading N<num> (Vectric/Mach-style line numbers) and
+        // inline (...) comments, then insert a space between digit-letter pairs
+        // so concatenated tokens ("T4M06", "G00G21G17", "X0.000Y0.000") become
+        // \b-bounded words. matchAll patterns work either way; the spaces just
+        // ensure \b anchors fire between codes.
+        const raw = lines[i];
+        const line = raw
+          .replace(/^\s*N\d+\s*/i, '')
+          .replace(/\([^)]*\)/g, '')
+          .replace(/(\d)([A-Z])/gi, '$1 $2')
+          .trim();
+
+        if (!foundFirstMove && line && !line.startsWith(';') && /^[GMT]/.test(line)) {
+          this.headerEnd = i;
+          foundFirstMove = true;
+        }
+
+        // Spindle / tool changes can co-occur with G codes on the same line
+        // (e.g. "T4M06"). Detect them regardless of position.
+        if (/\bM0?3\b/.test(line)) {
+          spindleOn = true;
+          const sm = line.match(/\bS([\d.]+)/i);
+          if (sm) { currentSpindleRPM = parseFloat(sm[1]); this.spindleRPMs.add(currentSpindleRPM); }
+        }
+        if (/\bM0?5\b/.test(line)) { spindleOn = false; }
+        if (/\bM0?6\b/.test(line) || /\bT\d+\b/.test(line)) {
+          const tm = line.match(/\bT(\d+)/i);
+          if (tm) { currentTool = parseInt(tm[1]); this.tools.add(currentTool); }
+        }
+
+        // Update modal motion if a G0/G1/G2/G3 appears anywhere on the line.
+        // Match the LAST such code so "G00G21G17G90..." correctly sets motion
+        // from any leading motion code; CAM posts typically put motion first
+        // but consecutive G's on one line are valid.
+        const motionMatches = [...line.matchAll(/\bG0?([0123])\b/g)];
+        let motionExplicit = false;
+        if (motionMatches.length > 0) {
+          modalMotion = parseInt(motionMatches[0][1]);
+          motionExplicit = true;
+        }
+
+        // Has any axis/feed/arc params?
+        const hasAnyParam = /[XYZIJRF]-?[\d.]/i.test(line);
+        if (!hasAnyParam && !motionExplicit) continue;
+        // If a motion G code appears but no XYZ params (e.g. "G00G21G17G90..."
+        // setup line, or G80 cancel), nothing to draw — skip.
+        if (!hasAnyParam) continue;
+
+        if (modalMotion === 0 || modalMotion === 1) {
+          try {
+            const params = {};
+            for (const m of line.matchAll(/([XYZF])(-?[\d.]+)/gi)) params[m[1].toUpperCase()] = parseFloat(m[2]);
+
+            const newX = params.X !== undefined ? params.X : curX;
+            const newY = params.Y !== undefined ? params.Y : curY;
+            const newZ = params.Z !== undefined ? params.Z : curZ;
+            if (params.F !== undefined) { currentFeedRate = params.F; this.feedRates.add(currentFeedRate); }
+
+            const isG0 = modalMotion === 0;
+            const dx = newX - curX, dy = newY - curY, dz = newZ - curZ;
+            const hasXY = dx !== 0 || dy !== 0;
+            const hasZ = dz !== 0;
+
+            let type;
+            if (isG0) type = 'RAPID';
+            else if (hasZ && dz < 0 && !hasXY) type = 'PLUNGE';
+            else if (hasZ && dz > 0 && !hasXY) type = 'LIFT';
+            else type = 'FEED';
+
+            if (hasXY || hasZ) {
+              recordMove(curX, curY, curZ, newX, newY, newZ, type, i);
+            }
+
+            curX = newX; curY = newY; curZ = newZ;
+          } catch (err) { this.skippedLines++; }
+          continue;
+        }
+
+        if (modalMotion === 2 || modalMotion === 3) {
+          try {
+            const params = {};
+            for (const m of line.matchAll(/([XYZFIJR])(-?[\d.]+)/gi)) params[m[1].toUpperCase()] = parseFloat(m[2]);
+
+            const newX = params.X !== undefined ? params.X : curX;
+            const newY = params.Y !== undefined ? params.Y : curY;
+            const newZ = params.Z !== undefined ? params.Z : curZ;
+            if (params.F !== undefined) { currentFeedRate = params.F; this.feedRates.add(currentFeedRate); }
+            const isG2 = modalMotion === 2;
+
+            let cx, cy, r;
+            if (params.I !== undefined || params.J !== undefined) {
+              cx = curX + (params.I || 0);
+              cy = curY + (params.J || 0);
+              r = Math.hypot(params.I || 0, params.J || 0);
+            } else if (params.R !== undefined) {
+              const mx = (curX + newX) / 2, my = (curY + newY) / 2;
+              const dx = newX - curX, dy = newY - curY;
+              const d = Math.hypot(dx, dy);
+              r = Math.abs(params.R);
+              const h = Math.sqrt(Math.max(0, r * r - (d / 2) * (d / 2)));
+              const sign = (isG2 ? -1 : 1) * (params.R > 0 ? 1 : -1);
+              cx = mx + sign * (-dy / d) * h;
+              cy = my + sign * ( dx / d) * h;
+            } else {
+              curX = newX; curY = newY; curZ = newZ;
+              continue;
+            }
+
+            if (r > 0.01) {
+              let startAngle = Math.atan2(curY - cy, curX - cx);
+              let endAngle = Math.atan2(newY - cy, newX - cx);
+              if (isG2) {
+                if (endAngle >= startAngle) endAngle -= 2 * Math.PI;
+              } else {
+                if (endAngle <= startAngle) endAngle += 2 * Math.PI;
+              }
+              const segments = Math.max(4, Math.ceil(Math.abs(endAngle - startAngle) / (Math.PI / 12)));
+              let prevAX = curX, prevAY = curY, prevAZ = curZ;
+              for (let s = 1; s <= segments; s++) {
+                const t = s / segments;
+                const angle = startAngle + (endAngle - startAngle) * t;
+                const ax = s === segments ? newX : cx + r * Math.cos(angle);
+                const ay = s === segments ? newY : cy + r * Math.sin(angle);
+                const az = curZ + (newZ - curZ) * t;
+                recordMove(prevAX, prevAY, prevAZ, ax, ay, az, 'ARC', i);
+                prevAX = ax; prevAY = ay; prevAZ = az;
+              }
+            }
+
+            curX = newX; curY = newY; curZ = newZ;
+          } catch (err) { this.skippedLines++; }
+          continue;
+        }
+      }
+
+      if (onProgress) onProgress(Math.min(end / total, 1));
+      if (end < total) await new Promise(r => setTimeout(r, 0));
+    }
+
+    // Sort layers by Z ascending and renumber
+    this.layers.sort((a, b) => a.zHeight - b.zHeight);
+    const remap = new Map();
+    this.layers.forEach((layer, idx) => { remap.set(layer.number, idx); });
+    const newLayerMoves = {};
+    for (const [oldNum, moves] of Object.entries(this.layerMoves)) {
+      const newNum = remap.get(parseInt(oldNum));
+      newLayerMoves[newNum] = moves;
+    }
+    this.layerMoves = newLayerMoves;
+    this.layers.forEach((layer, idx) => { layer.number = idx; });
+
+    if (!isFinite(this.bounds.minX)) this.bounds = { minX: 0, maxX: 256, minY: 0, maxY: 256, minZ: 0, maxZ: 0 };
+  }
+
   async parseAsync(text, fileName, onProgress) {
     this.fileName = fileName;
     this.lines = text.split(/\r?\n/);
     this.slicerType = this._detectSlicer(this.lines);
+    this.mode = this._detectMode(this.lines);
     this.layers = [];
     this.layerMoves = {};
     this.bounds = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
@@ -4093,6 +4375,11 @@ class GcodeParser {
     // Bambu Studio uses "; CHANGE_LAYER" as a marker, with layer number on a nearby line
     let pendingChangeLayer = false;
     let pendingZHeight = null;
+
+    if (this.mode === 'cnc') {
+      await this._parseCNC(this.lines, onProgress);
+      return this.layers;
+    }
 
     const CHUNK = 50000;
     const total = this.lines.length;
@@ -11413,7 +11700,10 @@ class GcodeViewer3D {
     const cy = (b.minY + b.maxY) / 2;
     const maxLayer = parser.layers[parser.layers.length - 1];
     const maxZ = maxLayer ? (maxLayer.zHeight || 0) : 0;
-    const cz = maxZ / 2;
+    // CNC: rendered geometry is shifted by -bounds.minZ so stock sits on the
+    // build plate. Camera target follows the shifted geometry.
+    const zShift = (parser.mode === 'cnc' && isFinite(b.minZ)) ? -b.minZ : 0;
+    const cz = (maxZ + zShift) / 2;
 
     const dist = Math.max(b.maxX - b.minX, b.maxY - b.minY, maxZ || 50) * 1.5 / this.cam.zoom;
 
@@ -11483,6 +11773,11 @@ class GcodeViewer3D {
     'SKIRT': [0.655, 0.545, 0.980],
     'BRIM': [0.655, 0.545, 0.980],
     'CUSTOM': [0.655, 0.545, 0.980],
+    'RAPID':  [0.55, 0.55, 0.55],
+    'FEED':   [0.376, 0.647, 0.980],
+    'PLUNGE': [0.976, 0.310, 0.310],
+    'LIFT':   [0.980, 0.800, 0.082],
+    'ARC':    [0.133, 0.827, 0.933],
     'DEFAULT': [0.878, 0.886, 0.910],
   };
 
@@ -11540,11 +11835,48 @@ class GcodeViewer3D {
     }
 
     const layer = parser.getLayerByNumber(layerNum);
-    const z = layer?.zHeight || 0;
+    // In CNC mode, stock sits ABOVE the build plate: the file's most-negative
+    // Z (deepest cut, i.e. stock bottom) is shifted to world Z=0 so the part
+    // doesn't render below the plate grid. Layer labels and tooltips keep the
+    // original G-code Z for the operator's reference.
+    const zShift = (parser.mode === 'cnc' && isFinite(parser.bounds.minZ)) ? -parser.bounds.minZ : 0;
+    const layerZ = (layer?.zHeight || 0) + zShift;
     const halfW = 0.2; // half ribbon width in mm
+    // CNC fill: each cutting move at world Z = z1/z2 represents removed
+    // material from that depth all the way up to the top of the stock
+    // (world Z = zShift, the file's Z=0 surface). The fin extends UPWARD from
+    // the cut to the top so the visualization reads as "material is gone from
+    // here up to the surface" rather than just a thin slice between layers.
+    const fillToZ = (parser.mode === 'cnc' && zShift > 0) ? zShift : null;
 
     // Extrusion ribbons: x,y,z, r,g,b, alpha per vertex
     const ribbonVerts = [];
+
+    // CNC stock block: a translucent box surrounding the cuts so the operator
+    // can see what's being carved out. Attached to layer 0 (the deepest) so
+    // it's always rendered. 20% margin on X/Y; Z spans world 0 → zShift
+    // (build plate up to top of stock at file Z=0).
+    if (parser.mode === 'cnc' && layerNum === 0 && zShift > 0) {
+      const b = parser.bounds;
+      const mx = (b.maxX - b.minX) * 0.2;
+      const my = (b.maxY - b.minY) * 0.2;
+      const x0 = b.minX - mx, x1 = b.maxX + mx;
+      const y0 = b.minY - my, y1 = b.maxY + my;
+      const z0 = 0, z1 = zShift;
+      // Warm beige with low alpha so cuts inside remain readable.
+      const sr = 0.82, sg = 0.74, sb = 0.58, sa = 0.07;
+      const pushQuad = (a, b_, c, d) => {
+        const tris = [a, b_, c, a, c, d];
+        for (const v of tris) ribbonVerts.push(v[0], v[1], v[2], sr, sg, sb, sa);
+      };
+      // 6 faces of the box
+      pushQuad([x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0]); // bottom
+      pushQuad([x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]); // top
+      pushQuad([x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1]); // front
+      pushQuad([x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1]); // back
+      pushQuad([x0,y0,z0],[x0,y1,z0],[x0,y1,z1],[x0,y0,z1]); // left
+      pushQuad([x1,y0,z0],[x1,y1,z0],[x1,y1,z1],[x1,y0,z1]); // right
+    }
     // Travel lines: x,y,z, r,g,b,a per vertex
     const travelVerts = [];
     // Per-move offset tracking for simulation
@@ -11559,7 +11891,9 @@ class GcodeViewer3D {
     for (let moveIndex = 0; moveIndex < moves.length; moveIndex++) {
       const move = moves[moveIndex];
       // Skip hidden motion types (in motion-type mode) or non-extrusions (in heatmap mode)
-      const moveTypeUpper = move.extrude ? move.type.toUpperCase() : 'TRAVEL';
+      const isCNC = (typeof parser !== 'undefined' && parser.mode === 'cnc');
+      const isCuttingMove = move.extrude || (isCNC && move.type !== 'RAPID');
+      const moveTypeUpper = isCuttingMove ? move.type.toUpperCase() : 'TRAVEL';
       const normalizedMoveType = MOTION_TYPE_ALIASES[moveTypeUpper] || moveTypeUpper;
       if (!isHeatmap && motionTypeVisibility[normalizedMoveType] === false) {
         offsets.push({ triStart: ribbonVerts.length / 7, triCount: 0, lineStart: travelVerts.length / 7, lineCount: 0 });
@@ -11569,8 +11903,8 @@ class GcodeViewer3D {
       const triStart = ribbonVerts.length / 7;
       const lineStart = travelVerts.length / 7;
 
-      if (move.extrude) {
-        const color = isHeatmap
+      if (isCuttingMove) {
+        const color = (isHeatmap && !(isCNC && !move.extrude))
           ? this._getHeatmapColor(getHeatmapValue(move, layerNum, moveIndex), heatStats.min, heatStats.max, invertColor)
           : this._getTypeColor(move.type);
         const dx = move.x2 - move.x1;
@@ -11585,13 +11919,15 @@ class GcodeViewer3D {
         const ny = dx / len * halfW;
 
         // Two triangles forming a ribbon
+        const z1 = move.z1 != null ? move.z1 + zShift : layerZ;
+        const z2 = move.z2 != null ? move.z2 + zShift : layerZ;
         const verts = [
-          move.x1 + nx, move.y1 + ny, z,
-          move.x1 - nx, move.y1 - ny, z,
-          move.x2 + nx, move.y2 + ny, z,
-          move.x2 + nx, move.y2 + ny, z,
-          move.x1 - nx, move.y1 - ny, z,
-          move.x2 - nx, move.y2 - ny, z,
+          move.x1 + nx, move.y1 + ny, z1,
+          move.x1 - nx, move.y1 - ny, z1,
+          move.x2 + nx, move.y2 + ny, z2,
+          move.x2 + nx, move.y2 + ny, z2,
+          move.x1 - nx, move.y1 - ny, z1,
+          move.x2 - nx, move.y2 - ny, z2,
         ];
         for (let i = 0; i < 6; i++) {
           ribbonVerts.push(
@@ -11600,12 +11936,36 @@ class GcodeViewer3D {
             1.0
           );
         }
+
+        // CNC fill: drop a translucent vertical quad along this move's path
+        // from its Z down to the next-deeper layer's Z. Skip PLUNGE/LIFT —
+        // those are themselves vertical motions, not in-plane cuts.
+        if (fillToZ != null && (move.type === 'FEED' || move.type === 'ARC')) {
+          const fillVerts = [
+            move.x1, move.y1, z1,
+            move.x2, move.y2, z2,
+            move.x2, move.y2, fillToZ,
+            move.x1, move.y1, z1,
+            move.x2, move.y2, fillToZ,
+            move.x1, move.y1, fillToZ,
+          ];
+          for (let i = 0; i < 6; i++) {
+            ribbonVerts.push(
+              fillVerts[i * 3], fillVerts[i * 3 + 1], fillVerts[i * 3 + 2],
+              color[0], color[1], color[2],
+              0.18
+            );
+          }
+        }
       } else {
-        // Travel move as a line (use custom color if set)
-        const tc = this._getTypeColor('TRAVEL');
+        const isCNC = (typeof parser !== 'undefined' && parser.mode === 'cnc');
+        const tc = isCNC ? this._getTypeColor(move.type) : this._getTypeColor('TRAVEL');
+        const alpha = isCNC ? (move.type === 'RAPID' ? 0.25 : 1.0) : 0.3;
+        const z1 = move.z1 != null ? move.z1 + zShift : layerZ;
+        const z2 = move.z2 != null ? move.z2 + zShift : layerZ;
         travelVerts.push(
-          move.x1, move.y1, z, tc[0], tc[1], tc[2], 0.3,
-          move.x2, move.y2, z, tc[0], tc[1], tc[2], 0.3,
+          move.x1, move.y1, z1, tc[0], tc[1], tc[2], alpha,
+          move.x2, move.y2, z2, tc[0], tc[1], tc[2], alpha,
         );
       }
 
@@ -12474,7 +12834,7 @@ class GcodeViewer3D {
     if (!moves || moves.length === 0) return null;
     let best = null, bestDist = Infinity;
     for (const move of moves) {
-      if (!move.extrude) continue;
+      if (!move.extrude && !(typeof parser !== 'undefined' && parser.mode === 'cnc' && move.type !== 'RAPID')) continue;
       const dx = move.x2 - move.x1, dy = move.y2 - move.y1;
       const lenSq = dx * dx + dy * dy;
       let d;
@@ -13952,7 +14312,7 @@ function showEditInfoPanel(move) {
   const typeLabel = MOTION_TYPE_LABELS[move.type] || move.type;
 
   lineText.textContent = rawLine.trim();
-  lineMeta.textContent = `Line ${move.lineIndex + 1} \u00b7 ${typeLabel} \u00b7 ${move.extrude ? 'Extrusion' : 'Travel'}`;
+  lineMeta.textContent = `Line ${move.lineIndex + 1} \u00b7 ${typeLabel} \u00b7 ${move.extrude ? 'Extrusion' : (typeof parser !== 'undefined' && parser.mode === 'cnc' && move.type !== 'RAPID' ? 'Cut' : 'Travel')}`;
 
   // Parse parameters and build input fields
   const parsed = parseGcodeParams(rawLine);
@@ -14440,6 +14800,8 @@ async function reparseAndRender(targetLayer, toastMsg) {
   try {
     const text = parser.lines.join('\n');
     await parser.parseAsync(text, parser.fileName);
+    document.body.dataset.gcodeMode = parser.mode;
+    updateCNCInfo();
     initMotionTypeState();
     viewer.clearBuffers();
     buildSections();
@@ -14666,6 +15028,8 @@ function loadFile(file) {
       barEl.style.width = (pct * 100).toFixed(0) + '%';
       labelEl.textContent = `Parsing... ${(pct * 100).toFixed(0)}%`;
     });
+    document.body.dataset.gcodeMode = parser.mode;
+    updateCNCInfo();
 
     progressEl.style.display = 'none';
 
@@ -16975,8 +17339,12 @@ function initWarpControls() {
 function onSliderChange(val) {
   // Map slider index to layer number
   if (parser.layers[val]) {
-    selectLayer(parser.layers[val].number);
-    document.getElementById('sliderLabel').textContent = `Layer ${parser.layers[val].number}`;
+    const layer = parser.layers[val];
+    selectLayer(layer.number);
+    const label = parser.mode === 'cnc'
+      ? `Z ${layer.zHeight != null ? layer.zHeight.toFixed(2) : '?'} mm`
+      : `Layer ${layer.number}`;
+    document.getElementById('sliderLabel').textContent = label;
   }
 }
 
@@ -16985,7 +17353,13 @@ function updateSlider() {
   slider.max = Math.max(0, parser.layers.length - 1);
   const idx = parser.layers.findIndex(l => l.number === selectedLayer);
   if (idx >= 0) slider.value = idx;
-  document.getElementById('sliderLabel').textContent = `Layer ${selectedLayer ?? 0}`;
+  if (parser.mode === 'cnc') {
+    const layer = parser.getLayerByNumber(selectedLayer);
+    document.getElementById('sliderLabel').textContent =
+      layer ? `Z ${layer.zHeight != null ? layer.zHeight.toFixed(2) : '?'} mm` : '—';
+  } else {
+    document.getElementById('sliderLabel').textContent = `Layer ${selectedLayer ?? 0}`;
+  }
   updateSliderTicks();
 }
 
@@ -17797,6 +18171,29 @@ function executeInsightAction(id) {
   if (item && item.action && item.action.fn) {
     item.action.fn();
   }
+}
+
+function updateCNCInfo() {
+  if (parser.mode !== 'cnc') return;
+  const tools = [...(parser.tools || [])];
+  const rpms = [...(parser.spindleRPMs || [])];
+  const feeds = [...(parser.feedRates || [])].sort((a, b) => a - b);
+  const b = parser.bounds;
+  let totalDist = 0;
+  for (const moves of Object.values(parser.layerMoves)) {
+    for (const m of moves) {
+      const dx = m.x2 - m.x1;
+      const dy = m.y2 - m.y1;
+      const dz = (m.z2 ?? 0) - (m.z1 ?? 0);
+      totalDist += Math.hypot(dx, dy, dz);
+    }
+  }
+  const $ = id => document.getElementById(id);
+  if ($('cnc-tools')) $('cnc-tools').textContent = tools.length ? tools.join(', ') : 'none';
+  if ($('cnc-rpm')) $('cnc-rpm').textContent = rpms.length ? `${Math.min(...rpms)}–${Math.max(...rpms)}` : '—';
+  if ($('cnc-feeds')) $('cnc-feeds').textContent = feeds.length ? `${feeds[0]}–${feeds[feeds.length - 1]}` : '—';
+  if ($('cnc-bounds')) $('cnc-bounds').textContent = `X ${b.minX.toFixed(1)}–${b.maxX.toFixed(1)} · Y ${b.minY.toFixed(1)}–${b.maxY.toFixed(1)} · Z ${b.minZ.toFixed(1)}–${b.maxZ.toFixed(1)}`;
+  if ($('cnc-dist')) $('cnc-dist').textContent = `${totalDist.toFixed(1)} mm`;
 }
 
 // App initialization, state, and event wiring.
