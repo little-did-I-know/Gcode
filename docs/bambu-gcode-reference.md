@@ -56,23 +56,36 @@ A comprehensive reference of proprietary G-code commands used by Bambu Lab 3D pr
 
 Commands controlling the Automatic Material System (AMS), filament changes, flushing, and purging.
 
+> **The `H` parameter is overloaded on the H2C.** Two unrelated meanings depending on the command:
+> - **Hotend index** on *selection* commands (`M620 S`, `T`, `M640.8`, `M620.6`, `M620.11 B`): `H-1` = auto, i.e. let the firmware resolve the physical Vortek hotend from its filament→position map. In all observed single-material slices this is **always `-1`** — the slicer never pins a rack slot.
+> - **Nozzle diameter in mm** on *flush/detection* commands (`M620.10 H0.6`, `M1015.4 H0.6`): tracks the nozzle (0.4→0.6) with filament held constant.
+>
+> Confirmed by controlled slices: holding the filament fixed and swapping the 0.4 mm nozzle for a 0.6 mm one changed every flush/detection `H` from `0.4` to `0.6`, while every selection `H` stayed `-1`.
+
 ### M620 S — Begin AMS Filament Select Block
 
 **Confidence:** Verified | **Models:** [ALL]
 
-**Syntax:** `M620 S<n> A`
+**Syntax:** `M620 S<n> A [H<hotend>]`
 
 **Parameters:**
-- `S` — Filament slot index (0-3 for AMS slots, 255 for unload/retract to AMS)
+- `S` — Filament index (global, 0-based across all AMS units; sentinel values for unload — see below)
 - `A` — AMS mode flag
+- `H` — Target Vortek hotend index; `-1` = auto (firmware resolves via the printer-side filament→nozzle mapping). H2C only.
 
-**Description:** Opens an AMS filament selection block. The firmware executes the filament change sequence between M620 and the matching M621. Must always be paired with M621 using the same S value.
+**Description:** Opens an AMS filament selection block. The firmware executes the filament change sequence between M620 and the matching M621. Must always be paired with M621 using the same S value. On the H2C the slicer emits `M620 S[next_extruder]A H[next_hotend]` — the added `H` parameter selects the physical Vortek hotend, with `H-1` deferring to the firmware's runtime mapping (the mapping is computed printer-side at print start and can be changed from the printer without re-slicing).
 
-**Context:** Appears in start gcode (initial filament load), filament change sequences, and end gcode (filament retract with S255).
+**Unload sentinel values (end gcode):**
+- `S255` — Unload/retract to AMS (X1/P1/A1 single-extruder models)
+- `S65535` / `S65279` — Per-extruder unload on dual-extruder models (H2D/H2C), paired with `T65535`/`T65279`
+
+**Context:** Appears in start gcode (initial filament load), filament change sequences, and end gcode (filament retract with the sentinel values).
 
 **Examples:**
-- `M620 S0A ; switch material if AMS exist` — Select slot 0
-- `M620 S255` — Unload/retract filament to AMS (end of print)
+- `M620 S0A ; switch material if AMS exist` — Select slot 0 (X1/P1)
+- `M620 S0A H-1 ; switch material if AMS exist` — H2C: select filament 0, auto hotend (observed in sliced H2C output)
+- `M620 S255` — Unload/retract filament to AMS (end of print, X1/P1)
+- `M620 S65535` … `T65535` … `M621 S65535`, then `M620 S65279` … `T65279` … `M621 S65279` — H2C/H2D end-of-print unload, one block per extruder
 
 ---
 
@@ -92,22 +105,59 @@ Commands controlling the Automatic Material System (AMS), filament changes, flus
 
 ---
 
-### M620.1 — Set Flush Extrusion Parameters
+### M620 N / T / O / D — Hotend Remap & Print Metadata Hooks (H2C)
+
+**Confidence:** Verified (existence; semantics from inline comments) | **Models:** [H2C]
+
+**Syntax:** `M620 N` / `M620 T<0/1/2>` / `M620 O<n>` / `M620 D<n>`
+
+**Variants:**
+
+| Variant | Inline Comment | Purpose |
+|---------|----------------|---------|
+| `M620 N` | `;enable hotend remap` | Enables Vortek hotend remapping — the hotend-rack analog of `M620 M` for AMS slots |
+| `M620 T0` | `;print tmpr` | Declares print temperature metadata block |
+| `M620 T1` | `;sn -> pos` | Declares hotend serial-number → rack-position mapping |
+| `M620 T2` | `;filament_id` | Declares filament ID metadata block |
+| `M620 O<n>` | — | Toolchange counter; start gcode emits `M620 O1`, change_filament template emits `M620 O{toolchange_count + 1}` |
+| `M620 D-1` | — | Observed in the XY toolhead-offset calibration block, before `G383`/`G383.3` |
+
+**Description:** H2C-exclusive hooks for the Vortek swappable-hotend system. `M620 M`, `M620 N`, and the three `M620 T` lines appear as a contiguous block in machine_start_gcode under `;===== reset machine status =====`. Absent from H2D start gcode (which has only `M620 M`), making these the differential markers of the hotend-rack system.
+
+**Example (H2C machine_start_gcode, observed in sliced output):**
+```
+M620 M ;enable remap
+M620 N ;enable hotend remap
+M620 T0 ;print tmpr
+M620 T1 ;sn -> pos
+M620 T2 ;filament_id
+```
+
+---
+
+### M620.1 — Set Flush Extrusion Parameters / Change-Travel Waypoints
 
 **Confidence:** Inferred | **Models:** [ALL]
 
-**Syntax:** `M620.1 E F<speed> T<temp>`
+**Syntax:** `M620.1 E F<speed> T<temp>` (flush form) / `M620.1 X<x> Y<y> F<speed> P<0/1/2>` (waypoint form)
 
-**Parameters:**
+**Parameters (E form):**
 - `E` — Extrusion mode flag
 - `F` — Flush volumetric speed (typically `flush_volumetric_speeds[extruder]/2.4053*60`)
 - `T` — Flush temperature in °C
 
-**Description:** Configures extrusion parameters for the upcoming filament purge/flush sequence. Called twice during filament changes — once for the old filament's flush settings, once for the new filament's.
+**Parameters (X/Y form):**
+- `X`, `Y` — Waypoint coordinates for the filament-change travel path
+- `F` — Travel feed rate (21000 observed)
+- `P` — Waypoint index (0, 1, 2)
+
+**Description:** The `E` form configures extrusion parameters for the upcoming filament purge/flush sequence — called twice during filament changes, once for the old filament's flush settings, once for the new filament's. The `X/Y` form pre-declares the travel path the toolhead takes during a filament change as three indexed waypoints (`travel_point_1..3` in the profile); observed in P1S change_filament templates, and present but commented out in the H2C template behind `{if toolchange_count == 2}`.
 
 **Context:** Appears inside M620/M621 blocks during filament change and initial load sequences.
 
-**Example:** `M620.1 E F548.788 T240`
+**Examples:**
+- `M620.1 E F548.788 T240`
+- `M620.1 X[travel_point_1_x] Y[travel_point_1_y] F21000 P0` — First waypoint of change travel path (P1S template)
 
 ---
 
@@ -130,68 +180,110 @@ Commands controlling the Automatic Material System (AMS), filament changes, flus
 
 ### M620.6 — AMS Air Printing Detection
 
-**Confidence:** Inferred | **Models:** [H2] [H2D] [H2C]
+**Confidence:** Verified | **Models:** [H2] [H2D] [H2C]
 
-**Syntax:** `M620.6 I<n> W<0/1>`
+**Syntax:** `M620.6 I<n> [H<hotend>] W<0/1>`
 
 **Parameters:**
-- `I` — Extruder index
+- `I` — Filament/extruder index (template: `I[next_extruder]`)
+- `H` — Hotend index, `-1` = auto (template: `H[next_hotend]`; H2C only)
 - `W` — Enable flag (1=on)
 
-**Description:** Enables AMS air printing detection for a given extruder. Air printing detection monitors for missing filament during extrusion and pauses the print if detected.
+**Description:** Enables AMS air printing detection for a given filament/extruder. Air printing detection monitors for missing filament during extrusion and pauses the print if detected. On the H2C the `H` parameter carries the target Vortek hotend, following the same `H` convention as `M620 S`/`T`.
 
-**Example:** `M620.6 I0 W1` — Enable air printing detection for extruder 0
+**Examples:**
+- `M620.6 I0 W1` — Enable air printing detection for extruder 0
+- `M620.6 I0 H-1 W1 ;enable ams air printing detect` — H2C form (observed in sliced output)
 
 ---
 
 ### M620.10 — Flush Sequence Control
 
-**Confidence:** Inferred | **Models:** [ALL]
+**Confidence:** Verified | **Models:** [ALL]
 
-**Syntax:** `M620.10 A<n> F<speed> [L<len>] [H<dia>] [T<temp>]`
+**Syntax:** `M620.10 A<n> F<speed> [L<len>] [H<dia>] [T<temp>] [P<temp>] [S<n>]` / `M620.10 R<len>`
 
 **Parameters:**
 - `A` — Flush phase (0=pre-flush with old filament, 1=post-flush with new filament)
 - `F` — Flush volumetric speed
-- `L` — Flush length in mm (only present on phase A1)
-- `H` — Nozzle diameter in mm (only present on phase A1)
-- `T` — Flush temperature in °C (only present on phase A1)
+- `L` — Flush length in mm
+- `H` — Nozzle diameter in mm (H2C template: `H{nozzle_diameter_at_nozzle_id[next_nozzle_id]}` per target nozzle)
+- `T` — Flush temperature in °C
+- `P` — Filament print temperature in °C (H2C: `P[old_filament_temp]` on A0, `P[new_filament_temp]` on A1)
+- `S` — Mode flag (1 observed on H2C)
+- `R` — Standalone form: new extruder's retracted length (`M620.10 R{new_extruder_retracted_length}`, H2C template, after the tool change)
 
-**Description:** Controls the multi-phase purge tower flush during filament changes. Phase A0 sets up flushing with the outgoing filament, phase A1 sets up flushing with the incoming filament including total flush length and nozzle parameters.
+**Description:** Controls the multi-phase purge tower flush during filament changes. Phase A0 sets up flushing with the outgoing filament, phase A1 sets up flushing with the incoming filament. The H2C extends both phases with per-nozzle diameter, filament temperature (P), and a mode flag (S), and adds a standalone `R` form that reports the incoming extruder's retracted length after the swap.
 
-**Context:** Called twice per filament change — once as A0 before tool change, once as A1 after.
+**Context:** Called twice per filament change — once as A0 before tool change, once as A1 after. On H2C, also once in start gcode for the initial load.
 
 **Examples:**
-- `M620.10 A0 F548.788` — Pre-flush with old filament speed
-- `M620.10 A1 F548.788 L200 H0.4 T240` — Post-flush with new filament params
+- `M620.10 A0 F548.788` — Pre-flush with old filament speed (X1/P1)
+- `M620.10 A1 F548.788 L200 H0.4 T240` — Post-flush with new filament params (X1/P1)
+- `M620.10 A0 F498.898 H0.4 T240 P220 S1` — H2C initial-load form (observed in sliced output)
+- `M620.10 R{new_extruder_retracted_length}` — H2C post-toolchange retracted-length report (template)
 
 ---
 
-### M620.11 — Long Retraction When Cut
+### M620.11 — Retraction / Cut Behavior Family
 
-**Confidence:** Inferred | **Models:** [ALL]
+**Confidence:** Verified (existence; semantics partly from template conditionals) | **Models:** [ALL]
 
-**Syntax:** `M620.11 S<0/1> [I<extruder>] [E<dist>] [F<speed>]`
+**Syntax:** Multiple sub-forms distinguished by the leading parameter — see table.
 
-**Parameters:**
-- `S` — Enable (0=off, 1=on)
-- `I` — Extruder index
+**Common parameters:**
+- `I` — Extruder/filament index (template: `I[current_extruder]`)
+- `B` — Current hotend index (template: `B[current_hotend]`, `-1` = auto; H2C only)
 - `E` — Retraction distance in mm (negative=retract, positive=recover)
 - `F` — Retraction speed in mm/min
+- `R` — Secondary retraction distance in mm
+- `D` — Secondary distance parameter (8 observed for most filaments, 2 for PA/PA-GF)
+- `L` — Sub-mode flag (0 observed)
 
-**Description:** Controls the cutter-assisted long retraction during filament changes. When enabled (S1), the printer performs an extended retraction to cleanly cut the filament at the cutter blade. When disabled (S0), standard retraction is used.
+**Sub-forms (H2C change_filament template + sliced output):**
 
-**Context:** Used when `long_retractions_when_cut` is enabled for the filament profile. Called before M628/M629 flush sequences.
+| Form | Emitted when | Example |
+|------|--------------|---------|
+| `M620.11 S<0/1> L0 I B R D E F` | Cut-assisted retraction inside M628/M629 block; `S0` for TPU, `S1 R4 D2` for PA/PA-GF, `S1 R10 D8` otherwise | `M620.11 S1 L0 I0 B-1 R10 D8 E-14 F623.623` |
+| `M620.11 P<0/1> I B E [F]` | `long_retraction_when_cut` enabled (P1) or disabled (P0) | `M620.11 P1 I0 B-1 E-14 F623.623` |
+| `M620.11 K<0/1> I B R F` | `long_retraction_when_ec` enabled (K1) or disabled (K0) | `M620.11 K1 I0 B-1 R10 F623.623` |
+| `M620.11 O1 T<len>` | Nozzle-change retract length (`T[filament_retract_length_nc]`) | `M620.11 O1 T15` |
+| `M620.11 H<n> [C<n>]` | TPU high-flow special case: `H2 C331` when switching from a "Direct Drive TPU High Flow" extruder variant, else `H0` | `M620.11 H0` |
+
+**Description:** Configures retraction and cut behavior during filament changes. On X1/P1 only the simple `S` form appears (`M620.11 S1 I0 E-18 F1200`). The H2C splits the behavior into distinct sub-forms — cut retraction (S), long-retraction-when-cut (P), long-retraction-when-ec (K), nozzle-change retract length (O/T), and a TPU-high-flow flag (H) — and adds the `B` current-hotend parameter throughout, following the same H convention as `M620 S`/`T`.
+
+**Context:** Called around M628/M629 flush sequences in change_filament gcode, start gcode (initial load), and end gcode (final unload).
 
 **Examples:**
-- `M620.11 S1 I0 E-18 F1200` — Enable long retraction, retract 18mm
-- `M620.11 S0` — Disable (use standard retraction)
+- `M620.11 S1 I0 E-18 F1200` — X1/P1: enable long retraction, retract 18mm
+- `M620.11 S0` — X1/P1: disable (use standard retraction)
+- `M620.11 P1 I0 B-1 E-14 F623.623` — H2C end-gcode unload (observed in sliced output)
+
+---
+
+### M620.13 — Prime Tower Interface Purge (H2C)
+
+**Confidence:** Inferred | **Models:** [H2C]
+
+**Syntax:** `M620.13 W<n> L<volume> T<temp> R<n>`
+
+**Parameters:**
+- `W` — Mode flag (0 observed)
+- `L` — Interface purge volume (template: `L{filament_tower_interface_purge_volume}`)
+- `T` — Interface print temperature (template: `T{filament_tower_interface_print_temp}`)
+- `R` — Ratio/reserve parameter (0.0 observed)
+
+**Description:** Configures the prime tower *interface* purge — the extra purge performed when the incoming filament prints the tower's interface layer. Emitted only when `is_prime_tower_interface && filament_tower_interface_purge_volume != 0`, right after a `G150.1` wipe.
+
+**Context:** H2C change_filament template (dated 2026-04-13), `;prime_tower_interface` block after the M628/M629 flush.
+
+**Example:** `M620.13 W0 L{filament_tower_interface_purge_volume} T{filament_tower_interface_print_temp} R0.0`
 
 ---
 
 ### M620.14 — Set Wipe Tower Center Position
 
-**Confidence:** Inferred | **Models:** [H2C] [H2D]
+**Confidence:** Verified | **Models:** [H2C] [H2D]
 
 **Syntax:** `M620.14 X<x> Y<y>`
 
@@ -199,9 +291,11 @@ Commands controlling the Automatic Material System (AMS), filament changes, flus
 - `X` — Wipe tower center X coordinate
 - `Y` — Wipe tower center Y coordinate
 
-**Description:** Sets the center position of the wipe/purge tower for multi-tool or dual-extrusion prints. The firmware uses this position to coordinate filament change flush movements.
+**Description:** Sets the center position of the wipe/purge tower for multi-tool or dual-extrusion prints. The firmware uses this position to coordinate filament change flush movements. The H2C template emits `M620.14 X[wipe_tower_center_pos_x] Y[wipe_tower_center_pos_y]` when the position is valid, falling back to a fixed `X95.5 Y336` (near the poop chute) otherwise.
 
-**Example:** `M620.14 X128 Y128` — Set wipe tower center at (128, 128)
+**Examples:**
+- `M620.14 X128 Y128` — Set wipe tower center at (128, 128)
+- `M620.14 X95.5 Y336` — H2C fallback position (observed in sliced output)
 
 ---
 
@@ -215,13 +309,42 @@ Commands controlling the Automatic Material System (AMS), filament changes, flus
 - `S` — Filament slot index (must match the corresponding M620 S value)
 - `A` — AMS mode flag
 
-**Description:** Closes the AMS filament selection block opened by M620. The printer finalizes the filament change at this point.
+**Description:** Closes the AMS filament selection block opened by M620. The printer finalizes the filament change at this point. Note: unlike `M620 S`, the H2C form carries **no** `H` parameter.
 
 **Context:** Always paired with a preceding M620 with the same S value.
 
 **Examples:**
 - `M621 S0A` — End filament select for slot 0
-- `M621 S255` — End filament retract sequence
+- `M621 S255` — End filament retract sequence (X1/P1)
+- `M621 S65535` / `M621 S65279` — End per-extruder unload blocks (H2C/H2D end gcode)
+
+---
+
+### T — Select Filament / Tool
+
+**Confidence:** Verified | **Models:** [ALL]
+
+**Syntax:** `T<n> [H<hotend>]`
+
+**Parameters:**
+- `<n>` — Filament index (global, 0-based), or a special value (see below)
+- `H` — Target Vortek hotend index; `-1` = auto (firmware resolves via printer-side mapping). H2C only.
+
+**Description:** The tool-change command that actually triggers filament selection/loading. Always wrapped in an `M620 S<n>A` … `M621 S<n>A` block with matching index. `<n>` is the **logical filament index**, not a physical position — confirmed by controlled comparison of two H2C slices where filament 1 emitted `T0 H-1` and filament 2 emitted `T1 H-1`. On the H2C the `H` parameter selects the physical Vortek hotend; `H-1` defers to the firmware's filament→nozzle mapping computed at print start (changeable from the printer without re-slicing). Which *extruder* (left/right) a filament belongs to is carried by the slicer's `filament_maps` metadata (1=left, 2=right), not by the T index.
+
+**Special values (observed in sliced H2C output):**
+
+| Value | Context | Purpose |
+|-------|---------|---------|
+| `T1000` | Start gcode, first homing, immediately after `G28 X T300` inside an `M640 S`…`M641` block | Tool-changer homing/no-tool state (Inferred) |
+| `T1001` | Start gcode, immediately before `M972 S14 ; nozzle type detection`, under `gcode_claim_action : 72 ; Hotend Type Detection` | Hotend-type detection state (Inferred) |
+| `T65535` | End gcode, inside `M620 S65535` block | Per-extruder filament unload sentinel |
+| `T65279` | End gcode, inside `M620 S65279` block | Per-extruder filament unload sentinel (second extruder) |
+
+**Examples:**
+- `T[next_extruder]` — X1/P1 filament change
+- `T0 H-1` — H2C: select filament 0, hotend resolved by firmware (observed in sliced output)
+- `T[next_extruder] H[next_hotend]` — H2C change_filament template form
 
 ---
 
@@ -281,24 +404,69 @@ Commands controlling the Automatic Material System (AMS), filament changes, flus
 
 ### M640.* — Tool Changer Operations (H2C)
 
-**Confidence:** Inferred | **Models:** [H2C]
+**Confidence:** Verified (sequences observed in sliced output; individual semantics inferred) | **Models:** [H2C]
 
-**Description:** The M640 family controls the H2C tool changer system. These commands manage the full tool change sequence including selection, docking, locking/unlocking, and retraction.
+**Description:** The M640 family controls the H2C tool changer system. These commands manage the full tool change sequence including selection, docking, locking/unlocking, and retraction. Each operation is bracketed by `M640 S` (begin) and `M641` (end).
 
 **Sub-commands:**
 
 | Variant | Syntax | Purpose |
 |---------|--------|---------|
-| `M640 S` | `M640 S<n>` | Begin tool operation (start tool change) |
-| `M640.1 R` | `M640.1 R<n>` | Retract tool from dock |
-| `M640.1 S` | `M640.1 S<n>` | Select tool |
+| `M640 S` | `M640 S` | Begin tool operation (no index observed) |
+| `M640.1 R` | `M640.1 R` | Retract tool from dock |
+| `M640.1 S` | `M640.1 S` | Select/seat tool |
 | `M640.2 R` | `M640.2 R<0/1>` | Tool release (0=hold, 1=release) |
 | `M640.4` | `M640.4` | Tool dock (return tool to dock position) |
-| `M640.7 L` | `M640.7 L<n>` | Tool lock |
-| `M640.7 U` | `M640.7 U<n>` | Tool unlock |
-| `M640.8 T A` | `M640.8 T<n> A<n>` | Select tool by index (T=tool, A=index) |
+| `M640.7 L` | `M640.7 L` | Tool lock |
+| `M640.7 U` | `M640.7 U` | Tool unlock |
+| `M640.8 T A H` | `M640.8 T A<filament> H<hotend>` | Pick up the tool for filament `A`; `H-1` = auto hotend via firmware mapping |
 
-**Context:** These commands bracket a complete tool change operation. A typical sequence: `M640 S` (begin) → `M640.7 U` (unlock current) → `M640.4` (dock current) → `M640.1 S` (select new) → `M640.1 R` (retract new) → `M640.7 L` (lock new) → end with `M641`.
+**Note on M640.8:** Emitted **once per print**, in start gcode, for the initial tool pickup — *not* for mid-print changes (those use M632/M633 + the filament_change macro). `A` is the **logical filament index**, not a tool number and not a rack position — confirmed across six H2C slices (filament 0 → `A0`, filament 1 → `A1`, filament 2 → `A2`). `T` appears bare. The `H` parameter follows the same convention as `M620 S`/`T` (`-1` = firmware-resolved Vortek hotend). **`H` is always `-1` in sliced output, even when a specific rack nozzle is chosen** — see "Left vs right extruder" and "Physical hotend/rack position never appears in an executable command" below.
+
+**Left vs right extruder — the M640 blocks are how extruder selection is encoded.** The active extruder (left fixed hotend vs right Vortek master) is *not* carried by any command parameter — the `T`/`S`/`A`/`I` index is the logical filament, and `H` is always `-1` on both. Instead it is encoded **structurally**, by whether the Vortek pickup/lock blocks are emitted:
+
+| M640 sequence | Left extruder (fixed "lifting" hotend) | Right extruder (Vortek rack) |
+|---------------|:--------------------------------------:|:----------------------------:|
+| `M640 S` / `M640.1 R` / `M641` (initial home) | ✅ | ✅ |
+| `M640.1 S` / `M640.4` (dock) | ✅ | ✅ |
+| `M640 S` / `M640.8 T A<fil> H-1` / `M640.7 L` / `M641` (rack pickup) | ❌ absent | ✅ present |
+| `M640 S` / `M640.7 U` / `M640.7 L` / `M640.2 R1` / `M641` (re-seat + lock) | ❌ absent | ✅ present |
+
+Verified by a controlled pair of otherwise-identical 0.6 mm PETG slices differing only in `filament_maps` (`2 1 x` = left, `2 2 x`/`2 1 2` = right): a normalized structural diff of the start gcode showed these two blocks as the *only* differences. So: `M640.8` + the `M640.7 U/L` / `M640.2 R1` lock sequence ⇒ printing from a Vortek rack hotend; their absence ⇒ printing from the left fixed hotend.
+
+**Physical hotend/rack position never appears in an executable command.** A slice targeting rack **nozzle id 1** (`filament_sequence.json` → `nozzle_sequence:[1]`, `slice_info.config` → `nozzle id="1"`) still emits `M640.8 T A2 H-1` / `T2 H-1` — `H = -1`, exactly as for nozzle id 0. Even a 2-filament print that alternates between two *different* rack hotends on every layer keeps `H = -1` on all 442 in-body selects. The logical-filament → physical-rack-position mapping lives in the 3MF metadata and is resolved by the firmware at print start (set up by the `M620 T1 ;sn -> pos` start-gcode hook). The physical rack position surfaces in the G-code **only as a comment** — the `; NOZZLE_CHANGE_START … ON<old_nozzle> NN<new_nozzle>` annotation (see M632) — never as a command parameter. Note also `M104 T0 S<t> N0` inside nozzle changes: its `N` stays `0` regardless of the target rack nozzle, so it is *not* a position selector either.
+
+**Observed sequences (sliced H2C output):**
+
+Start gcode, first homing and initial tool pickup (right/Vortek extruder):
+```
+M640 S
+M640.1 R
+M641
+G28 X T300
+T1000
+G150.3
+M972 S24 P0 T2000 ; live-view camera foolproof
+M972 S46 P0 T5000 ; vortek anti-collision
+M640.1 S
+M640.4
+
+M640 S
+M640.8 T A0 H-1     ; ← right/Vortek only; absent when printing from left hotend
+M640.7 L
+M641
+```
+
+Start gcode, re-seat before bed leveling (right/Vortek only, absent on left extruder):
+```
+M640 S
+M640.7 U
+M640.7 L
+M640.2 R1
+M641
+```
+
+End gcode: `M640.2 R0` (hold/park release state).
 
 ---
 
@@ -318,58 +486,66 @@ Commands controlling the Automatic Material System (AMS), filament changes, flus
 
 ### M632 — Begin Nozzle Change (H2C Dual-Nozzle)
 
-**Confidence:** Inferred | **Models:** [H2C]
+**Confidence:** Verified | **Models:** [H2C]
 
 **Syntax:** `M632 S<n> M N`
 
 **Parameters:**
-- `S` — Target nozzle index
-- `M` — Flag (purpose unknown)
-- `N` — Flag (purpose unknown)
+- `S` — **New filament index** (the incoming filament, matching the `M620 S<n>`/`T<n>` in the following filament-change macro). *Not* a nozzle index — confirmed by a 2-filament slice where `M632 S2` appears under `; NOZZLE_CHANGE_START … NF2` (new filament 2) and `M632 S0` under `NF0`.
+- `M` — Flag (purpose unknown; constant across all observed changes)
+- `N` — Flag (purpose unknown; constant across all observed changes)
 
-**Description:** Opens a nozzle change block on H2C dual-nozzle prints. Wraps NOZZLE_CHANGE_START sections around prime tower moves. The firmware switches to the target nozzle within this block. Always paired with M633 to end the nozzle change.
+**Description:** Opens a nozzle-change sub-block during a mid-print filament change. Each change emits **two** M632/M633 pairs — the first wraps the temperature/fan setup (`M104 T0 S<t> N0` + `M106`), the second wraps the prime-tower interface purge moves. The firmware performs the physical Vortek hotend swap; the slicer brackets the sub-sections with M632/M633.
 
-**Context:** Appears only in H2C multi-material dual-nozzle gcode. Analogous to M620/M621 for AMS filament changes but for physical nozzle switching.
+**Nozzle-change comment annotation:** the block is delimited by a comment pair that *does* record the physical rack positions (unlike the executable commands, which use only logical indices):
+```
+; NOZZLE_CHANGE_START OF<old_filament> NF<new_filament> ON<old_nozzle> NN<new_nozzle>
+…
+; NOZZLE_CHANGE_END   OF<old_filament> NF<new_filament> ON<old_nozzle> NN<new_nozzle>
+```
+Observed: `OF0 NF2 ON1 NN0` and `OF2 NF0 ON0 NN1` — i.e. filament 0 lives permanently on rack nozzle 1, filament 2 on rack nozzle 0 (fixed 1:1 filament→hotend assignment, the Vortek near-zero-purge model). These positions appear only in the comment; the executable `M620 S`/`T` selects that follow still use `H-1` (see M640.* "position is never emitted").
 
-**Example:** `M632 S3 M N ; begin nozzle change to nozzle 3`
+**Context:** Appears only in H2C multi-material gcode. **Not defined in any profile G-code template** (verified against the H2C project_settings.config: machine_start/end, change_filament, layer_change, etc. contain no M632) — it is emitted directly by the Bambu Studio slicer core, which is why single-filament H2C files contain none. Mid-print changes use M632/M633 and the H2C filament_change macro; they do **not** use `M640.8` (that fires once at print start for the initial tool pickup).
+
+**Example:** `M632 S2 M N` (inside `; NOZZLE_CHANGE_START OF0 NF2 ON1 NN0`)
 
 ---
 
 ### M633 — End Nozzle Change (H2C Dual-Nozzle)
 
-**Confidence:** Inferred | **Models:** [H2C]
+**Confidence:** Verified | **Models:** [H2C]
 
 **Syntax:** `M633`
 
 **Parameters:** None
 
-**Description:** Closes a nozzle change block opened by M632. The firmware finalizes the nozzle switch at this point. Always paired with a preceding M632.
+**Description:** Closes a nozzle-change sub-block opened by M632. Paired 1:1 with M632 (observed 880 of each across a 220-change 2-filament print — two pairs per change).
 
-**Context:** Called after the nozzle change sequence is complete, similar to M621 closing M620.
+**Context:** Called after each nozzle-change sub-section (temp setup, then prime-tower purge).
 
 ---
 
 ### M620.15 — Flush Temperature Params (H2C Dual-Nozzle)
 
-**Confidence:** Inferred | **Models:** [H2C]
+**Confidence:** Verified | **Models:** [H2C]
 
 **Syntax:** `M620.15 P<temp>` / `M620.15 C<temp>`
 
 **Parameters:**
-- `P` — Pre-flush temperature (°C)
-- `C` — Cool-down temperature (°C)
+- `P` — Pre-cooling temperature (°C); template source: `P[filament_pre_cooling_temperature_nc[next_extruder]]`
+- `C` — Cool-down temperature before reaching the tower (°C); template formula: `C{new_filament_temp - filament_cooling_before_tower[next_extruder]}`
 
-**Description:** Sets flush temperature parameters during nozzle changes on H2C dual-nozzle prints. The P variant sets the pre-flush temperature, the C variant sets the cool-down temperature. Appears within nozzle change blocks (M632/M633).
+**Description:** Sets flush temperature parameters during filament/nozzle changes on the H2C. The P variant sets the incoming filament's pre-cooling temperature (from the `_nc` — nozzle-change — filament profile array), the C variant the temperature the hotend cools to before printing on the prime tower. The C line is emitted twice in the change_filament template (before and after the `long_retraction_when_ec` block).
 
 **Examples:**
-- `M620.15 P205` — Set pre-flush temp to 205°C
+- `M620.15 P205` — Set pre-cooling temp to 205°C
 - `M620.15 C235` — Set cool-down temp to 235°C
 
 ---
 
 ### G387 — Safe Y Travel (H2C Dual-Nozzle)
 
-**Confidence:** Inferred | **Models:** [H2C]
+**Confidence:** Verified | **Models:** [H2C]
 
 **Syntax:** `G387 Y<n> J<0/1> F<speed>`
 
@@ -378,9 +554,12 @@ Commands controlling the Automatic Material System (AMS), filament changes, flus
 - `J` — Collision avoidance flag (1=enabled)
 - `F` — Feed rate (mm/min)
 
-**Description:** Safe Y-axis travel with collision avoidance for H2C dual-nozzle prints. The J flag enables collision checking to prevent nozzle-to-nozzle contact during Y-axis moves. Used during nozzle change sequences.
+**Description:** Safe Y-axis travel with collision avoidance for H2C dual-nozzle prints. The J flag enables collision checking to prevent nozzle-to-nozzle contact during Y-axis moves. Used during nozzle change sequences. The change_filament template steps the toolhead back from the rear in stages (`Y320` at F10000 only when `wipe_avoid_perimeter` is set, then `Y295` at F30000, then `Y265` at F18000).
 
-**Example:** `G387 Y295 J1 F30000 ; safe Y travel with collision avoidance`
+**Examples:**
+- `G387 Y320 J1 F10000` — Wipe-avoid step (conditional)
+- `G387 Y295 J1 F30000 ; safe Y travel with collision avoidance`
+- `G387 Y265 J1 F18000` — Final approach step
 
 ---
 
@@ -1042,11 +1221,11 @@ Commands for vibration suppression, noise reduction, dynamic extrusion calibrati
 - `A` — Compensation factor (0.4 observed)
 - `R` — Retraction length reference (2 observed, optional — present in multi-material files)
 
-**Description:** Configures dynamic extrusion compensation parameters on H2-series printers. Similar to M983 but with different compensation factors tuned for the H2 extrusion system. The optional R parameter appears in multi-material tool change sequences.
+**Description:** Configures dynamic extrusion compensation parameters on H2-series printers. Similar to M983 but with different compensation factors tuned for the H2 extrusion system. The optional R parameter is the incoming extruder's retracted length — the H2C change_filament template emits `M983.3 F{filament_max_volumetric_speed[next_extruder]/2.4} A0.4 R{new_extruder_retracted_length}` after each tool change (and repeats it inside the `powerloss_resume_flag` block).
 
 **Examples:**
-- `M983.3 F12.5 A0.4` — Standard compensation
-- `M983.3 F12.5 A0.4 R2` — Compensation with retraction reference (multi-material)
+- `M983.3 F10.4167 A0.4 ; cali dynamic extrusion compensation` — H2C start gcode (observed in sliced output)
+- `M983.3 F12.5 A0.4 R2` — Compensation with retracted-length reference (multi-material)
 
 ---
 
@@ -1140,22 +1319,22 @@ Commands for vibration suppression, noise reduction, dynamic extrusion calibrati
 
 ### M993 — Nozzle Cam Detection Control
 
-**Confidence:** Inferred | **Models:** [H2C] [H2D] [H2S]
+**Confidence:** Verified | **Models:** [H2C] [H2D] [H2S]
 
 **Syntax:** `M993 A<n> B<n> C<n>`
 
 **Parameters:**
 - `A`, `B`, `C` — Detection mode flags (always set to matching values)
 
-**Description:** Controls nozzle camera-based detection features. The three parameters are set to matching values to select the detection mode.
+**Description:** Controls nozzle camera-based detection features. The three parameters are set to matching values to select the detection mode. Modes 2 and 3 form a save/restore pair around filament changes: the H2C change_filament template opens with `A2 B2 C2` (save current allow-status) + `A0 B0 C0` (disallow during the change) and closes with `A3 B3 C3` (restore saved status).
 
-**Modes:**
-- `M993 A0 B0 C0` — Detection not allowed / disabled
-- `M993 A1 B1 C1` — Detection allowed / enabled
-- `M993 A2 B2 C2` — Save detection status
-- `M993 A3 B3 C3` — Detection variant (alternate mode)
+**Modes (inline comments from H2C output/template):**
+- `M993 A0 B0 C0` — `; nozzle cam detection not allowed.`
+- `M993 A1 B1 C1` — `; nozzle cam detection allowed.`
+- `M993 A2 B2 C2` — `; nozzle cam detection allow status save.`
+- `M993 A3 B3 C3` — `; nozzle cam detection allow status restore.`
 
-**Context:** Used on H2-series printers with nozzle camera hardware.
+**Context:** Used on H2-series printers with nozzle camera hardware. Save/disallow at the start of every filament change, restore at the end; also disallowed in end gcode.
 
 **Examples:**
 - `M993 A0 B0 C0` — Disable nozzle cam detection
@@ -1915,20 +2094,20 @@ G29.9          ; record leveling data
 
 ### SYNC — Flush Timing Synchronization
 
-**Confidence:** Inferred | **Models:** [H2C]
+**Confidence:** Verified | **Models:** [H2C]
 
 **Syntax:** `SYNC T<n>`
 
 **Parameters:**
 - `T` — Delay time in seconds (decimal, e.g., 5, 10.2941)
 
-**Description:** Non-standard command (not a G/M code) used during multi-material flush sequences on the H2C tool changer. Synchronizes flush timing between the firmware and slicer-calculated flush durations. Only present in multi-material H2C files.
+**Description:** Non-standard command (not a G/M code) used during multi-material flush sequences on the H2C tool changer. Synchronizes the G-code stream with slicer-calculated flush and hotend heat/cool durations. The change_filament template emits one flush-time sync (`SYNC T{ceil(flush_length / 125) * 5}` — 5 s per 125 mm of flush) plus a heating/cooling compensation pair computed from the temperature delta divided by the profile's `hotend_cooling_rate[]` / `hotend_heating_rate[]` for the target extruder — i.e., it budgets time for the Vortek induction hotend to change temperature.
 
-**Context:** Appears between M628/M629 flush sequence pairs during filament changes.
+**Context:** Appears in the `; VFLUSH_START` … `; VFLUSH_END` section of the change_filament sequence, after the T tool change.
 
 **Examples:**
 - `SYNC T5` — Wait 5 seconds for flush sync
-- `SYNC T10.2941` — Wait 10.29 seconds for flush sync
+- `SYNC T{(flush_temperatures[next_extruder]-(new_filament_temp - filament_cooling_before_tower[next_extruder]))/hotend_cooling_rate[filament_map[next_extruder]-1]}` — Heat/cool compensation (template form)
 
 ---
 
@@ -2046,6 +2225,9 @@ Action codes used with `M1002 gcode_claim_action : <n>` to set the touchscreen d
 | 39 | Toolhead XY Offset Calibration | Inferred (context: before G383/G383.3 offset calibration, H2C/H2D) |
 | 49 | Chamber Heating Wait | Inferred (context: before `M191 S[temp]` chamber temp wait, heating mode) |
 | 54 | Offset Calibration Bed Heating | Inferred (context: before `M190 D[temp]` during XY offset cal prep, H2C/H2D) |
+| 66 | Air Purification | Inferred (context: end gcode `print_finish_air_filt_flag` block, before `M145 P1`/`M106 P6`, H2C) |
+| 72 | Hotend Type Detection | Verified (inline comment; before `T1001` + `M972 S14` nozzle type detection, H2C) |
+| 74 | Heatbed Surface Foreign Object Detection | Verified (inline comment; during first homing, H2C) |
 
 ---
 

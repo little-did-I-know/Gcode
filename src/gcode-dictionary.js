@@ -88,14 +88,15 @@ const GCODE_COMMANDS = {
   'M203': { name: 'Set Max Feedrate', params: { X: 'X max (mm/s)', Y: 'Y max (mm/s)', Z: 'Z max (mm/s)', E: 'E max (mm/s)' } },
   'M500': { name: 'Save Settings to EEPROM', params: {} },
   // Bambu Lab — AMS & Material Management
-  'M620':    { name: 'AMS Material Control', params: { S: 'Slot index', M: 'Enable remap', N: 'Enable hotend remap', T: 'Print/position config' } },
+  'M620':    { name: 'AMS Material Control', params: { S: 'Filament index (255/65535/65279 = unload)', A: 'AMS mode', H: 'Hotend (-1=auto)', M: 'Enable AMS remap', N: 'Enable hotend remap (H2C)', T: 'Metadata hook (T0=tmpr, T1=sn→pos, T2=filament_id)', O: 'Toolchange counter', D: 'Calibration index' } },
   'M620.1':  { name: 'Set Flush Extrusion Params', params: { E: 'Extrusion mode', F: 'Flush speed', T: 'Flush temp (°C)' } },
   'M620.3':  { name: 'Filament Tangle Detection', params: { W: 'Enable (0/1)' } },
-  'M620.6':  { name: 'AMS Air Printing Detect', params: { I: 'Extruder index', W: 'Enable (1) / Disable (0)' } },
+  'M620.6':  { name: 'AMS Air Printing Detect', params: { I: 'Filament index', H: 'Hotend (-1=auto)', W: 'Enable (1) / Disable (0)' } },
   'M620.10': { name: 'AMS Flush Config', params: { A: 'Phase (0=pre, 1=post)', F: 'Flush feedrate', L: 'Flush length', H: 'Nozzle diameter', T: 'Flush temp', P: 'Pre-flush temp', S: 'Mode' } },
-  'M620.11': { name: 'AMS Retraction/Cut Config', params: { P: 'Enable long retraction', S: 'Enable cut', I: 'Extruder index', E: 'Retract distance', F: 'Retract feedrate', K: 'Enable EC retraction', R: 'EC retract distance', L: 'Level', D: 'Distance', O: 'Option', T: 'Retract length NC', H: 'Home offset compensation' } },
+  'M620.11': { name: 'AMS Retraction/Cut Config', params: { P: 'Enable long retraction', S: 'Enable cut', I: 'Filament index', B: 'Current hotend (-1=auto)', E: 'Retract distance', F: 'Retract feedrate', K: 'Enable EC retraction', R: 'EC retract distance', L: 'Sub-mode', D: 'Secondary distance', O: 'Option', T: 'Retract length NC', H: 'TPU high-flow flag (H0/H2)', C: 'TPU param' } },
+  'M620.13': { name: 'Prime Tower Interface Purge', params: { W: 'Mode', L: 'Purge volume', T: 'Interface temp (°C)', R: 'Ratio' } },
   'M620.14': { name: 'AMS Wipe Tower Position', params: { X: 'Tower center X', Y: 'Tower center Y' } },
-  'M620.15': { name: 'AMS Pre-Cooling Temp', params: { P: 'Pre-cooling temp', C: 'Cooling target' } },
+  'M620.15': { name: 'AMS Pre-Cooling Temp', params: { P: 'Pre-cooling temp (°C)', C: 'Cool-down temp before tower (°C)' } },
   'M620.17': { name: 'Unknown H2D AMS Variant', params: {} },
   'M621':    { name: 'Switch AMS Material', params: { S: 'Slot index' } },
   'M622':    { name: 'Conditional Block Start', params: { S: 'Flag value', J: 'Jump flag index' } },
@@ -104,8 +105,9 @@ const GCODE_COMMANDS = {
   'M628':    { name: 'Filament Change Start', params: { S: 'Mode' } },
   'M629':    { name: 'Filament Change End', params: {} },
   'M630':    { name: 'Tool Change Config', params: { S: 'Slot', P: 'Parameter' } },
-  'M632':    { name: 'Begin Nozzle Change', params: { S: 'Target nozzle index', M: 'Flag', N: 'Flag' } },
-  'M633':    { name: 'End Nozzle Change', params: {} },
+  'M632':    { name: 'Begin Nozzle Change (H2C)', params: { S: 'New filament index', M: 'Flag', N: 'Flag' } },
+  'M633':    { name: 'End Nozzle Change (H2C)', params: {} },
+  'SYNC':    { name: 'Flush Timing Sync (H2C)', params: { T: 'Dwell time (s)' } },
   // Bambu Lab — Toolhead & Motion
   'G150':    { name: 'Nozzle Wipe Position', params: { T: 'Temperature' } },
   'G150.1':  { name: 'Wipe Nozzle Position 1', params: { F: 'Feed rate' } },
@@ -118,13 +120,13 @@ const GCODE_COMMANDS = {
   'G383.7':  { name: 'Post-Wipe Offset Check', params: { U: 'Parameter', J: 'Mode' } },
   'G387':    { name: 'Safe Y Travel', params: { Y: 'Y position', J: 'Collision flag', F: 'Speed' } },
   'G392':    { name: 'Toolhead Protection', params: { S: 'Mode' } },
-  'M640':    { name: 'Toolhead Movement', params: { S: 'Start movement' } },
-  'M640.1':  { name: 'Toolhead Move Config', params: { R: 'Reset', S: 'Start' } },
-  'M640.2':  { name: 'Toolhead Move Config 2', params: { R: 'Config value' } },
-  'M640.4':  { name: 'Toolhead Calibrate', params: {} },
-  'M640.7':  { name: 'Toolhead Wipe', params: { L: 'Left wipe', U: 'Up wipe' } },
-  'M640.8':  { name: 'Toolhead Move Config 3', params: { T: 'Target', A: 'Acceleration' } },
-  'M641':    { name: 'Toolhead Movement End', params: {} },
+  'M640':    { name: 'Tool Change: Begin (H2C)', params: { S: 'Begin operation' } },
+  'M640.1':  { name: 'Tool Change: Retract/Seat', params: { R: 'Retract from dock', S: 'Select/seat tool' } },
+  'M640.2':  { name: 'Tool Change: Release', params: { R: 'Release (0=hold, 1=release)' } },
+  'M640.4':  { name: 'Tool Change: Dock', params: {} },
+  'M640.7':  { name: 'Tool Change: Lock/Unlock', params: { L: 'Lock', U: 'Unlock' } },
+  'M640.8':  { name: 'Vortek Tool Pickup', params: { T: 'Tool (bare)', A: 'Filament index', H: 'Hotend (-1=auto)' } },
+  'M641':    { name: 'Tool Change: End (H2C)', params: {} },
   // Bambu Lab — Calibration & Compensation
   'G28.14':  { name: 'Pre-Extrude Z Calibration', params: { R: 'Reset', D: 'Mode' } },
   'G28.140': { name: 'Calibrate Pre-Extrude Z', params: { S: 'Calibration mode', D: 'Reset' } },
@@ -197,12 +199,23 @@ function decodeLine(text) {
   const code = commentIdx > -1 ? raw.substring(0, commentIdx).trim() : raw;
   if (!code) return null;
 
-  // Extract command (G or M followed by digits)
-  const cmdMatch = code.match(/^([GM]\d+(\.\d+)?)/i);
+  // Extract command: G/M (with optional decimal), a bare T tool command, or literal SYNC
+  const cmdMatch = code.match(/^(SYNC|[GMT]\d+(\.\d+)?)/i);
   if (!cmdMatch) return null;
 
   const command = cmdMatch[1].toUpperCase();
-  const def = GCODE_COMMANDS[command];
+  let def = GCODE_COMMANDS[command];
+
+  // T-commands aren't in the numbered dictionary — their meaning depends on the value.
+  if (!def && /^T\d+$/.test(command)) {
+    const tv = parseInt(command.slice(1), 10);
+    let tname;
+    if (tv === 1000) tname = 'Tool Changer Home / No-Tool State';
+    else if (tv === 1001) tname = 'Hotend Type Detection State';
+    else if (tv === 65535 || tv === 65279) tname = 'Filament Unload (sentinel)';
+    else tname = `Select Filament ${tv}`;
+    def = { name: tname, params: { H: 'Hotend (-1=auto)' } };
+  }
 
   // Parse parameters
   const paramRegex = /([A-Z])(-?(?:\d+\.?\d*|\.\d+))/gi;
