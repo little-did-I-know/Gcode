@@ -2440,7 +2440,7 @@ let _fanCurveInteractionInit = false;
 
 const FAN_FEATURE_TYPES = [
   'WALL-OUTER', 'WALL-INNER', 'FILL', 'SOLID', 'TOP', 'BOTTOM',
-  'SUPPORT', 'BRIDGE', 'OVERHANG', 'SKIRT', 'BRIM'
+  'SUPPORT', 'BRIDGE', 'OVERHANG', 'SKIRT', 'BRIM', 'FIBER', 'PRIMING'
 ];
 
 function renderFanRules() {

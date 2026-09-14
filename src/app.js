@@ -94,6 +94,8 @@ const MOTION_TYPE_LABELS = {
   'BRIM': 'Brim',
   'CUSTOM': 'Custom',
   'TRAVEL': 'Travel',
+  'FIBER': 'Fiber Infill',
+  'PRIMING': 'Priming Line',
 };
 
 // Default colors (hex) matching viewer3d.js TYPE_COLORS
@@ -113,6 +115,8 @@ const DEFAULT_MOTION_COLORS = {
   'BRIM': '#a78bfa',
   'CUSTOM': '#a78bfa',
   'TRAVEL': '#555555',
+  'FIBER': '#fbbf24',
+  'PRIMING': '#6b7280',
 };
 
 let motionTypeVisibility = {};
