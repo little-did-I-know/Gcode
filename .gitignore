@@ -6,5 +6,6 @@ node_modules
 .idea
 .venv
 gcode_files
+Sample_file/
 docs/plans
 .DS_Store

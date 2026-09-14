@@ -57,6 +57,7 @@ The parser automatically identifies your slicer from header comments:
 | OrcaSlicer | Both Bambu and Prusa formats |
 | Simplify3D | `; layer N, Z = X.XX` |
 | ideaMaker | `;LAYER:N` |
+| FibreSeek Rocket Slicer | `; Generated with FibreSeek Rocket Slicer` |
 
 ### Slicer Export Instructions
 
@@ -65,6 +66,15 @@ The parser automatically identifies your slicer from header comments:
 **Bambu Studio:** Export using **File → Export → Export plate sliced file** to get a `.gcode` file (not the `.3mf` project file).
 
 **Cura:** Use **File → Save to Disk** or the "Save to Disk" button to export `.gcode`.
+
+### FibreSeek Rocket Slicer (Fiber / Composite Prints)
+
+Files sliced with **FibreSeek Rocket Slicer** (SK3 processors, "Plastic and Composite" mode) are detected automatically and parsed with format-specific handling:
+
+- **Layer markers** — `; LAYER:N [Z]` comments define layers. The bracketed value is the absolute Z height, so variable layer heights are honored. `; MACROLAYER:` and `; LAYER_COUNT:` markers are ignored and do not create layers.
+- **Motion types** — feature-section comments (`; Inset XP start`, `; Cellular infill start`, `; Fiber infill start`, `; Support thick start`, etc.) are mapped to the app's motion types: walls, infill (FILL/SOLID), TOP/BOTTOM, support, skirt, priming lines, and a dedicated **Fiber Infill** type.
+- **Fiber extrusion (U/V axes)** — composite printing extrudes fiber on the custom **U** axis and secondary material on **V** instead of (or alongside) **E**. Moves with a positive U/V feed are rendered as extrusions even without an `E` word; negative V values (retracts) remain travel moves. Fiber moves appear in the 3D view, simulation, and motion legend like any other extrusion.
+- **Known limitations** — fiber (U/V) feed is not yet included in flow/thermal volumetric analysis, and recovery-snippet renumbering does not yet adjust FibreSeeker's `; LAYER:` markers. Standard viewing, layer navigation, and most modifications work normally.
 
 ### Large File Support
 
@@ -137,6 +147,8 @@ Default motion type colors:
 | Overhang | Magenta |
 | Top Solid | Light Blue |
 | Bottom Solid | Brown |
+| Fiber Infill | Amber |
+| Priming Line | Gray |
 | Travel | Gray |
 
 ---
