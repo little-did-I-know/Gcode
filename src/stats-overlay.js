@@ -116,7 +116,7 @@ const StatsOverlay = {
     }
 
     let html = '<div class="hover-divider"></div>';
-    html += `<span class="stat-label">Type</span><span class="stat-value">${type}</span>`;
+    html += `<span class="stat-label">Type</span><span class="stat-value">${escapeHtml(type)}</span>`;
     html += `<span class="stat-label" style="margin-left:10px">Speed</span><span class="stat-value">${speed.toFixed(1)} mm/s</span><br>`;
     html += `<span class="stat-label">Length</span><span class="stat-value">${moveLen.toFixed(2)} mm</span>`;
     if (eLen > 0) {

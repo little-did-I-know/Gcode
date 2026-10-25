@@ -4069,6 +4069,14 @@ const FIBRESEEKER_TYPE_MAP = {
   'support interface': 'SUPPORT-INTERFACE',
 };
 
+// Feature names come straight from the file and end up in innerHTML / inline handlers.
+// Fold free-form text down to a safe token so it can never carry markup.
+const MAX_TYPE_NAME_LENGTH = 40;
+function sanitizeTypeName(raw) {
+  const cleaned = String(raw).toUpperCase().replace(/[^A-Z0-9_ ./-]/g, '').trim().slice(0, MAX_TYPE_NAME_LENGTH).trim();
+  return cleaned || 'CUSTOM';
+}
+
 class GcodeParser {
   constructor() {
     this.lines = [];
@@ -4112,6 +4120,7 @@ class GcodeParser {
     let curX = 0, curY = 0, curZ = 0, curE = 0;
     let relativeE = false; // M83 = relative, M82 = absolute
     let currentType = 'DEFAULT';
+    let insetSeenLayer = null; // layer in which a FibreSeeker inset section was last seen
     let currentFeedRate = 0; // mm/min as raw G-code value
     let currentPrintAccel = 0, currentTravelAccel = 0; // mm/s² from M204
     // Bambu Studio uses "; CHANGE_LAYER" as a marker, with layer number on a nearby line
@@ -4280,7 +4289,7 @@ class GcodeParser {
             'Support interface': 'SUPPORT-INTERFACE',
           };
           const rawType = typeMatch[1].trim();
-          currentType = typeNormalize[rawType] || rawType.toUpperCase();
+          currentType = Object.hasOwn(typeNormalize, rawType) ? typeNormalize[rawType] : sanitizeTypeName(rawType);
           if (!currentLayer.sectionTypes.includes(currentType)) currentLayer.sectionTypes.push(currentType);
         }
 
@@ -4307,16 +4316,16 @@ class GcodeParser {
         // FibreSeeker: "; Skirt start", "; Inset XP start", "; Cellular infill start", etc.
         // Gated to fibreseeker so unrelated "; ... start" comments can never hijack other formats.
         if (this.slicerType === 'fibreseeker') {
-          const fsType = line.match(/^;\s*(.+?)\s+start\s*$/i);
-          if (fsType) {
-            const raw = fsType[1].trim().toLowerCase();
+          const fsBody = line.startsWith(';') ? line.slice(1).trim() : '';
+          if (/\sstart$/i.test(fsBody)) {
+            const raw = fsBody.slice(0, -'start'.length).trim().toLowerCase();
             const insetM = raw.match(/^inset\s+(\S+)$/);
             if (insetM) {
               // "Inset XP"/"Inset XF" are outer/finish passes; numbered insets: first pass outer, rest inner.
-              currentType = (/^x/i.test(insetM[1]) || !currentLayer._insetSeen) ? 'WALL-OUTER' : 'WALL-INNER';
-              currentLayer._insetSeen = true;
+              currentType = (/^x/i.test(insetM[1]) || insetSeenLayer !== currentLayer) ? 'WALL-OUTER' : 'WALL-INNER';
+              insetSeenLayer = currentLayer;
             } else {
-              currentType = FIBRESEEKER_TYPE_MAP[raw] || raw.toUpperCase();
+              currentType = Object.hasOwn(FIBRESEEKER_TYPE_MAP, raw) ? FIBRESEEKER_TYPE_MAP[raw] : sanitizeTypeName(raw);
             }
             if (!currentLayer.sectionTypes.includes(currentType)) currentLayer.sectionTypes.push(currentType);
           }
@@ -10653,7 +10662,7 @@ const StatsOverlay = {
     }
 
     let html = '<div class="hover-divider"></div>';
-    html += `<span class="stat-label">Type</span><span class="stat-value">${type}</span>`;
+    html += `<span class="stat-label">Type</span><span class="stat-value">${escapeHtml(type)}</span>`;
     html += `<span class="stat-label" style="margin-left:10px">Speed</span><span class="stat-value">${speed.toFixed(1)} mm/s</span><br>`;
     html += `<span class="stat-label">Length</span><span class="stat-value">${moveLen.toFixed(2)} mm</span>`;
     if (eLen > 0) {
@@ -13693,6 +13702,13 @@ const Onboarding = {
 // References globals (parser, modifier, viewer, selectedLayer, etc.) from app.js.
 // In the built single-file output, everything shares one script scope.
 
+// Escape text for HTML element content and quoted attribute values.
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, ch => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+  ));
+}
+
 function onFirmwareChange(fw) {
   currentFirmware = fw;
   const profile = FIRMWARE[fw];
@@ -14634,10 +14650,11 @@ function renderMotionLegend() {
       const checked = motionTypeVisibility[type] !== false ? 'checked' : '';
       const color = motionTypeColors[type] || '#e0e2e8';
       const label = MOTION_TYPE_LABELS[type] || type;
+      const typeAttr = escapeHtml(type);
       html += `<div class="legend-row">
-        <input type="checkbox" ${checked} onchange="toggleMotionType('${type}', this.checked)">
-        <input type="color" value="${color}" onchange="setMotionTypeColor('${type}', this.value)">
-        <label onclick="this.parentElement.querySelector('input[type=checkbox]').click()">${label}</label>
+        <input type="checkbox" ${checked} data-type="${typeAttr}" onchange="toggleMotionType(this.dataset.type, this.checked)">
+        <input type="color" value="${escapeHtml(color)}" data-type="${typeAttr}" onchange="setMotionTypeColor(this.dataset.type, this.value)">
+        <label onclick="this.parentElement.querySelector('input[type=checkbox]').click()">${escapeHtml(label)}</label>
       </div>`;
     }
   }
@@ -16553,10 +16570,10 @@ function renderPaFeatureTable() {
       : Math.round(hint.min) + '-' + Math.round(hint.max) + ' mm/s';
     const kVal = type in overrides ? overrides[type] : paTuner.baseK;
     return '<div class="pa-feature-row">' +
-      '<span class="pa-type-name" title="' + type + '">' + type + '</span>' +
+      '<span class="pa-type-name" title="' + escapeHtml(type) + '">' + escapeHtml(type) + '</span>' +
       '<span class="pa-speed-hint">' + speedStr + '</span>' +
       '<input type="number" class="input" min="0" max="0.2" step="0.001" value="' + kVal.toFixed(3) + '"' +
-      ' onchange="updatePaFeatureK(\'' + type.replace(/'/g, "\\'") + '\', this.value)">' +
+      ' data-type="' + escapeHtml(type) + '" onchange="updatePaFeatureK(this.dataset.type, this.value)">' +
       '</div>';
   }).join('');
 }

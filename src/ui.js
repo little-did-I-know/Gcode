@@ -2,6 +2,13 @@
 // References globals (parser, modifier, viewer, selectedLayer, etc.) from app.js.
 // In the built single-file output, everything shares one script scope.
 
+// Escape text for HTML element content and quoted attribute values.
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, ch => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+  ));
+}
+
 function onFirmwareChange(fw) {
   currentFirmware = fw;
   const profile = FIRMWARE[fw];
@@ -943,10 +950,11 @@ function renderMotionLegend() {
       const checked = motionTypeVisibility[type] !== false ? 'checked' : '';
       const color = motionTypeColors[type] || '#e0e2e8';
       const label = MOTION_TYPE_LABELS[type] || type;
+      const typeAttr = escapeHtml(type);
       html += `<div class="legend-row">
-        <input type="checkbox" ${checked} onchange="toggleMotionType('${type}', this.checked)">
-        <input type="color" value="${color}" onchange="setMotionTypeColor('${type}', this.value)">
-        <label onclick="this.parentElement.querySelector('input[type=checkbox]').click()">${label}</label>
+        <input type="checkbox" ${checked} data-type="${typeAttr}" onchange="toggleMotionType(this.dataset.type, this.checked)">
+        <input type="color" value="${escapeHtml(color)}" data-type="${typeAttr}" onchange="setMotionTypeColor(this.dataset.type, this.value)">
+        <label onclick="this.parentElement.querySelector('input[type=checkbox]').click()">${escapeHtml(label)}</label>
       </div>`;
     }
   }
@@ -2862,10 +2870,10 @@ function renderPaFeatureTable() {
       : Math.round(hint.min) + '-' + Math.round(hint.max) + ' mm/s';
     const kVal = type in overrides ? overrides[type] : paTuner.baseK;
     return '<div class="pa-feature-row">' +
-      '<span class="pa-type-name" title="' + type + '">' + type + '</span>' +
+      '<span class="pa-type-name" title="' + escapeHtml(type) + '">' + escapeHtml(type) + '</span>' +
       '<span class="pa-speed-hint">' + speedStr + '</span>' +
       '<input type="number" class="input" min="0" max="0.2" step="0.001" value="' + kVal.toFixed(3) + '"' +
-      ' onchange="updatePaFeatureK(\'' + type.replace(/'/g, "\\'") + '\', this.value)">' +
+      ' data-type="' + escapeHtml(type) + '" onchange="updatePaFeatureK(this.dataset.type, this.value)">' +
       '</div>';
   }).join('');
 }
