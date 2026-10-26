@@ -22,6 +22,14 @@ const FIBRESEEKER_TYPE_MAP = {
   'support interface': 'SUPPORT-INTERFACE',
 };
 
+// Feature names come straight from the file and end up in innerHTML / inline handlers.
+// Fold free-form text down to a safe token so it can never carry markup.
+const MAX_TYPE_NAME_LENGTH = 40;
+function sanitizeTypeName(raw) {
+  const cleaned = String(raw).toUpperCase().replace(/[^A-Z0-9_ ./-]/g, '').trim().slice(0, MAX_TYPE_NAME_LENGTH).trim();
+  return cleaned || 'CUSTOM';
+}
+
 export class GcodeParser {
   constructor() {
     this.lines = [];
@@ -65,6 +73,7 @@ export class GcodeParser {
     let curX = 0, curY = 0, curZ = 0, curE = 0;
     let relativeE = false; // M83 = relative, M82 = absolute
     let currentType = 'DEFAULT';
+    let insetSeenLayer = null; // layer in which a FibreSeeker inset section was last seen
     let currentFeedRate = 0; // mm/min as raw G-code value
     let currentPrintAccel = 0, currentTravelAccel = 0; // mm/s² from M204
     // Bambu Studio uses "; CHANGE_LAYER" as a marker, with layer number on a nearby line
@@ -233,7 +242,7 @@ export class GcodeParser {
             'Support interface': 'SUPPORT-INTERFACE',
           };
           const rawType = typeMatch[1].trim();
-          currentType = typeNormalize[rawType] || rawType.toUpperCase();
+          currentType = Object.hasOwn(typeNormalize, rawType) ? typeNormalize[rawType] : sanitizeTypeName(rawType);
           if (!currentLayer.sectionTypes.includes(currentType)) currentLayer.sectionTypes.push(currentType);
         }
 
@@ -260,16 +269,16 @@ export class GcodeParser {
         // FibreSeeker: "; Skirt start", "; Inset XP start", "; Cellular infill start", etc.
         // Gated to fibreseeker so unrelated "; ... start" comments can never hijack other formats.
         if (this.slicerType === 'fibreseeker') {
-          const fsType = line.match(/^;\s*(.+?)\s+start\s*$/i);
-          if (fsType) {
-            const raw = fsType[1].trim().toLowerCase();
+          const fsBody = line.startsWith(';') ? line.slice(1).trim() : '';
+          if (/\sstart$/i.test(fsBody)) {
+            const raw = fsBody.slice(0, -'start'.length).trim().toLowerCase();
             const insetM = raw.match(/^inset\s+(\S+)$/);
             if (insetM) {
               // "Inset XP"/"Inset XF" are outer/finish passes; numbered insets: first pass outer, rest inner.
-              currentType = (/^x/i.test(insetM[1]) || !currentLayer._insetSeen) ? 'WALL-OUTER' : 'WALL-INNER';
-              currentLayer._insetSeen = true;
+              currentType = (/^x/i.test(insetM[1]) || insetSeenLayer !== currentLayer) ? 'WALL-OUTER' : 'WALL-INNER';
+              insetSeenLayer = currentLayer;
             } else {
-              currentType = FIBRESEEKER_TYPE_MAP[raw] || raw.toUpperCase();
+              currentType = Object.hasOwn(FIBRESEEKER_TYPE_MAP, raw) ? FIBRESEEKER_TYPE_MAP[raw] : sanitizeTypeName(raw);
             }
             if (!currentLayer.sectionTypes.includes(currentType)) currentLayer.sectionTypes.push(currentType);
           }
