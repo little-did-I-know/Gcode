@@ -74,7 +74,7 @@ let layerRangeEnd = null;
 let crossSectionActive = false;
 let crossSectionFlipped = false;
 let reparsing = false;
-let loadInProgress = false; // true from file pick until loadFile finishes (any exit path)
+let pendingLoads = 0; // file loads between pick and finish (any exit path); overlapping loads count separately
 const _storedColor = localStorage.getItem('gcode_highlight_color');
 let highlightColor = /^#[0-9a-fA-F]{6}$/.test(_storedColor) ? _storedColor : '#ff3333';
 

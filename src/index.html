@@ -548,8 +548,7 @@ main { display: flex; flex: 1; overflow: hidden; }
 .review-view canvas { position: absolute; inset: 0; display: block; }
 .review-view-label { position: absolute; top: 6px; left: 8px; padding: 2px 8px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border); font-size: 11px; font-weight: 700; font-family: var(--mono); color: var(--text); pointer-events: none; }
 .review-view-status { position: absolute; bottom: 6px; left: 8px; font-size: 11px; color: var(--text-dim); pointer-events: none; }
-.review-list { min-height: 120px; }
-.review-list { flex: 1; overflow: auto; position: relative; font-family: var(--mono); font-size: 12px; }
+.review-list { flex: 1; min-height: 120px; overflow: auto; position: relative; font-family: var(--mono); font-size: 12px; }
 .review-spacer { position: relative; width: 100%; }
 .review-rows { position: absolute; left: 0; right: 0; top: 0; }
 .review-row { display: grid; grid-template-columns: 1fr 1fr; height: 18px; line-height: 18px; }

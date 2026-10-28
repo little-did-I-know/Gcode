@@ -548,8 +548,7 @@ main { display: flex; flex: 1; overflow: hidden; }
 .review-view canvas { position: absolute; inset: 0; display: block; }
 .review-view-label { position: absolute; top: 6px; left: 8px; padding: 2px 8px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border); font-size: 11px; font-weight: 700; font-family: var(--mono); color: var(--text); pointer-events: none; }
 .review-view-status { position: absolute; bottom: 6px; left: 8px; font-size: 11px; color: var(--text-dim); pointer-events: none; }
-.review-list { min-height: 120px; }
-.review-list { flex: 1; overflow: auto; position: relative; font-family: var(--mono); font-size: 12px; }
+.review-list { flex: 1; min-height: 120px; overflow: auto; position: relative; font-family: var(--mono); font-size: 12px; }
 .review-spacer { position: relative; width: 100%; }
 .review-rows { position: absolute; left: 0; right: 0; top: 0; }
 .review-row { display: grid; grid-template-columns: 1fr 1fr; height: 18px; line-height: 18px; }
@@ -12414,16 +12413,33 @@ class GcodeViewer3D {
     gl.deleteBuffer(vbo);
   }
 
+  // Clear with theme-appropriate background
+  clearBackground() {
+    const gl = this.gl;
+    if (!gl) return;
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    gl.clearColor(isDark ? 0.067 : 0.878, isDark ? 0.071 : 0.882, isDark ? 0.078 : 0.894, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  }
+
+  // Copy another viewer's orbit/pan/zoom and redraw (used to link the review panes)
+  copyCamera(other) {
+    const { rotX, rotZ, panX, panY, zoom } = other.cam;
+    Object.assign(this.cam, { rotX, rotZ, panX, panY, zoom });
+    this.render(this.currentLayer);
+  }
+
+  _cameraChanged() {
+    if (this.onCameraChange) this.onCameraChange(this);
+  }
+
   render(layerNum) {
     const gl = this.gl;
     if (this._broken || !this._w || !this._h || !this._p().bounds) return;
 
     this.currentLayer = layerNum;
 
-    // Clear with theme-appropriate background
-    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-    gl.clearColor(isDark ? 0.067 : 0.878, isDark ? 0.071 : 0.882, isDark ? 0.078 : 0.894, 1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    this.clearBackground();
 
     const mvp = this._getMVP();
 
@@ -13180,6 +13196,7 @@ class GcodeViewer3D {
 
       this._lastMouse = { x: e.clientX, y: e.clientY };
       this.render(this.currentLayer);
+      this._cameraChanged();
     });
 
     // Hover preview for pause select mode
@@ -13362,6 +13379,7 @@ class GcodeViewer3D {
       this.cam.zoom *= factor;
       this.cam.zoom = Math.max(0.1, Math.min(50, this.cam.zoom));
       this.render(this.currentLayer);
+      this._cameraChanged();
     }, { passive: false });
 
     // Touch support
@@ -13395,6 +13413,7 @@ class GcodeViewer3D {
         this.cam.rotX = Math.max(0.01, Math.min(Math.PI / 2 - 0.01, this.cam.rotX + dy * 0.005));
         this._lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
         this.render(this.currentLayer);
+        this._cameraChanged();
       } else if (e.touches.length === 2) {
         // Pinch zoom
         const dist = Math.hypot(
@@ -13420,6 +13439,7 @@ class GcodeViewer3D {
         lastTouchDist = dist;
         lastTouchMid = mid;
         this.render(this.currentLayer);
+        this._cameraChanged();
       }
     }, { passive: false });
 
@@ -13555,6 +13575,7 @@ const REVIEW_MAX_CELL_CHARS = 400;
 let reviewState = { rows: [], hunks: [], currentHunk: -1, beforeLines: [], afterLines: [] };
 let reviewIsOpen = false;
 let reviewRenderPending = false;
+let reviewReturnFocus = null; // element focused before the review opened
 
 // Bright magenta: distinct from every motion-type color and from both theme backgrounds
 const REVIEW_HIGHLIGHT_COLOR = [1.0, 0.1, 0.7];
@@ -13624,12 +13645,16 @@ function reviewEnsureSides() {
     ready: false,
   });
   reviewSides = { before: make('Before'), after: make('After') };
+  // Linked cameras: orbit/pan/zoom on one pane is mirrored on the other
+  reviewSides.before.viewer.onCameraChange = (v) => reviewSides.after.viewer.copyCamera(v);
+  reviewSides.after.viewer.onCameraChange = (v) => reviewSides.before.viewer.copyCamera(v);
   window.addEventListener('resize', () => {
     if (!reviewIsOpen) return;
     for (const side of [reviewSides.before, reviewSides.after]) {
       side.viewer.resize();
     }
     reviewRenderViews();
+    reviewRenderRows();
   });
   return reviewSides;
 }
@@ -13649,11 +13674,7 @@ function reviewHunkLine(hunk, key) {
 
 // Blank the canvas so a frame from an earlier review never shows under a new label
 function reviewClearSide(side) {
-  const gl = side.viewer.gl;
-  if (!gl) return;
-  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-  gl.clearColor(isDark ? 0.067 : 0.878, isDark ? 0.071 : 0.882, isDark ? 0.078 : 0.894, 1.0);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  side.viewer.clearBackground();
 }
 
 function reviewLastLayerNumber(p) {
@@ -13779,7 +13800,7 @@ function openReview() {
     showToast('Load a valid G-code file before exporting', 'warning');
     return;
   }
-  if (reparsing || loadInProgress) {
+  if (reparsing || pendingLoads > 0) {
     showToast('Wait for the file to finish loading before exporting', 'warning');
     return;
   }
@@ -13791,6 +13812,7 @@ function openReview() {
   const { rows, hunks } = diffLines(beforeLines, afterLines);
   reviewState = { rows, hunks, currentHunk: hunks.length ? 0 : -1, beforeLines, afterLines, exportBaseName, exportSuffix };
   reviewIsOpen = true;
+  reviewReturnFocus = document.activeElement;
 
   reviewEl('reviewOverlay').classList.add('active');
   reviewEl('reviewSpacer').style.height = (rows.length * REVIEW_ROW_HEIGHT) + 'px';
@@ -13818,6 +13840,10 @@ function closeReview() {
   reviewEl('reviewOverlay').classList.remove('active');
   reviewEl('reviewRows').innerHTML = '';
   reviewState = { rows: [], hunks: [], currentHunk: -1, beforeLines: [], afterLines: [] };
+  if (reviewReturnFocus && reviewReturnFocus.isConnected && typeof reviewReturnFocus.focus === 'function') {
+    reviewReturnFocus.focus();
+  }
+  reviewReturnFocus = null;
 }
 
 function reviewNext() {
@@ -15355,14 +15381,14 @@ function loadFile(file) {
   }
   const isBgcode = file.name.toLowerCase().endsWith('.bgcode');
   const reader = new FileReader();
-  loadInProgress = true;
-  reader.onerror = () => { loadInProgress = false; };
-  reader.onabort = () => { loadInProgress = false; };
+  pendingLoads++;
+  reader.onerror = () => { pendingLoads--; };
+  reader.onabort = () => { pendingLoads--; };
   reader.onload = async (e) => {
     try {
       await loadFileFromReader(e, file, isBgcode);
     } finally {
-      loadInProgress = false;
+      pendingLoads--;
     }
   };
   if (isBgcode) reader.readAsArrayBuffer(file);
@@ -18606,7 +18632,7 @@ let layerRangeEnd = null;
 let crossSectionActive = false;
 let crossSectionFlipped = false;
 let reparsing = false;
-let loadInProgress = false; // true from file pick until loadFile finishes (any exit path)
+let pendingLoads = 0; // file loads between pick and finish (any exit path); overlapping loads count separately
 const _storedColor = localStorage.getItem('gcode_highlight_color');
 let highlightColor = /^#[0-9a-fA-F]{6}$/.test(_storedColor) ? _storedColor : '#ff3333';
 
