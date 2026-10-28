@@ -13879,6 +13879,17 @@ function reviewHandleKey(e) {
   e.preventDefault();
 }
 
+// While the review is open a dropped file must not load, and must not make the
+// browser navigate away to it either.
+function reviewBlockDrag(e) {
+  if (!reviewIsOpen) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.type === 'drop') showToast('Close the export review before loading another file', 'warning');
+}
+window.addEventListener('dragover', reviewBlockDrag, true);
+window.addEventListener('drop', reviewBlockDrag, true);
+
 // Inline tooltip system — attaches "?" badges to elements with data-tooltip attributes
 const Tooltips = {
   _el: null,
@@ -15338,6 +15349,10 @@ function showOnboardHint(key, targetId, text) {
 }
 
 function loadFile(file) {
+  if (reviewIsOpen) {
+    showToast('Close the export review before loading another file', 'warning');
+    return;
+  }
   const isBgcode = file.name.toLowerCase().endsWith('.bgcode');
   const reader = new FileReader();
   loadInProgress = true;

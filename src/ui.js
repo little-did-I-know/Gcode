@@ -1027,6 +1027,10 @@ function showOnboardHint(key, targetId, text) {
 }
 
 function loadFile(file) {
+  if (reviewIsOpen) {
+    showToast('Close the export review before loading another file', 'warning');
+    return;
+  }
   const isBgcode = file.name.toLowerCase().endsWith('.bgcode');
   const reader = new FileReader();
   loadInProgress = true;

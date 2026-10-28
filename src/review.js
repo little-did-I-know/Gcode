@@ -334,3 +334,14 @@ function reviewHandleKey(e) {
   }
   e.preventDefault();
 }
+
+// While the review is open a dropped file must not load, and must not make the
+// browser navigate away to it either.
+function reviewBlockDrag(e) {
+  if (!reviewIsOpen) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.type === 'drop') showToast('Close the export review before loading another file', 'warning');
+}
+window.addEventListener('dragover', reviewBlockDrag, true);
+window.addEventListener('drop', reviewBlockDrag, true);
