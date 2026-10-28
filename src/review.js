@@ -11,6 +11,7 @@ const REVIEW_MAX_CELL_CHARS = 400;
 let reviewState = { rows: [], hunks: [], currentHunk: -1, beforeLines: [], afterLines: [] };
 let reviewIsOpen = false;
 let reviewRenderPending = false;
+let reviewReturnFocus = null; // element focused before the review opened
 
 // Bright magenta: distinct from every motion-type color and from both theme backgrounds
 const REVIEW_HIGHLIGHT_COLOR = [1.0, 0.1, 0.7];
@@ -80,12 +81,16 @@ function reviewEnsureSides() {
     ready: false,
   });
   reviewSides = { before: make('Before'), after: make('After') };
+  // Linked cameras: orbit/pan/zoom on one pane is mirrored on the other
+  reviewSides.before.viewer.onCameraChange = (v) => reviewSides.after.viewer.copyCamera(v);
+  reviewSides.after.viewer.onCameraChange = (v) => reviewSides.before.viewer.copyCamera(v);
   window.addEventListener('resize', () => {
     if (!reviewIsOpen) return;
     for (const side of [reviewSides.before, reviewSides.after]) {
       side.viewer.resize();
     }
     reviewRenderViews();
+    reviewRenderRows();
   });
   return reviewSides;
 }
@@ -105,11 +110,7 @@ function reviewHunkLine(hunk, key) {
 
 // Blank the canvas so a frame from an earlier review never shows under a new label
 function reviewClearSide(side) {
-  const gl = side.viewer.gl;
-  if (!gl) return;
-  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-  gl.clearColor(isDark ? 0.067 : 0.878, isDark ? 0.071 : 0.882, isDark ? 0.078 : 0.894, 1.0);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  side.viewer.clearBackground();
 }
 
 function reviewLastLayerNumber(p) {
@@ -235,7 +236,7 @@ function openReview() {
     showToast('Load a valid G-code file before exporting', 'warning');
     return;
   }
-  if (reparsing || loadInProgress) {
+  if (reparsing || pendingLoads > 0) {
     showToast('Wait for the file to finish loading before exporting', 'warning');
     return;
   }
@@ -247,6 +248,7 @@ function openReview() {
   const { rows, hunks } = diffLines(beforeLines, afterLines);
   reviewState = { rows, hunks, currentHunk: hunks.length ? 0 : -1, beforeLines, afterLines, exportBaseName, exportSuffix };
   reviewIsOpen = true;
+  reviewReturnFocus = document.activeElement;
 
   reviewEl('reviewOverlay').classList.add('active');
   reviewEl('reviewSpacer').style.height = (rows.length * REVIEW_ROW_HEIGHT) + 'px';
@@ -274,6 +276,10 @@ function closeReview() {
   reviewEl('reviewOverlay').classList.remove('active');
   reviewEl('reviewRows').innerHTML = '';
   reviewState = { rows: [], hunks: [], currentHunk: -1, beforeLines: [], afterLines: [] };
+  if (reviewReturnFocus && reviewReturnFocus.isConnected && typeof reviewReturnFocus.focus === 'function') {
+    reviewReturnFocus.focus();
+  }
+  reviewReturnFocus = null;
 }
 
 function reviewNext() {

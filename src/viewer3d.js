@@ -825,16 +825,33 @@ export class GcodeViewer3D {
     gl.deleteBuffer(vbo);
   }
 
+  // Clear with theme-appropriate background
+  clearBackground() {
+    const gl = this.gl;
+    if (!gl) return;
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    gl.clearColor(isDark ? 0.067 : 0.878, isDark ? 0.071 : 0.882, isDark ? 0.078 : 0.894, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  }
+
+  // Copy another viewer's orbit/pan/zoom and redraw (used to link the review panes)
+  copyCamera(other) {
+    const { rotX, rotZ, panX, panY, zoom } = other.cam;
+    Object.assign(this.cam, { rotX, rotZ, panX, panY, zoom });
+    this.render(this.currentLayer);
+  }
+
+  _cameraChanged() {
+    if (this.onCameraChange) this.onCameraChange(this);
+  }
+
   render(layerNum) {
     const gl = this.gl;
     if (this._broken || !this._w || !this._h || !this._p().bounds) return;
 
     this.currentLayer = layerNum;
 
-    // Clear with theme-appropriate background
-    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-    gl.clearColor(isDark ? 0.067 : 0.878, isDark ? 0.071 : 0.882, isDark ? 0.078 : 0.894, 1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    this.clearBackground();
 
     const mvp = this._getMVP();
 
@@ -1591,6 +1608,7 @@ export class GcodeViewer3D {
 
       this._lastMouse = { x: e.clientX, y: e.clientY };
       this.render(this.currentLayer);
+      this._cameraChanged();
     });
 
     // Hover preview for pause select mode
@@ -1773,6 +1791,7 @@ export class GcodeViewer3D {
       this.cam.zoom *= factor;
       this.cam.zoom = Math.max(0.1, Math.min(50, this.cam.zoom));
       this.render(this.currentLayer);
+      this._cameraChanged();
     }, { passive: false });
 
     // Touch support
@@ -1806,6 +1825,7 @@ export class GcodeViewer3D {
         this.cam.rotX = Math.max(0.01, Math.min(Math.PI / 2 - 0.01, this.cam.rotX + dy * 0.005));
         this._lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
         this.render(this.currentLayer);
+        this._cameraChanged();
       } else if (e.touches.length === 2) {
         // Pinch zoom
         const dist = Math.hypot(
@@ -1831,6 +1851,7 @@ export class GcodeViewer3D {
         lastTouchDist = dist;
         lastTouchMid = mid;
         this.render(this.currentLayer);
+        this._cameraChanged();
       }
     }, { passive: false });
 

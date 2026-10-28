@@ -1033,14 +1033,14 @@ function loadFile(file) {
   }
   const isBgcode = file.name.toLowerCase().endsWith('.bgcode');
   const reader = new FileReader();
-  loadInProgress = true;
-  reader.onerror = () => { loadInProgress = false; };
-  reader.onabort = () => { loadInProgress = false; };
+  pendingLoads++;
+  reader.onerror = () => { pendingLoads--; };
+  reader.onabort = () => { pendingLoads--; };
   reader.onload = async (e) => {
     try {
       await loadFileFromReader(e, file, isBgcode);
     } finally {
-      loadInProgress = false;
+      pendingLoads--;
     }
   };
   if (isBgcode) reader.readAsArrayBuffer(file);
