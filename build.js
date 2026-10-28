@@ -15,6 +15,7 @@ const FILES = [
   'e-repair.js',
   'parser.js',
   'modifier.js',
+  'line-diff.js',
   'gcode-dictionary.js',
   'material-profiles.js',      // NEW - no deps
   'motion-analyzer.js',
