@@ -34,6 +34,7 @@ const FILES = [
   'context-menu.js',
   'pa-tuner.js',
   'viewer3d.js',
+  'review.js',
   'tooltips.js',
   'command-palette.js',
   'onboarding.js',

@@ -529,6 +529,38 @@ main { display: flex; flex: 1; overflow: hidden; }
 .shortcuts-card kbd { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; font-family: var(--mono); font-size: 11px; }
 .shortcuts-card .close-btn { float: right; background: none; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer; }
 
+/* REVIEW OVERLAY */
+.review-overlay { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 150; flex-direction: column; }
+.review-overlay.active { display: flex; }
+.review-header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.review-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.review-counter { font-size: 13px; font-weight: 600; color: var(--accent); font-family: var(--mono); min-width: 110px; }
+.review-spacer-flex { flex: 1; }
+.review-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 12px; font-weight: 600; cursor: pointer; }
+.review-btn:hover:not(:disabled) { border-color: var(--accent); }
+.review-btn:disabled { opacity: .4; cursor: default; }
+.review-btn-primary { background: var(--accent); border-color: var(--accent); color: #000; }
+.review-cols-head, .review-views { display: grid; grid-template-columns: 1fr 1fr; }
+.review-col-title { padding: 6px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); background: var(--surface); border-bottom: 1px solid var(--border); }
+.review-col-title + .review-col-title { border-left: 1px solid var(--border); }
+.review-view { flex: none; height: 38vh; min-height: 180px; max-height: 55vh; background: var(--surface2); border-bottom: 1px solid var(--border); position: relative; overflow: hidden; }
+.review-view + .review-view { border-left: 1px solid var(--border); }
+.review-view canvas { position: absolute; inset: 0; display: block; }
+.review-view-label { position: absolute; top: 6px; left: 8px; padding: 2px 8px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border); font-size: 11px; font-weight: 700; font-family: var(--mono); color: var(--text); pointer-events: none; }
+.review-view-status { position: absolute; bottom: 6px; left: 8px; font-size: 11px; color: var(--text-dim); pointer-events: none; }
+.review-list { min-height: 120px; }
+.review-list { flex: 1; overflow: auto; position: relative; font-family: var(--mono); font-size: 12px; }
+.review-spacer { position: relative; width: 100%; }
+.review-rows { position: absolute; left: 0; right: 0; top: 0; }
+.review-row { display: grid; grid-template-columns: 1fr 1fr; height: 18px; line-height: 18px; }
+.review-cell { display: flex; overflow: hidden; white-space: pre; color: var(--text); }
+.review-cell + .review-cell { border-left: 1px solid var(--border); }
+.review-ln { flex: 0 0 56px; padding-right: 8px; text-align: right; color: var(--text-dim); user-select: none; }
+.review-text { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.review-filler { background: var(--surface2); }
+.review-add { background: color-mix(in srgb, var(--green) 22%, transparent); }
+.review-del { background: color-mix(in srgb, var(--red) 22%, transparent); }
+
 /* RESPONSIVE */
 @media (max-width: 1100px) {
   .panel-left { width: 200px; min-width: 160px; }
@@ -1741,6 +1773,37 @@ main { display: flex; flex: 1; overflow: hidden; }
       <tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Command palette</td></tr>
     </table>
     <button onclick="Onboarding.start(); toggleShortcutsOverlay();" style="margin-top:12px;padding:6px 14px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:6px;color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;">Replay Guided Tour</button>
+  </div>
+</div>
+
+<div class="review-overlay" id="reviewOverlay" role="dialog" aria-modal="true" aria-label="Review changes before export">
+  <div class="review-header">
+    <span class="review-title">Review changes</span>
+    <span class="review-counter" id="reviewCounter">No changes</span>
+    <button class="review-btn" id="reviewPrevBtn" onclick="reviewPrev()">Previous</button>
+    <button class="review-btn" id="reviewNextBtn" onclick="reviewNext()">Next</button>
+    <span class="review-spacer-flex"></span>
+    <button class="review-btn" id="reviewBackBtn" onclick="closeReview()">Back</button>
+    <button class="review-btn review-btn-primary" id="reviewContinueBtn" onclick="continueExport()">Continue export</button>
+  </div>
+  <div class="review-cols-head">
+    <div class="review-col-title">Before (as loaded)</div>
+    <div class="review-col-title">After (exported)</div>
+  </div>
+  <div class="review-views">
+    <div class="review-view" id="reviewViewBefore">
+      <canvas id="reviewCanvasBefore"></canvas>
+      <span class="review-view-label" id="reviewLabelBefore"></span>
+      <span class="review-view-status" id="reviewStatusBefore"></span>
+    </div>
+    <div class="review-view" id="reviewViewAfter">
+      <canvas id="reviewCanvasAfter"></canvas>
+      <span class="review-view-label" id="reviewLabelAfter"></span>
+      <span class="review-view-status" id="reviewStatusAfter"></span>
+    </div>
+  </div>
+  <div class="review-list" id="reviewList" onscroll="reviewScheduleRender()">
+    <div class="review-spacer" id="reviewSpacer"><div class="review-rows" id="reviewRows"></div></div>
   </div>
 </div>
 

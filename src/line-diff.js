@@ -49,34 +49,92 @@ function _diffMyersOps(a, aStart, aEnd, b, bStart, bEnd) {
   return ops.reverse();
 }
 
-function _diffBlockReplaceOps(delCount, addCount) {
-  return new Array(delCount).fill('del').concat(new Array(addCount).fill('add'));
+function _pushBlockReplaceOps(ops, delCount, addCount) {
+  for (let i = 0; i < delCount; i++) ops.push('del');
+  for (let i = 0; i < addCount; i++) ops.push('add');
+}
+
+// Lines occurring exactly once in both ranges, as {b, a} pairs that form the
+// longest increasing subsequence (patience-style anchors), in forward order.
+function _uniqueAnchors(before, bs, be, after, as, ae) {
+  const info = new Map(); // line -> { bCount, aCount, b, a }
+  for (let i = bs; i < be; i++) {
+    const e = info.get(before[i]);
+    if (e) e.bCount++; else info.set(before[i], { bCount: 1, aCount: 0, b: i, a: -1 });
+  }
+  for (let j = as; j < ae; j++) {
+    const e = info.get(after[j]);
+    if (!e) continue;
+    e.aCount++;
+    e.a = j;
+  }
+  const pairs = [];
+  for (const e of info.values()) {
+    if (e.bCount === 1 && e.aCount === 1) pairs.push(e);
+  }
+  if (pairs.length === 0) return [];
+  pairs.sort((x, y) => x.b - y.b);
+  // LIS on .a using tails array + predecessor links
+  const tails = [];
+  const prev = new Int32Array(pairs.length).fill(-1);
+  for (let i = 0; i < pairs.length; i++) {
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (pairs[tails[m]].a < pairs[i].a) lo = m + 1; else hi = m;
+    }
+    if (lo > 0) prev[i] = tails[lo - 1];
+    tails[lo] = i;
+  }
+  const out = [];
+  for (let i = tails[tails.length - 1]; i !== -1; i = prev[i]) out.push(pairs[i]);
+  return out.reverse();
+}
+
+// Appends ops for before[bs..be) vs after[as..ae). Trims common ends, tries
+// Myers, then anchors on unique lines and recurses into the gaps; only a gap
+// with no anchors and over the Myers cap becomes a block replace.
+function _diffRangeOps(before, bs, be, after, as, ae, ops) {
+  while (bs < be && as < ae && before[bs] === after[as]) { ops.push('same'); bs++; as++; }
+  let tail = 0;
+  while (be > bs && ae > as && before[be - 1] === after[ae - 1]) { be--; ae--; tail++; }
+  const delCount = be - bs;
+  const addCount = ae - as;
+  if (delCount === 0 || addCount === 0) {
+    _pushBlockReplaceOps(ops, delCount, addCount);
+  } else {
+    const myers = _diffMyersOps(before, bs, be, after, as, ae);
+    if (myers) {
+      for (let i = 0; i < myers.length; i++) ops.push(myers[i]);
+    } else {
+      const anchors = _uniqueAnchors(before, bs, be, after, as, ae);
+      if (anchors.length === 0) {
+        _pushBlockReplaceOps(ops, delCount, addCount);
+      } else {
+        let pb = bs;
+        let pa = as;
+        for (const anc of anchors) {
+          _diffRangeOps(before, pb, anc.b, after, pa, anc.a, ops);
+          ops.push('same');
+          pb = anc.b + 1;
+          pa = anc.a + 1;
+        }
+        _diffRangeOps(before, pb, be, after, pa, ae, ops);
+      }
+    }
+  }
+  for (let i = 0; i < tail; i++) ops.push('same');
 }
 
 export function diffLines(before, after) {
-  const bLen = before.length;
-  const aLen = after.length;
-  let prefix = 0;
-  while (prefix < bLen && prefix < aLen && before[prefix] === after[prefix]) prefix++;
-  let suffix = 0;
-  while (suffix < bLen - prefix && suffix < aLen - prefix &&
-         before[bLen - 1 - suffix] === after[aLen - 1 - suffix]) suffix++;
-
-  const delCount = bLen - prefix - suffix;
-  const addCount = aLen - prefix - suffix;
-  let midOps;
-  if (delCount === 0 || addCount === 0) {
-    midOps = _diffBlockReplaceOps(delCount, addCount);
-  } else {
-    midOps = _diffMyersOps(before, prefix, bLen - suffix, after, prefix, aLen - suffix) ||
-      _diffBlockReplaceOps(delCount, addCount);
-  }
+  const midOps = [];
+  _diffRangeOps(before, 0, before.length, after, 0, after.length, midOps);
 
   const rows = [];
   const hunks = [];
   let bi = 0;
   let ai = 0;
-  for (; bi < prefix; bi++, ai++) rows.push({ kind: 'same', beforeIdx: bi, afterIdx: ai });
 
   let i = 0;
   while (i < midOps.length) {
@@ -98,7 +156,6 @@ export function diffLines(before, after) {
     hunks.push({ startRow, endRow: rows.length - 1 });
   }
 
-  for (let s = 0; s < suffix; s++) rows.push({ kind: 'same', beforeIdx: bi++, afterIdx: ai++ });
   return { rows, hunks };
 }
 

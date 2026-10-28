@@ -74,6 +74,7 @@ let layerRangeEnd = null;
 let crossSectionActive = false;
 let crossSectionFlipped = false;
 let reparsing = false;
+let loadInProgress = false; // true from file pick until loadFile finishes (any exit path)
 const _storedColor = localStorage.getItem('gcode_highlight_color');
 let highlightColor = /^#[0-9a-fA-F]{6}$/.test(_storedColor) ? _storedColor : '#ff3333';
 
@@ -447,6 +448,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 window.addEventListener('keydown', e => {
   const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT';
+
+  // Export review overlay: Esc closes without exporting; see reviewHandleKey: only review navigation and copy/select keys work, everything else is swallowed so the reviewed file cannot change
+  if (reviewIsOpen) {
+    reviewHandleKey(e);
+    return;
+  }
 
   // Undo/redo (works even in inputs)
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); performUndo(); return; }

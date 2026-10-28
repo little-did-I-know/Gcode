@@ -66,6 +66,42 @@ describe('layerForLine', () => {
   });
 });
 
+describe('diffLines anchoring', () => {
+  it('recovery-shaped diff with rewritten lines keeps most unchanged lines as same', () => {
+    const before = [];
+    for (let i = 0; i < 500; i++) before.push('; header ' + i);
+    for (let i = 0; i < 100000; i++) before.push('G1 X' + i + ' Y' + i + ' E0.1');
+    const remaining = before.slice(500 + 60000);
+    const after = before.slice(0, 500).concat(remaining.map((l, i) => (i % 25 === 0 ? l + ' Z9.9' : l)));
+    const t0 = performance.now();
+    const { rows, hunks } = diffLines(before, after);
+    const elapsed = performance.now() - t0;
+    const same = rows.filter((r) => r.kind === 'same').length;
+    assert.ok(hunks.length > 1, 'hunks ' + hunks.length);
+    assert.ok(same > remaining.length * 0.9, 'same ' + same);
+    assert.ok(elapsed < 4000, 'took ' + elapsed + 'ms');
+  });
+
+  it('edit distance beyond the cap falls back to block replace with consistent indices', () => {
+    const before = ['start'];
+    const after = ['start'];
+    for (let i = 0; i < 2500; i++) { before.push('b' + (i % 3)); after.push('a' + (i % 3)); }
+    before.push('end');
+    after.push('end');
+    const { rows, hunks } = diffLines(before, after);
+    assert.strictEqual(hunks.length, 1);
+    let bi = 0;
+    let ai = 0;
+    for (const r of rows) {
+      if (r.kind === 'same') { assert.strictEqual(r.beforeIdx, bi++); assert.strictEqual(r.afterIdx, ai++); }
+      else if (r.kind === 'del') { assert.strictEqual(r.beforeIdx, bi++); assert.strictEqual(r.afterIdx, null); }
+      else { assert.strictEqual(r.beforeIdx, null); assert.strictEqual(r.afterIdx, ai++); }
+    }
+    assert.strictEqual(bi, before.length);
+    assert.strictEqual(ai, after.length);
+  });
+});
+
 describe('diffLines performance', () => {
   it('200k lines with 50 inserted completes under 1500ms', () => {
     const before = [];
