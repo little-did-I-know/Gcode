@@ -1027,117 +1027,134 @@ function showOnboardHint(key, targetId, text) {
 }
 
 function loadFile(file) {
+  if (reviewIsOpen) {
+    showToast('Close the export review before loading another file', 'warning');
+    return;
+  }
   const isBgcode = file.name.toLowerCase().endsWith('.bgcode');
   const reader = new FileReader();
+  loadInProgress = true;
+  reader.onerror = () => { loadInProgress = false; };
+  reader.onabort = () => { loadInProgress = false; };
   reader.onload = async (e) => {
-    let text;
-    if (isBgcode) {
-      try {
-        text = await decodeBgcode(e.target.result);
-      } catch (err) {
-        document.getElementById('parseProgress').style.display = 'none';
-        document.getElementById('gcodePreview').innerHTML =
-          `<div class="empty-state"><p style="color:var(--red)">Failed to decode bgcode file: ${err.message}</p></div>`;
-        return;
-      }
-    } else {
-      text = e.target.result;
-    }
-
-    const progressEl = document.getElementById('parseProgress');
-    const barEl = document.getElementById('parseBar');
-    const labelEl = document.getElementById('parseLabel');
-    const lineCount = (text.match(/\n/g) || []).length;
-
-    if (lineCount > 50000) {
-      progressEl.style.display = '';
-      labelEl.textContent = 'Parsing...';
-      barEl.style.width = '0%';
-    }
-
-    await parser.parseAsync(text, file.name, pct => {
-      barEl.style.width = (pct * 100).toFixed(0) + '%';
-      labelEl.textContent = `Parsing... ${(pct * 100).toFixed(0)}%`;
-    });
-
-    progressEl.style.display = 'none';
-
-    if (parser.layers.length === 0) {
-      document.getElementById('gcodePreview').innerHTML =
-        '<div class="empty-state"><p style="color:var(--red)">No layers detected in this file. It may not be a valid G-code file, or the slicer format is not yet supported.</p></div>';
-      document.getElementById('parseProgress').style.display = 'none';
-      return;
-    }
-    if (parser.skippedLines > 0) {
-      showToast(parser.skippedLines + ' lines skipped during parsing', 'warning');
-    }
-
-    holeDetector.clearCache();
-    viewer.clearBuffers();
-    insertManager.clear();
-    modifier.modifications = [];
-    undoStack.push(modifier.modifications);
-    holeDetectMode = false;
-    document.getElementById('holeDetectToggle').classList.remove('active');
-    document.getElementById('viewerCanvas').classList.remove('hole-mode');
-    pauseSelectMode = false;
-    selectedMove = null;
-    hoveredMove = null;
-    layerRangeStart = null;
-    layerRangeEnd = null;
-    document.getElementById('pauseSelectToggle').classList.remove('active');
-    document.getElementById('viewerCanvas').style.cursor = '';
-
-    // Update UI
-    document.getElementById('fileName').textContent = file.name;
-    const slicerName = parser.slicerType !== 'unknown' ? ` · ${parser.slicerType}` : '';
-    document.getElementById('fileMeta').textContent =
-      `${parser.layers.length} layers  ·  ${parser.lines.length.toLocaleString()} lines${slicerName}`;
-    document.getElementById('fileInfo').style.display = 'inline';
-    document.getElementById('exportBtn').style.display = 'inline-flex';
-    dropZone.innerHTML = `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg><span>Replace file</span>`;
-
-    renderLayerList();
-    // Setup viewer
-    viewer.resize();
-    viewer.fitBounds();
-    updateSlider();
-    buildSections();
-    initMotionTypeState();
-    // Analyze motion (infer profile from parsed lines, then analyze)
-    const inferredProfile = MotionAnalyzer.inferProfile(parser.lines);
-    Object.assign(motionAnalyzer.profile, inferredProfile);
-    motionAnalyzer.analyzeAllLayers(parser.layerMoves);
-    // Populate printer profile panel with inferred values
-    document.getElementById('profileAccel').value = motionAnalyzer.profile.acceleration;
-    document.getElementById('profileJerk').value = motionAnalyzer.profile.jerk;
-    document.getElementById('profileFirmware').value = motionAnalyzer.profile.firmwareType;
-
-    // Run eager analysis (motion + flow only; others run on demand)
-    runEagerAnalysis();
-
-    // Update analysis panel material dropdown
-    const inferredMaterial = inferMaterial(parser.lines);
-    const materialSelect = document.getElementById('analysisMaterialType');
-    if (materialSelect) materialSelect.value = inferredMaterial;
-    const inferredLabel = document.getElementById('analysisMaterialInferred');
-    if (inferredLabel) inferredLabel.textContent = '(inferred: ' + inferredMaterial + ')';
-    const printerInfo = document.getElementById('analysisPrinterInfo');
-    if (printerInfo) printerInfo.textContent = motionAnalyzer.profile.firmwareType + ' (inferred)';
-
-    renderMotionLegend();
-    if (parser.layers.length > 0) selectLayer(parser.layers[0].number);
-    else renderFullPreview();
-
-    showOnboardHint('visual', 'viewVisualBtn', 'Try the 3D Visual view');
-
-    // Trigger guided tour on first file load
-    if (!localStorage.getItem('gcode_tour_completed')) {
-      setTimeout(function() { Onboarding.start(); }, 600);
+    try {
+      await loadFileFromReader(e, file, isBgcode);
+    } finally {
+      loadInProgress = false;
     }
   };
   if (isBgcode) reader.readAsArrayBuffer(file);
   else reader.readAsText(file);
+}
+
+async function loadFileFromReader(e, file, isBgcode) {
+  let text;
+  if (isBgcode) {
+    try {
+      text = await decodeBgcode(e.target.result);
+    } catch (err) {
+      document.getElementById('parseProgress').style.display = 'none';
+      document.getElementById('gcodePreview').innerHTML =
+        `<div class="empty-state"><p style="color:var(--red)">Failed to decode bgcode file: ${err.message}</p></div>`;
+      return;
+    }
+  } else {
+    text = e.target.result;
+  }
+
+  const progressEl = document.getElementById('parseProgress');
+  const barEl = document.getElementById('parseBar');
+  const labelEl = document.getElementById('parseLabel');
+  const lineCount = (text.match(/\n/g) || []).length;
+
+  if (lineCount > 50000) {
+    progressEl.style.display = '';
+    labelEl.textContent = 'Parsing...';
+    barEl.style.width = '0%';
+  }
+
+  originalLines = null;
+  await parser.parseAsync(text, file.name, pct => {
+    barEl.style.width = (pct * 100).toFixed(0) + '%';
+    labelEl.textContent = `Parsing... ${(pct * 100).toFixed(0)}%`;
+  });
+
+  progressEl.style.display = 'none';
+
+  if (parser.layers.length === 0) {
+    document.getElementById('gcodePreview').innerHTML =
+      '<div class="empty-state"><p style="color:var(--red)">No layers detected in this file. It may not be a valid G-code file, or the slicer format is not yet supported.</p></div>';
+    document.getElementById('parseProgress').style.display = 'none';
+    return;
+  }
+  originalLines = parser.lines.slice();
+  if (parser.skippedLines > 0) {
+    showToast(parser.skippedLines + ' lines skipped during parsing', 'warning');
+  }
+
+  holeDetector.clearCache();
+  viewer.clearBuffers();
+  insertManager.clear();
+  modifier.modifications = [];
+  undoStack.push(modifier.modifications);
+  holeDetectMode = false;
+  document.getElementById('holeDetectToggle').classList.remove('active');
+  document.getElementById('viewerCanvas').classList.remove('hole-mode');
+  pauseSelectMode = false;
+  selectedMove = null;
+  hoveredMove = null;
+  layerRangeStart = null;
+  layerRangeEnd = null;
+  document.getElementById('pauseSelectToggle').classList.remove('active');
+  document.getElementById('viewerCanvas').style.cursor = '';
+
+  // Update UI
+  document.getElementById('fileName').textContent = file.name;
+  const slicerName = parser.slicerType !== 'unknown' ? ` · ${parser.slicerType}` : '';
+  document.getElementById('fileMeta').textContent =
+    `${parser.layers.length} layers  ·  ${parser.lines.length.toLocaleString()} lines${slicerName}`;
+  document.getElementById('fileInfo').style.display = 'inline';
+  document.getElementById('exportBtn').style.display = 'inline-flex';
+  dropZone.innerHTML = `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg><span>Replace file</span>`;
+
+  renderLayerList();
+  // Setup viewer
+  viewer.resize();
+  viewer.fitBounds();
+  updateSlider();
+  buildSections();
+  initMotionTypeState();
+  // Analyze motion (infer profile from parsed lines, then analyze)
+  const inferredProfile = MotionAnalyzer.inferProfile(parser.lines);
+  Object.assign(motionAnalyzer.profile, inferredProfile);
+  motionAnalyzer.analyzeAllLayers(parser.layerMoves);
+  // Populate printer profile panel with inferred values
+  document.getElementById('profileAccel').value = motionAnalyzer.profile.acceleration;
+  document.getElementById('profileJerk').value = motionAnalyzer.profile.jerk;
+  document.getElementById('profileFirmware').value = motionAnalyzer.profile.firmwareType;
+
+  // Run eager analysis (motion + flow only; others run on demand)
+  runEagerAnalysis();
+
+  // Update analysis panel material dropdown
+  const inferredMaterial = inferMaterial(parser.lines);
+  const materialSelect = document.getElementById('analysisMaterialType');
+  if (materialSelect) materialSelect.value = inferredMaterial;
+  const inferredLabel = document.getElementById('analysisMaterialInferred');
+  if (inferredLabel) inferredLabel.textContent = '(inferred: ' + inferredMaterial + ')';
+  const printerInfo = document.getElementById('analysisPrinterInfo');
+  if (printerInfo) printerInfo.textContent = motionAnalyzer.profile.firmwareType + ' (inferred)';
+
+  renderMotionLegend();
+  if (parser.layers.length > 0) selectLayer(parser.layers[0].number);
+  else renderFullPreview();
+
+  showOnboardHint('visual', 'viewVisualBtn', 'Try the 3D Visual view');
+
+  // Trigger guided tour on first file load
+  if (!localStorage.getItem('gcode_tour_completed')) {
+    setTimeout(function() { Onboarding.start(); }, 600);
+  }
 }
 
 // ===== LAYER LIST =====
@@ -3668,15 +3685,14 @@ function addInsertsForSelection() {
 // ===== EXPORT =====
 function exportGcode() {
   if (parser.lines.length === 0) return;
+  openReview();
+}
 
-  const modifiedLines = modifier.applyAll(parser.lines, parser);
-  const text = modifiedLines.join('\n');
+// Writes exactly the lines/name the review showed; never re-derives from live state.
+function performExport(lines, baseName, suffix) {
+  const text = lines.join('\n');
   const blob = new Blob([text], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
-
-  const baseName = parser.fileName.replace(/\.gcode$/i, '');
-  const recoveryMod = modifier.modifications.find(m => m.type === 'recovery');
-  const suffix = recoveryMod ? `_recovery_L${recoveryMod.resumeLayer}` : '_modified';
   const a = document.createElement('a');
   a.href = url;
   a.download = baseName + suffix + '.gcode';

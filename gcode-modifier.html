@@ -529,6 +529,38 @@ main { display: flex; flex: 1; overflow: hidden; }
 .shortcuts-card kbd { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; font-family: var(--mono); font-size: 11px; }
 .shortcuts-card .close-btn { float: right; background: none; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer; }
 
+/* REVIEW OVERLAY */
+.review-overlay { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 150; flex-direction: column; }
+.review-overlay.active { display: flex; }
+.review-header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.review-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.review-counter { font-size: 13px; font-weight: 600; color: var(--accent); font-family: var(--mono); min-width: 110px; }
+.review-spacer-flex { flex: 1; }
+.review-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 12px; font-weight: 600; cursor: pointer; }
+.review-btn:hover:not(:disabled) { border-color: var(--accent); }
+.review-btn:disabled { opacity: .4; cursor: default; }
+.review-btn-primary { background: var(--accent); border-color: var(--accent); color: #000; }
+.review-cols-head, .review-views { display: grid; grid-template-columns: 1fr 1fr; }
+.review-col-title { padding: 6px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); background: var(--surface); border-bottom: 1px solid var(--border); }
+.review-col-title + .review-col-title { border-left: 1px solid var(--border); }
+.review-view { flex: none; height: 38vh; min-height: 180px; max-height: 55vh; background: var(--surface2); border-bottom: 1px solid var(--border); position: relative; overflow: hidden; }
+.review-view + .review-view { border-left: 1px solid var(--border); }
+.review-view canvas { position: absolute; inset: 0; display: block; }
+.review-view-label { position: absolute; top: 6px; left: 8px; padding: 2px 8px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border); font-size: 11px; font-weight: 700; font-family: var(--mono); color: var(--text); pointer-events: none; }
+.review-view-status { position: absolute; bottom: 6px; left: 8px; font-size: 11px; color: var(--text-dim); pointer-events: none; }
+.review-list { min-height: 120px; }
+.review-list { flex: 1; overflow: auto; position: relative; font-family: var(--mono); font-size: 12px; }
+.review-spacer { position: relative; width: 100%; }
+.review-rows { position: absolute; left: 0; right: 0; top: 0; }
+.review-row { display: grid; grid-template-columns: 1fr 1fr; height: 18px; line-height: 18px; }
+.review-cell { display: flex; overflow: hidden; white-space: pre; color: var(--text); }
+.review-cell + .review-cell { border-left: 1px solid var(--border); }
+.review-ln { flex: 0 0 56px; padding-right: 8px; text-align: right; color: var(--text-dim); user-select: none; }
+.review-text { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.review-filler { background: var(--surface2); }
+.review-add { background: color-mix(in srgb, var(--green) 22%, transparent); }
+.review-del { background: color-mix(in srgb, var(--red) 22%, transparent); }
+
 /* RESPONSIVE */
 @media (max-width: 1100px) {
   .panel-left { width: 200px; min-width: 160px; }
@@ -1741,6 +1773,37 @@ main { display: flex; flex: 1; overflow: hidden; }
       <tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Command palette</td></tr>
     </table>
     <button onclick="Onboarding.start(); toggleShortcutsOverlay();" style="margin-top:12px;padding:6px 14px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:6px;color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;">Replay Guided Tour</button>
+  </div>
+</div>
+
+<div class="review-overlay" id="reviewOverlay" role="dialog" aria-modal="true" aria-label="Review changes before export">
+  <div class="review-header">
+    <span class="review-title">Review changes</span>
+    <span class="review-counter" id="reviewCounter">No changes</span>
+    <button class="review-btn" id="reviewPrevBtn" onclick="reviewPrev()">Previous</button>
+    <button class="review-btn" id="reviewNextBtn" onclick="reviewNext()">Next</button>
+    <span class="review-spacer-flex"></span>
+    <button class="review-btn" id="reviewBackBtn" onclick="closeReview()">Back</button>
+    <button class="review-btn review-btn-primary" id="reviewContinueBtn" onclick="continueExport()">Continue export</button>
+  </div>
+  <div class="review-cols-head">
+    <div class="review-col-title">Before (as loaded)</div>
+    <div class="review-col-title">After (exported)</div>
+  </div>
+  <div class="review-views">
+    <div class="review-view" id="reviewViewBefore">
+      <canvas id="reviewCanvasBefore"></canvas>
+      <span class="review-view-label" id="reviewLabelBefore"></span>
+      <span class="review-view-status" id="reviewStatusBefore"></span>
+    </div>
+    <div class="review-view" id="reviewViewAfter">
+      <canvas id="reviewCanvasAfter"></canvas>
+      <span class="review-view-label" id="reviewLabelAfter"></span>
+      <span class="review-view-status" id="reviewStatusAfter"></span>
+    </div>
+  </div>
+  <div class="review-list" id="reviewList" onscroll="reviewScheduleRender()">
+    <div class="review-spacer" id="reviewSpacer"><div class="review-rows" id="reviewRows"></div></div>
   </div>
 </div>
 
@@ -4898,6 +4961,192 @@ class GcodeModifier {
 
     return result;
   }
+}
+
+// Line diff: Myers diff over string arrays, with common prefix/suffix trimming
+// and a bounded edit distance so pathological inputs fall back to a block replace.
+
+const DIFF_MAX_EDIT_DISTANCE = 2000;
+
+// Myers diff on a[aStart..aEnd) vs b[bStart..bEnd). Returns an array of
+// 'same' | 'del' | 'add' ops in forward order, or null if the edit distance
+// exceeds DIFF_MAX_EDIT_DISTANCE.
+function _diffMyersOps(a, aStart, aEnd, b, bStart, bEnd) {
+  const n = aEnd - aStart;
+  const m = bEnd - bStart;
+  const maxD = Math.min(n + m, DIFF_MAX_EDIT_DISTANCE);
+  const size = 2 * maxD + 3;
+  const mid = maxD + 1;
+  const v = new Int32Array(size);
+  const snapshots = [];
+  let found = -1;
+
+  for (let d = 0; d <= maxD && found < 0; d++) {
+    for (let k = -d; k <= d; k += 2) {
+      let x;
+      if (k === -d || (k !== d && v[mid + k - 1] < v[mid + k + 1])) x = v[mid + k + 1];
+      else x = v[mid + k - 1] + 1;
+      let y = x - k;
+      while (x < n && y < m && a[aStart + x] === b[bStart + y]) { x++; y++; }
+      v[mid + k] = x;
+      if (x >= n && y >= m) { found = d; break; }
+    }
+    if (found < 0) snapshots.push(v.slice(mid - d, mid + d + 1));
+  }
+  if (found < 0) return null;
+
+  const ops = [];
+  let x = n;
+  let y = m;
+  for (let d = found; d > 0; d--) {
+    const prev = snapshots[d - 1];
+    const k = x - y;
+    const pAt = (kk) => prev[kk + d - 1];
+    const prevK = (k === -d || (k !== d && pAt(k - 1) < pAt(k + 1))) ? k + 1 : k - 1;
+    const prevX = pAt(prevK);
+    const prevY = prevX - prevK;
+    while (x > prevX && y > prevY) { ops.push('same'); x--; y--; }
+    ops.push(x === prevX ? 'add' : 'del');
+    x = prevX;
+    y = prevY;
+  }
+  while (x > 0 && y > 0) { ops.push('same'); x--; y--; }
+  return ops.reverse();
+}
+
+function _pushBlockReplaceOps(ops, delCount, addCount) {
+  for (let i = 0; i < delCount; i++) ops.push('del');
+  for (let i = 0; i < addCount; i++) ops.push('add');
+}
+
+// Lines occurring exactly once in both ranges, as {b, a} pairs that form the
+// longest increasing subsequence (patience-style anchors), in forward order.
+function _uniqueAnchors(before, bs, be, after, as, ae) {
+  const info = new Map(); // line -> { bCount, aCount, b, a }
+  for (let i = bs; i < be; i++) {
+    const e = info.get(before[i]);
+    if (e) e.bCount++; else info.set(before[i], { bCount: 1, aCount: 0, b: i, a: -1 });
+  }
+  for (let j = as; j < ae; j++) {
+    const e = info.get(after[j]);
+    if (!e) continue;
+    e.aCount++;
+    e.a = j;
+  }
+  const pairs = [];
+  for (const e of info.values()) {
+    if (e.bCount === 1 && e.aCount === 1) pairs.push(e);
+  }
+  if (pairs.length === 0) return [];
+  pairs.sort((x, y) => x.b - y.b);
+  // LIS on .a using tails array + predecessor links
+  const tails = [];
+  const prev = new Int32Array(pairs.length).fill(-1);
+  for (let i = 0; i < pairs.length; i++) {
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (pairs[tails[m]].a < pairs[i].a) lo = m + 1; else hi = m;
+    }
+    if (lo > 0) prev[i] = tails[lo - 1];
+    tails[lo] = i;
+  }
+  const out = [];
+  for (let i = tails[tails.length - 1]; i !== -1; i = prev[i]) out.push(pairs[i]);
+  return out.reverse();
+}
+
+// Appends ops for before[bs..be) vs after[as..ae). Trims common ends, tries
+// Myers, then anchors on unique lines and recurses into the gaps; only a gap
+// with no anchors and over the Myers cap becomes a block replace.
+function _diffRangeOps(before, bs, be, after, as, ae, ops) {
+  while (bs < be && as < ae && before[bs] === after[as]) { ops.push('same'); bs++; as++; }
+  let tail = 0;
+  while (be > bs && ae > as && before[be - 1] === after[ae - 1]) { be--; ae--; tail++; }
+  const delCount = be - bs;
+  const addCount = ae - as;
+  if (delCount === 0 || addCount === 0) {
+    _pushBlockReplaceOps(ops, delCount, addCount);
+  } else {
+    const myers = _diffMyersOps(before, bs, be, after, as, ae);
+    if (myers) {
+      for (let i = 0; i < myers.length; i++) ops.push(myers[i]);
+    } else {
+      const anchors = _uniqueAnchors(before, bs, be, after, as, ae);
+      if (anchors.length === 0) {
+        _pushBlockReplaceOps(ops, delCount, addCount);
+      } else {
+        let pb = bs;
+        let pa = as;
+        for (const anc of anchors) {
+          _diffRangeOps(before, pb, anc.b, after, pa, anc.a, ops);
+          ops.push('same');
+          pb = anc.b + 1;
+          pa = anc.a + 1;
+        }
+        _diffRangeOps(before, pb, be, after, pa, ae, ops);
+      }
+    }
+  }
+  for (let i = 0; i < tail; i++) ops.push('same');
+}
+
+function diffLines(before, after) {
+  const midOps = [];
+  _diffRangeOps(before, 0, before.length, after, 0, after.length, midOps);
+
+  const rows = [];
+  const hunks = [];
+  let bi = 0;
+  let ai = 0;
+
+  let i = 0;
+  while (i < midOps.length) {
+    if (midOps[i] === 'same') {
+      rows.push({ kind: 'same', beforeIdx: bi++, afterIdx: ai++ });
+      i++;
+      continue;
+    }
+    // Contiguous changed run: emit all dels first, then all adds.
+    let dels = 0;
+    let adds = 0;
+    while (i < midOps.length && midOps[i] !== 'same') {
+      if (midOps[i] === 'del') dels++; else adds++;
+      i++;
+    }
+    const startRow = rows.length;
+    for (let j = 0; j < dels; j++) rows.push({ kind: 'del', beforeIdx: bi++, afterIdx: null });
+    for (let j = 0; j < adds; j++) rows.push({ kind: 'add', beforeIdx: null, afterIdx: ai++ });
+    hunks.push({ startRow, endRow: rows.length - 1 });
+  }
+
+  return { rows, hunks };
+}
+
+function changedLineSets(rows) {
+  const removedBefore = new Set();
+  const addedAfter = new Set();
+  for (const row of rows) {
+    if (row.kind === 'del') removedBefore.add(row.beforeIdx);
+    else if (row.kind === 'add') addedAfter.add(row.afterIdx);
+  }
+  return { removedBefore, addedAfter };
+}
+
+// layers sorted by startLine. Returns the number of the last layer whose
+// startLine <= lineIndex (the first layer for lines before it), or null.
+function layerForLine(layers, lineIndex) {
+  if (!layers || layers.length === 0) return null;
+  let lo = 0;
+  let hi = layers.length - 1;
+  let found = 0;
+  while (lo <= hi) {
+    const midIdx = (lo + hi) >> 1;
+    if (layers[midIdx].startLine <= lineIndex) { found = midIdx; lo = midIdx + 1; }
+    else hi = midIdx - 1;
+  }
+  return layers[found].number;
 }
 
 // G-code command dictionary and line decoder.
@@ -11341,7 +11590,12 @@ class PaTuner {
 // ===== GCODE VIEWER (old Canvas 2D removed — now using GcodeViewer3D) =====
 
 class GcodeViewer3D {
-  constructor(canvasId) {
+  constructor(canvasId, opts = {}) {
+    // Own parser (e.g. before/after review viewers); null falls back to the global parser
+    this.parser = opts.parser || null;
+    // Review mode: motion-type colors only, no global overlays, no edit interaction
+    this.review = !!opts.review;
+    this._highlight = null; // { lines: Set<number>, color: [r, g, b] } or null
     this.canvas = document.getElementById(canvasId);
     this.gl = this.canvas.getContext('webgl2', { preserveDrawingBuffer: true });
     if (!this.gl) {
@@ -11390,6 +11644,17 @@ class GcodeViewer3D {
     this._initShaders();
     if (this._broken) return;
     this._setupInteraction();
+  }
+
+  // Parser backing this viewer (own parser if given, else the global one)
+  _p() {
+    return this.parser || parser;
+  }
+
+  // Mark moves whose lineIndex is in lineIndices with color; null clears highlighting
+  setHighlight(lineIndices, color) {
+    this._highlight = lineIndices && lineIndices.size > 0 ? { lines: lineIndices, color } : null;
+    this.clearBuffers();
   }
 
   // --- Shader source ---
@@ -11491,10 +11756,10 @@ class GcodeViewer3D {
   }
 
   _getMVP() {
-    const b = parser.bounds;
+    const b = this._p().bounds;
     const cx = (b.minX + b.maxX) / 2;
     const cy = (b.minY + b.maxY) / 2;
-    const maxLayer = parser.layers[parser.layers.length - 1];
+    const maxLayer = this._p().layers[this._p().layers.length - 1];
     const maxZ = maxLayer ? (maxLayer.zHeight || 0) : 0;
     const cz = maxZ / 2;
 
@@ -11618,13 +11883,13 @@ class GcodeViewer3D {
     if (this.layerBuffers.has(layerNum)) return this.layerBuffers.get(layerNum);
 
     const gl = this.gl;
-    const moves = parser.layerMoves[layerNum];
+    const moves = this._p().layerMoves[layerNum];
     if (!moves || moves.length === 0) {
       this.layerBuffers.set(layerNum, null);
       return null;
     }
 
-    const layer = parser.getLayerByNumber(layerNum);
+    const layer = this._p().getLayerByNumber(layerNum);
     const z = layer?.zHeight || 0;
     const halfW = 0.2; // half ribbon width in mm
 
@@ -11634,7 +11899,7 @@ class GcodeViewer3D {
     const travelVerts = [];
     // Per-move offset tracking for simulation
     const offsets = [];
-    const isHeatmap = colorMode !== 'motion-type';
+    const isHeatmap = !this.review && colorMode !== 'motion-type';
     const heatStats = isHeatmap ? getHeatmapLayerStats(layerNum) : null;
     const overlayDef = isHeatmap && typeof analysisManager !== 'undefined'
       ? analysisManager.getSupportedOverlays().find(o => o.id === colorMode)
@@ -11646,7 +11911,9 @@ class GcodeViewer3D {
       // Skip hidden motion types (in motion-type mode) or non-extrusions (in heatmap mode)
       const moveTypeUpper = move.extrude ? move.type.toUpperCase() : 'TRAVEL';
       const normalizedMoveType = MOTION_TYPE_ALIASES[moveTypeUpper] || moveTypeUpper;
-      if (!isHeatmap && motionTypeVisibility[normalizedMoveType] === false) {
+      // Review mode: a highlighted (changed) move is always shown, even if its type is hidden
+      const isHighlighted = this._highlight !== null && this._highlight.lines.has(move.lineIndex);
+      if (!isHeatmap && !isHighlighted && motionTypeVisibility[normalizedMoveType] === false) {
         offsets.push({ triStart: ribbonVerts.length / 7, triCount: 0, lineStart: travelVerts.length / 7, lineCount: 0 });
         continue;
       }
@@ -11655,7 +11922,7 @@ class GcodeViewer3D {
       const lineStart = travelVerts.length / 7;
 
       if (move.extrude) {
-        const color = isHeatmap
+        const color = isHighlighted ? this._highlight.color : isHeatmap
           ? this._getHeatmapColor(getHeatmapValue(move, layerNum, moveIndex), heatStats.min, heatStats.max, invertColor)
           : this._getTypeColor(move.type);
         const dx = move.x2 - move.x1;
@@ -11687,10 +11954,10 @@ class GcodeViewer3D {
         }
       } else {
         // Travel move as a line (use custom color if set)
-        const tc = this._getTypeColor('TRAVEL');
+        const tc = isHighlighted ? this._highlight.color : this._getTypeColor('TRAVEL');
         travelVerts.push(
-          move.x1, move.y1, z, tc[0], tc[1], tc[2], 0.3,
-          move.x2, move.y2, z, tc[0], tc[1], tc[2], 0.3,
+          move.x1, move.y1, z, tc[0], tc[1], tc[2], isHighlighted ? 1.0 : 0.3,
+          move.x2, move.y2, z, tc[0], tc[1], tc[2], isHighlighted ? 1.0 : 0.3,
         );
       }
 
@@ -11761,7 +12028,7 @@ class GcodeViewer3D {
     if (!compareMoves || compareMoves.length === 0) return;
 
     // Use the current layer's Z for overlay alignment so both layers appear at the same height
-    const layer = parser.getLayerByNumber(this.currentLayer);
+    const layer = this._p().getLayerByNumber(this.currentLayer);
     const z = layer ? layer.zHeight || 0 : 0;
     const halfW = 0.2;
     const tint = LayerComparison.compareTint;
@@ -11868,7 +12135,7 @@ class GcodeViewer3D {
 
     // Get grid dimensions from any available warp grid (dimensions are identical
     // across all layers since the grid is computed from global extrusion bounds).
-    const layerNums = Object.keys(parser.layerMoves).map(Number).sort((a, b) => a - b);
+    const layerNums = Object.keys(this._p().layerMoves).map(Number).sort((a, b) => a - b);
     let refGrid = thermalEngine.getWarpGrid(layerNum);
     if (!refGrid) {
       for (const ln of layerNums) {
@@ -11991,7 +12258,7 @@ class GcodeViewer3D {
         if (cumCount[i] > 0) avgWarp[i] = cumWarpSum[i] / cumCount[i];
       }
 
-      const layerInfo = parser.layers.find(l => l.number === ln);
+      const layerInfo = this._p().layers.find(l => l.number === ln);
       const z = layerInfo ? (layerInfo.zHeight || 0) : 0;
 
       // Build vertex grid: each corner averages warp from up to 4 surrounding cells
@@ -12115,7 +12382,7 @@ class GcodeViewer3D {
 
   _drawGrid(mvp) {
     const gl = this.gl;
-    const b = parser.bounds;
+    const b = this._p().bounds;
     const verts = [];
     const step = 10; // 10mm grid
     const isLight = document.documentElement.getAttribute('data-theme') === 'light';
@@ -12149,7 +12416,7 @@ class GcodeViewer3D {
 
   render(layerNum) {
     const gl = this.gl;
-    if (this._broken || !this._w || !this._h || !parser.bounds) return;
+    if (this._broken || !this._w || !this._h || !this._p().bounds) return;
 
     this.currentLayer = layerNum;
 
@@ -12250,7 +12517,7 @@ class GcodeViewer3D {
         }
 
         // Draw leading highlight on the active move
-        const moves = parser.layerMoves[ln];
+        const moves = this._p().layerMoves[ln];
         if (moves && this.simMoveIndex < moves.length) {
           const activeMove = moves[this.simMoveIndex];
           if (activeMove) {
@@ -12265,8 +12532,8 @@ class GcodeViewer3D {
 
       } else {
         // Normal rendering (no simulation)
-        const compareActive = typeof LayerComparison !== 'undefined' && LayerComparison.active;
-        const inRange = typeof layerRangeStart !== 'undefined' && layerRangeStart !== null &&
+        const compareActive = !this.review && typeof LayerComparison !== 'undefined' && LayerComparison.active;
+        const inRange = !this.review && typeof layerRangeStart !== 'undefined' && layerRangeStart !== null &&
                         typeof layerRangeEnd !== 'undefined' && layerRangeEnd !== null &&
                         ln >= layerRangeStart && ln <= layerRangeEnd;
         const layerAlpha = isCurrent ? (compareActive ? 0.5 : -1.0) : (inRange ? -1.0 : dimAlpha);
@@ -12294,6 +12561,12 @@ class GcodeViewer3D {
       }
     }
 
+    // Review viewers show only the toolpath; skip the global overlays
+    if (this.review) {
+      this._drawClipPlaneQuad(mvp);
+      return;
+    }
+
     // Draw comparison overlay layer
     this._drawCompareLayer(mvp);
 
@@ -12314,10 +12587,10 @@ class GcodeViewer3D {
 
     FlowArrows.setZoomLevel(this.cam.zoom);
 
-    const moves = parser.layerMoves[this.currentLayer];
+    const moves = this._p().layerMoves[this.currentLayer];
     if (!moves || moves.length === 0) return;
 
-    const layer = parser.layers[this.currentLayer];
+    const layer = this._p().layers[this.currentLayer];
     const z = layer ? layer.zHeight || 0 : 0;
 
     // Determine color function based on current color mode
@@ -12366,13 +12639,13 @@ class GcodeViewer3D {
 
   _drawModMarkers(mvp) {
     const gl = this.gl;
-    const b = parser.bounds;
+    const b = this._p().bounds;
     const mods = modifier.modifications.filter(m => m.layer !== Infinity && m.layer !== 'end');
     if (mods.length === 0) return;
 
     const verts = [];
     for (const mod of mods) {
-      const layer = parser.getLayerByNumber(mod.layer);
+      const layer = this._p().getLayerByNumber(mod.layer);
       if (!layer || layer.zHeight == null) continue;
       const z = layer.zHeight + 0.05;
 
@@ -12427,7 +12700,7 @@ class GcodeViewer3D {
     if (selected.length === 0) return;
 
     // Draw highlight at the currently viewed layer's Z height
-    const currentLayerData = parser.getLayerByNumber(this.currentLayer);
+    const currentLayerData = this._p().getLayerByNumber(this.currentLayer);
     if (!currentLayerData || currentLayerData.zHeight == null) return;
     const z = currentLayerData.zHeight + 0.2;
 
@@ -12555,7 +12828,7 @@ class GcodeViewer3D {
   }
 
   findNearestMove(worldX, worldY, layerNum) {
-    const moves = parser.layerMoves[layerNum];
+    const moves = this._p().layerMoves[layerNum];
     if (!moves || moves.length === 0) return null;
     let best = null, bestDist = Infinity;
     for (const move of moves) {
@@ -12579,7 +12852,7 @@ class GcodeViewer3D {
   _drawMeasurement(mvp) {
     if (!measureMode || MeasureTool.points.length === 0) return;
     const gl = this.gl;
-    const layer = parser.getLayerByNumber(this.currentLayer);
+    const layer = this._p().getLayerByNumber(this.currentLayer);
     const layerZ = layer?.zHeight || 0;
     const data = MeasureTool.getDrawData(layerZ);
     if (!data) return;
@@ -12603,7 +12876,7 @@ class GcodeViewer3D {
 
   _drawMoveHighlight(mvp, move, color, alpha, lineOffset, crosshairSize) {
     const gl = this.gl;
-    const layer = parser.getLayerByNumber(this.currentLayer);
+    const layer = this._p().getLayerByNumber(this.currentLayer);
     const z = (layer?.zHeight || 0) + 0.1;
 
     const c = [...color.slice(0, 3), alpha];
@@ -12736,7 +13009,7 @@ class GcodeViewer3D {
   }
 
   _getMovesWithSameLineIndex(move, layerNum) {
-    const moves = parser.layerMoves[layerNum];
+    const moves = this._p().layerMoves[layerNum];
     if (!moves) return [move];
     const target = move.lineIndex;
     const matches = moves.filter(m => m.lineIndex === target);
@@ -12769,8 +13042,8 @@ class GcodeViewer3D {
     const bz = nx * ty - ny * tx;
 
     // Size the quad to cover the print bounds
-    const b = parser.bounds;
-    const maxLayer = parser.layers[parser.layers.length - 1];
+    const b = this._p().bounds;
+    const maxLayer = this._p().layers[this._p().layers.length - 1];
     const maxZ = maxLayer ? (maxLayer.zHeight || 0) : 0;
     const size = Math.max(b.maxX - b.minX, b.maxY - b.minY, maxZ || 50) * 1.2;
 
@@ -12857,12 +13130,12 @@ class GcodeViewer3D {
 
     c.addEventListener('contextmenu', e => {
       e.preventDefault();
-      if (typeof ContextMenu === 'undefined') return;
+      if (this.review || typeof ContextMenu === 'undefined') return;
 
       const rect = c.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
-      const layer = parser.layers[this.currentLayer];
+      const layer = this._p().layers[this.currentLayer];
       const z = layer ? layer.zHeight || 0 : 0;
       const pt = this.screenToLayerPoint(sx, sy, z);
 
@@ -12912,7 +13185,7 @@ class GcodeViewer3D {
     // Hover preview for pause select mode
     let hoverRafPending = false;
     c.addEventListener('mousemove', e => {
-      if (!pauseSelectMode || this._dragging) return;
+      if (this.review || !pauseSelectMode || this._dragging) return;
       if (hoverRafPending) return;
       hoverRafPending = true;
       requestAnimationFrame(() => {
@@ -12921,7 +13194,7 @@ class GcodeViewer3D {
         const rect = c.getBoundingClientRect();
         const sx = e.clientX - rect.left;
         const sy = e.clientY - rect.top;
-        const layer = parser.getLayerByNumber(this.currentLayer);
+        const layer = this._p().getLayerByNumber(this.currentLayer);
         const z = layer?.zHeight || 0;
         const pt = this.screenToLayerPoint(sx, sy, z);
         if (!pt) { if (hoveredMove) { hoveredMove = null; this.render(this.currentLayer); } return; }
@@ -12936,7 +13209,7 @@ class GcodeViewer3D {
     // Hover preview for edit mode
     let editHoverRaf = false;
     c.addEventListener('mousemove', e => {
-      if (!editMode || this._dragging) return;
+      if (this.review || !editMode || this._dragging) return;
       if (editHoverRaf) return;
       editHoverRaf = true;
       requestAnimationFrame(() => {
@@ -12945,7 +13218,7 @@ class GcodeViewer3D {
         const rect = c.getBoundingClientRect();
         const sx = e.clientX - rect.left;
         const sy = e.clientY - rect.top;
-        const layer = parser.getLayerByNumber(this.currentLayer);
+        const layer = this._p().getLayerByNumber(this.currentLayer);
         const z = layer?.zHeight || 0;
         const pt = this.screenToLayerPoint(sx, sy, z);
         if (!pt) {
@@ -12964,7 +13237,7 @@ class GcodeViewer3D {
     let heatmapTip = null;
     let heatmapHoverRaf = false;
     c.addEventListener('mousemove', e => {
-      if (colorMode === 'motion-type' || pauseSelectMode || this._dragging) {
+      if (this.review || colorMode === 'motion-type' || pauseSelectMode || this._dragging) {
         if (heatmapTip) heatmapTip.classList.remove('visible');
         return;
       }
@@ -12981,13 +13254,13 @@ class GcodeViewer3D {
         }
         const rect = c.getBoundingClientRect();
         const sx = mx - rect.left, sy = my - rect.top;
-        const layer = parser.getLayerByNumber(this.currentLayer);
+        const layer = this._p().getLayerByNumber(this.currentLayer);
         const z = layer?.zHeight || 0;
         const pt = this.screenToLayerPoint(sx, sy, z);
         if (!pt) { heatmapTip.classList.remove('visible'); return; }
         const move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
         if (!move) { heatmapTip.classList.remove('visible'); return; }
-        const moves = parser.layerMoves[this.currentLayer];
+        const moves = this._p().layerMoves[this.currentLayer];
         const moveIndex = moves ? moves.indexOf(move) : -1;
         if (colorMode === 'actual-speed' || colorMode === 'speed-delta') {
           const result = motionAnalyzer.getResult(this.currentLayer, moveIndex);
@@ -13027,7 +13300,7 @@ class GcodeViewer3D {
     // Stats hover — active when visual view is showing and no special mode is active
     let statsHoverRaf = false;
     c.addEventListener('mousemove', e => {
-      if (this._dragging) return;
+      if (this.review || this._dragging) return;
       if (pauseSelectMode || editMode) return;
       if (statsHoverRaf) return;
       statsHoverRaf = true;
@@ -13038,7 +13311,7 @@ class GcodeViewer3D {
         const rect = c.getBoundingClientRect();
         const sx = e.clientX - rect.left;
         const sy = e.clientY - rect.top;
-        const layer = parser.getLayerByNumber(this.currentLayer);
+        const layer = this._p().getLayerByNumber(this.currentLayer);
         if (!layer) return;
         const z = layer.zHeight || 0;
         const pt = this.screenToLayerPoint(sx, sy, z);
@@ -13057,7 +13330,7 @@ class GcodeViewer3D {
           dist = Math.hypot(pt.x - (move.x1 + t * dx), pt.y - (move.y1 + t * dy));
         }
         if (dist < 2) {
-          const moves = parser.layerMoves[this.currentLayer];
+          const moves = this._p().layerMoves[this.currentLayer];
           const moveIndex = moves ? moves.indexOf(move) : -1;
           StatsOverlay.showHoverInfo(move, this.currentLayer, moveIndex);
         } else {
@@ -13067,6 +13340,7 @@ class GcodeViewer3D {
     });
 
     c.addEventListener('mouseleave', () => {
+      if (this.review) return;
       if (editHoveredMove) {
         editHoveredMove = null;
         if (editMode) this.render(this.currentLayer);
@@ -13157,11 +13431,11 @@ class GcodeViewer3D {
 
 
     c.addEventListener('click', e => {
-      if (this._mouseMoved) return;
+      if (this.review || this._mouseMoved) return;
       const rect = c.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
-      const layer = parser.getLayerByNumber(this.currentLayer);
+      const layer = this._p().getLayerByNumber(this.currentLayer);
       const z = layer?.zHeight || 0;
 
       // Measurement mode click
@@ -13267,6 +13541,354 @@ function computeClipPlane(rotDeg, tiltDeg, sweep) {
   const nz = Math.sin(tilt);
   return [nx, ny, nz, -sweep];
 }
+
+// Before/After export review: aligned, virtualized two-column diff of the
+// original file vs. what export will write. Opened first on every export.
+
+let originalLines = null;
+
+const REVIEW_ROW_HEIGHT = 18;
+const REVIEW_BUFFER_ROWS = 20;
+const REVIEW_CONTEXT_ROWS = 3;
+const REVIEW_MAX_CELL_CHARS = 400;
+
+let reviewState = { rows: [], hunks: [], currentHunk: -1, beforeLines: [], afterLines: [] };
+let reviewIsOpen = false;
+let reviewRenderPending = false;
+
+// Bright magenta: distinct from every motion-type color and from both theme backgrounds
+const REVIEW_HIGHLIGHT_COLOR = [1.0, 0.1, 0.7];
+const REVIEW_LARGE_FILE_LINES = 50000;
+
+// 3D panes. Viewers are created once; parsers are replaced per open so a stale
+// parse can never mutate the parser a live viewer is reading.
+let reviewSession = 0;
+let reviewSides = null;
+let reviewBeforeCache = null; // { lines, parser } so reopening skips re-parsing the original
+
+function reviewEl(id) {
+  return document.getElementById(id);
+}
+
+function reviewCellHtml(kind, wantKind, idx, lines) {
+  // wantKind is the kind that this side shows as changed ('del' left, 'add' right)
+  if (idx === null || idx === undefined) return '<div class="review-cell review-filler"></div>';
+  const cls = kind === wantKind ? ' review-' + kind : '';
+  const text = lines[idx] || '';
+  const shown = text.length > REVIEW_MAX_CELL_CHARS ? text.slice(0, REVIEW_MAX_CELL_CHARS) + '...' : text;
+  return `<div class="review-cell${cls}"><span class="review-ln">${idx + 1}</span><span class="review-text">${syntaxHighlight(shown)}</span></div>`;
+}
+
+function reviewRenderRows() {
+  reviewRenderPending = false;
+  if (!reviewIsOpen) return;
+  const list = reviewEl('reviewList');
+  const body = reviewEl('reviewRows');
+  const rows = reviewState.rows;
+  const first = Math.max(0, Math.floor(list.scrollTop / REVIEW_ROW_HEIGHT) - REVIEW_BUFFER_ROWS);
+  const last = Math.min(rows.length, Math.ceil((list.scrollTop + list.clientHeight) / REVIEW_ROW_HEIGHT) + REVIEW_BUFFER_ROWS);
+  const parts = [];
+  for (let i = first; i < last; i++) {
+    const r = rows[i];
+    parts.push('<div class="review-row">' +
+      reviewCellHtml(r.kind, 'del', r.beforeIdx, reviewState.beforeLines) +
+      reviewCellHtml(r.kind, 'add', r.afterIdx, reviewState.afterLines) +
+      '</div>');
+  }
+  body.style.transform = `translateY(${first * REVIEW_ROW_HEIGHT}px)`;
+  body.innerHTML = parts.join('');
+}
+
+function reviewScheduleRender() {
+  if (reviewRenderPending) return;
+  reviewRenderPending = true;
+  requestAnimationFrame(reviewRenderRows);
+}
+
+function reviewUpdateHeader() {
+  const total = reviewState.hunks.length;
+  const counter = reviewEl('reviewCounter');
+  counter.textContent = total === 0 ? 'No changes' : `Change ${reviewState.currentHunk + 1} of ${total}`;
+  reviewEl('reviewPrevBtn').disabled = total === 0 || reviewState.currentHunk <= 0;
+  reviewEl('reviewNextBtn').disabled = total === 0 || reviewState.currentHunk >= total - 1;
+}
+
+// ----- 3D panes -----
+
+function reviewEnsureSides() {
+  if (reviewSides) return reviewSides;
+  const make = (suffix) => ({
+    viewer: new GcodeViewer3D('reviewCanvas' + suffix, { parser: new GcodeParser(), review: true }),
+    label: reviewEl('reviewLabel' + suffix),
+    status: reviewEl('reviewStatus' + suffix),
+    ready: false,
+  });
+  reviewSides = { before: make('Before'), after: make('After') };
+  window.addEventListener('resize', () => {
+    if (!reviewIsOpen) return;
+    for (const side of [reviewSides.before, reviewSides.after]) {
+      side.viewer.resize();
+    }
+    reviewRenderViews();
+  });
+  return reviewSides;
+}
+
+// First line of the hunk on one side; for a pure insertion/deletion, the adjacent
+// unchanged row's index on that side so the layer is still correct for that file.
+function reviewHunkLine(hunk, key) {
+  const rows = reviewState.rows;
+  for (let i = hunk.startRow; i <= hunk.endRow; i++) {
+    if (rows[i][key] !== null) return rows[i][key];
+  }
+  for (const i of [hunk.startRow - 1, hunk.endRow + 1]) {
+    if (i >= 0 && i < rows.length && rows[i].kind === 'same') return rows[i][key];
+  }
+  return null;
+}
+
+// Blank the canvas so a frame from an earlier review never shows under a new label
+function reviewClearSide(side) {
+  const gl = side.viewer.gl;
+  if (!gl) return;
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  gl.clearColor(isDark ? 0.067 : 0.878, isDark ? 0.071 : 0.882, isDark ? 0.078 : 0.894, 1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+}
+
+function reviewLastLayerNumber(p) {
+  return p.layers.length ? p.layers[p.layers.length - 1].number : null;
+}
+
+function reviewRenderSide(side, lineIdx, fallbackLayer) {
+  if (!side.ready) return;
+  const p = side.viewer.parser;
+  let layerNum = lineIdx === null ? null : layerForLine(p.layers, lineIdx);
+  if (layerNum === null) layerNum = fallbackLayer;
+  if (layerNum === null || p.layers.length === 0) {
+    side.label.textContent = 'No layers';
+    reviewClearSide(side);
+    return;
+  }
+  const layer = p.getLayerByNumber(layerNum);
+  side.label.textContent = `Layer ${layerNum}` + (layer && layer.zHeight ? ` (Z ${Number(layer.zHeight).toFixed(2)})` : '');
+  side.viewer.maxVisibleLayer = layerNum;
+  side.viewer.render(layerNum);
+  return layerNum;
+}
+
+function reviewRenderViews() {
+  if (!reviewIsOpen || !reviewSides) return;
+  const { before, after } = reviewSides;
+  const hunk = reviewState.hunks[reviewState.currentHunk];
+  const beforeIdx = hunk ? reviewHunkLine(hunk, 'beforeIdx') : null;
+  const afterIdx = hunk ? reviewHunkLine(hunk, 'afterIdx') : null;
+  const bl = before.ready && beforeIdx !== null ? layerForLine(before.viewer.parser.layers, beforeIdx) : null;
+  const al = after.ready && afterIdx !== null ? layerForLine(after.viewer.parser.layers, afterIdx) : null;
+  if (!hunk) {
+    // No changes: show the top of the finished part on each side
+    reviewRenderSide(before, null, before.ready ? reviewLastLayerNumber(before.viewer.parser) : null);
+    reviewRenderSide(after, null, after.ready ? reviewLastLayerNumber(after.viewer.parser) : null);
+    return;
+  }
+  // With no line on a side at all, fall back to the other side's layer number
+  reviewRenderSide(before, beforeIdx, al);
+  reviewRenderSide(after, afterIdx, bl);
+}
+
+function reviewSideReady(side) {
+  side.ready = true;
+  side.status.textContent = '';
+  side.viewer.resize();
+  side.viewer.fitBounds();
+  reviewRenderViews();
+}
+
+async function reviewParseSide(side, lines, session, highlightSet, cachedParser) {
+  side.ready = false;
+  side.label.textContent = '';
+  side.viewer.clearBuffers();
+  side.viewer.setHighlight(highlightSet, REVIEW_HIGHLIGHT_COLOR);
+  // Empty placeholder until parsing finishes, so the viewer never caches half-parsed geometry
+  side.viewer.parser = new GcodeParser();
+  const p = cachedParser || new GcodeParser();
+  if (!cachedParser) {
+    const large = lines.length > REVIEW_LARGE_FILE_LINES;
+    if (large) side.status.textContent = 'Parsing... 0%';
+    try {
+      await p.parseAsync(lines.join('\n'), 'review', pct => {
+        if (large && session === reviewSession) side.status.textContent = `Parsing... ${(pct * 100).toFixed(0)}%`;
+      });
+    } catch (err) {
+      console.error('Review parse failed:', err);
+      if (session === reviewSession) side.status.textContent = '3D view unavailable';
+      return null;
+    }
+  }
+  if (session !== reviewSession || !reviewIsOpen) return null;
+  side.viewer.parser = p;
+  return p;
+}
+
+async function reviewStartViews(session, beforeLines, afterLines, sets) {
+  const sides = reviewEnsureSides();
+  for (const side of [sides.before, sides.after]) {
+    side.viewer.resize();
+    side.label.textContent = '';
+    side.status.textContent = 'Parsing...';
+    side.ready = false;
+    reviewClearSide(side);
+  }
+  const cached = reviewBeforeCache && reviewBeforeCache.lines === beforeLines ? reviewBeforeCache.parser : null;
+  // Sides are independent: a failure on one must not block or hide the other
+  await Promise.all([
+    reviewRunSide(sides.before, beforeLines, session, sets.removedBefore, cached, (p) => {
+      if (!cached) reviewBeforeCache = { lines: beforeLines, parser: p };
+    }),
+    reviewRunSide(sides.after, afterLines, session, sets.addedAfter, null, null),
+  ]);
+}
+
+async function reviewRunSide(side, lines, session, highlightSet, cachedParser, onParsed) {
+  try {
+    const p = await reviewParseSide(side, lines, session, highlightSet, cachedParser);
+    if (!p) return; // stale session, or parse failure already reported
+    if (onParsed) onParsed(p);
+    reviewSideReady(side);
+  } catch (err) {
+    console.error('Review view failed:', err);
+    if (session === reviewSession) side.status.textContent = '3D view unavailable';
+  }
+}
+
+function reviewGoToHunk(index) {
+  const total = reviewState.hunks.length;
+  if (total === 0) return;
+  reviewState.currentHunk = Math.max(0, Math.min(total - 1, index));
+  const hunk = reviewState.hunks[reviewState.currentHunk];
+  const list = reviewEl('reviewList');
+  list.scrollTop = Math.max(0, (hunk.startRow - REVIEW_CONTEXT_ROWS) * REVIEW_ROW_HEIGHT);
+  reviewUpdateHeader();
+  reviewRenderRows();
+  reviewRenderViews();
+}
+
+function openReview() {
+  if (reviewIsOpen) return;
+  if (!originalLines) {
+    showToast('Load a valid G-code file before exporting', 'warning');
+    return;
+  }
+  if (reparsing || loadInProgress) {
+    showToast('Wait for the file to finish loading before exporting', 'warning');
+    return;
+  }
+  const afterLines = modifier.applyAll(parser.lines, parser);
+  const beforeLines = originalLines;
+  const recoveryMod = modifier.modifications.find(m => m.type === 'recovery');
+  const exportBaseName = parser.fileName.replace(/\.gcode$/i, '');
+  const exportSuffix = recoveryMod ? `_recovery_L${recoveryMod.resumeLayer}` : '_modified';
+  const { rows, hunks } = diffLines(beforeLines, afterLines);
+  reviewState = { rows, hunks, currentHunk: hunks.length ? 0 : -1, beforeLines, afterLines, exportBaseName, exportSuffix };
+  reviewIsOpen = true;
+
+  reviewEl('reviewOverlay').classList.add('active');
+  reviewEl('reviewSpacer').style.height = (rows.length * REVIEW_ROW_HEIGHT) + 'px';
+  reviewEl('reviewList').scrollTop = 0;
+  reviewUpdateHeader();
+  reviewRenderRows();
+  if (hunks.length) reviewGoToHunk(0);
+  reviewEl('reviewContinueBtn').focus();
+  reviewStartViews(++reviewSession, beforeLines, afterLines, changedLineSets(rows));
+}
+
+function closeReview() {
+  if (!reviewIsOpen) return;
+  reviewIsOpen = false;
+  reviewSession++; // invalidate any parse still running
+  if (reviewSides) {
+    for (const side of [reviewSides.before, reviewSides.after]) {
+      side.ready = false;
+      side.label.textContent = '';
+      side.status.textContent = '';
+      side.viewer.parser = new GcodeParser();
+      side.viewer.setHighlight(null);
+    }
+  }
+  reviewEl('reviewOverlay').classList.remove('active');
+  reviewEl('reviewRows').innerHTML = '';
+  reviewState = { rows: [], hunks: [], currentHunk: -1, beforeLines: [], afterLines: [] };
+}
+
+function reviewNext() {
+  if (reviewIsOpen) reviewGoToHunk(reviewState.currentHunk + 1);
+}
+
+function reviewPrev() {
+  if (reviewIsOpen) reviewGoToHunk(reviewState.currentHunk - 1);
+}
+
+function continueExport() {
+  if (!reviewIsOpen) return;
+  const { afterLines, exportBaseName, exportSuffix } = reviewState;
+  closeReview();
+  performExport(afterLines, exportBaseName, exportSuffix);
+}
+
+// ----- Keyboard -----
+
+const REVIEW_BUTTON_IDS = ['reviewPrevBtn', 'reviewNextBtn', 'reviewBackBtn', 'reviewContinueBtn'];
+const REVIEW_KEY_SCROLL_ROWS = 3;
+
+function reviewTrapTab(e) {
+  const buttons = REVIEW_BUTTON_IDS.map(reviewEl).filter(b => b && !b.disabled);
+  if (buttons.length === 0) return;
+  const at = buttons.indexOf(document.activeElement);
+  let next;
+  if (at === -1) next = e.shiftKey ? buttons.length - 1 : 0;
+  else next = (at + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length;
+  buttons[next].focus();
+}
+
+function reviewScrollListByKey(key) {
+  const list = reviewEl('reviewList');
+  const page = Math.max(REVIEW_ROW_HEIGHT, list.clientHeight - 2 * REVIEW_ROW_HEIGHT);
+  const step = REVIEW_ROW_HEIGHT * REVIEW_KEY_SCROLL_ROWS;
+  if (key === 'ArrowUp') list.scrollTop -= step;
+  else if (key === 'ArrowDown') list.scrollTop += step;
+  else if (key === 'PageUp') list.scrollTop -= page;
+  else if (key === 'PageDown') list.scrollTop += page;
+  else if (key === 'Home') list.scrollTop = 0;
+  else if (key === 'End') list.scrollTop = list.scrollHeight;
+}
+
+// Key handling while the review is open. Only review navigation works; every
+// other key is cancelled so nothing can change the file under review.
+function reviewHandleKey(e) {
+  const mod = e.ctrlKey || e.metaKey;
+  if (e.key === 'Escape') { e.preventDefault(); closeReview(); return; }
+  if (e.key === 'Tab') { e.preventDefault(); reviewTrapTab(e); return; }
+  if (mod && !e.altKey && (e.key === 'c' || e.key === 'C' || e.key === 'a' || e.key === 'A')) return;
+  if ((e.key === 'Enter' || e.key === ' ') && !mod && !e.altKey) {
+    const t = e.target;
+    if (t && t.tagName === 'BUTTON' && t.closest && t.closest('#reviewOverlay')) return; // native activation
+  }
+  if (!mod && !e.altKey && ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key)) {
+    reviewScrollListByKey(e.key);
+  }
+  e.preventDefault();
+}
+
+// While the review is open a dropped file must not load, and must not make the
+// browser navigate away to it either.
+function reviewBlockDrag(e) {
+  if (!reviewIsOpen) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.type === 'drop') showToast('Close the export review before loading another file', 'warning');
+}
+window.addEventListener('dragover', reviewBlockDrag, true);
+window.addEventListener('drop', reviewBlockDrag, true);
 
 // Inline tooltip system — attaches "?" badges to elements with data-tooltip attributes
 const Tooltips = {
@@ -14727,117 +15349,134 @@ function showOnboardHint(key, targetId, text) {
 }
 
 function loadFile(file) {
+  if (reviewIsOpen) {
+    showToast('Close the export review before loading another file', 'warning');
+    return;
+  }
   const isBgcode = file.name.toLowerCase().endsWith('.bgcode');
   const reader = new FileReader();
+  loadInProgress = true;
+  reader.onerror = () => { loadInProgress = false; };
+  reader.onabort = () => { loadInProgress = false; };
   reader.onload = async (e) => {
-    let text;
-    if (isBgcode) {
-      try {
-        text = await decodeBgcode(e.target.result);
-      } catch (err) {
-        document.getElementById('parseProgress').style.display = 'none';
-        document.getElementById('gcodePreview').innerHTML =
-          `<div class="empty-state"><p style="color:var(--red)">Failed to decode bgcode file: ${err.message}</p></div>`;
-        return;
-      }
-    } else {
-      text = e.target.result;
-    }
-
-    const progressEl = document.getElementById('parseProgress');
-    const barEl = document.getElementById('parseBar');
-    const labelEl = document.getElementById('parseLabel');
-    const lineCount = (text.match(/\n/g) || []).length;
-
-    if (lineCount > 50000) {
-      progressEl.style.display = '';
-      labelEl.textContent = 'Parsing...';
-      barEl.style.width = '0%';
-    }
-
-    await parser.parseAsync(text, file.name, pct => {
-      barEl.style.width = (pct * 100).toFixed(0) + '%';
-      labelEl.textContent = `Parsing... ${(pct * 100).toFixed(0)}%`;
-    });
-
-    progressEl.style.display = 'none';
-
-    if (parser.layers.length === 0) {
-      document.getElementById('gcodePreview').innerHTML =
-        '<div class="empty-state"><p style="color:var(--red)">No layers detected in this file. It may not be a valid G-code file, or the slicer format is not yet supported.</p></div>';
-      document.getElementById('parseProgress').style.display = 'none';
-      return;
-    }
-    if (parser.skippedLines > 0) {
-      showToast(parser.skippedLines + ' lines skipped during parsing', 'warning');
-    }
-
-    holeDetector.clearCache();
-    viewer.clearBuffers();
-    insertManager.clear();
-    modifier.modifications = [];
-    undoStack.push(modifier.modifications);
-    holeDetectMode = false;
-    document.getElementById('holeDetectToggle').classList.remove('active');
-    document.getElementById('viewerCanvas').classList.remove('hole-mode');
-    pauseSelectMode = false;
-    selectedMove = null;
-    hoveredMove = null;
-    layerRangeStart = null;
-    layerRangeEnd = null;
-    document.getElementById('pauseSelectToggle').classList.remove('active');
-    document.getElementById('viewerCanvas').style.cursor = '';
-
-    // Update UI
-    document.getElementById('fileName').textContent = file.name;
-    const slicerName = parser.slicerType !== 'unknown' ? ` · ${parser.slicerType}` : '';
-    document.getElementById('fileMeta').textContent =
-      `${parser.layers.length} layers  ·  ${parser.lines.length.toLocaleString()} lines${slicerName}`;
-    document.getElementById('fileInfo').style.display = 'inline';
-    document.getElementById('exportBtn').style.display = 'inline-flex';
-    dropZone.innerHTML = `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg><span>Replace file</span>`;
-
-    renderLayerList();
-    // Setup viewer
-    viewer.resize();
-    viewer.fitBounds();
-    updateSlider();
-    buildSections();
-    initMotionTypeState();
-    // Analyze motion (infer profile from parsed lines, then analyze)
-    const inferredProfile = MotionAnalyzer.inferProfile(parser.lines);
-    Object.assign(motionAnalyzer.profile, inferredProfile);
-    motionAnalyzer.analyzeAllLayers(parser.layerMoves);
-    // Populate printer profile panel with inferred values
-    document.getElementById('profileAccel').value = motionAnalyzer.profile.acceleration;
-    document.getElementById('profileJerk').value = motionAnalyzer.profile.jerk;
-    document.getElementById('profileFirmware').value = motionAnalyzer.profile.firmwareType;
-
-    // Run eager analysis (motion + flow only; others run on demand)
-    runEagerAnalysis();
-
-    // Update analysis panel material dropdown
-    const inferredMaterial = inferMaterial(parser.lines);
-    const materialSelect = document.getElementById('analysisMaterialType');
-    if (materialSelect) materialSelect.value = inferredMaterial;
-    const inferredLabel = document.getElementById('analysisMaterialInferred');
-    if (inferredLabel) inferredLabel.textContent = '(inferred: ' + inferredMaterial + ')';
-    const printerInfo = document.getElementById('analysisPrinterInfo');
-    if (printerInfo) printerInfo.textContent = motionAnalyzer.profile.firmwareType + ' (inferred)';
-
-    renderMotionLegend();
-    if (parser.layers.length > 0) selectLayer(parser.layers[0].number);
-    else renderFullPreview();
-
-    showOnboardHint('visual', 'viewVisualBtn', 'Try the 3D Visual view');
-
-    // Trigger guided tour on first file load
-    if (!localStorage.getItem('gcode_tour_completed')) {
-      setTimeout(function() { Onboarding.start(); }, 600);
+    try {
+      await loadFileFromReader(e, file, isBgcode);
+    } finally {
+      loadInProgress = false;
     }
   };
   if (isBgcode) reader.readAsArrayBuffer(file);
   else reader.readAsText(file);
+}
+
+async function loadFileFromReader(e, file, isBgcode) {
+  let text;
+  if (isBgcode) {
+    try {
+      text = await decodeBgcode(e.target.result);
+    } catch (err) {
+      document.getElementById('parseProgress').style.display = 'none';
+      document.getElementById('gcodePreview').innerHTML =
+        `<div class="empty-state"><p style="color:var(--red)">Failed to decode bgcode file: ${err.message}</p></div>`;
+      return;
+    }
+  } else {
+    text = e.target.result;
+  }
+
+  const progressEl = document.getElementById('parseProgress');
+  const barEl = document.getElementById('parseBar');
+  const labelEl = document.getElementById('parseLabel');
+  const lineCount = (text.match(/\n/g) || []).length;
+
+  if (lineCount > 50000) {
+    progressEl.style.display = '';
+    labelEl.textContent = 'Parsing...';
+    barEl.style.width = '0%';
+  }
+
+  originalLines = null;
+  await parser.parseAsync(text, file.name, pct => {
+    barEl.style.width = (pct * 100).toFixed(0) + '%';
+    labelEl.textContent = `Parsing... ${(pct * 100).toFixed(0)}%`;
+  });
+
+  progressEl.style.display = 'none';
+
+  if (parser.layers.length === 0) {
+    document.getElementById('gcodePreview').innerHTML =
+      '<div class="empty-state"><p style="color:var(--red)">No layers detected in this file. It may not be a valid G-code file, or the slicer format is not yet supported.</p></div>';
+    document.getElementById('parseProgress').style.display = 'none';
+    return;
+  }
+  originalLines = parser.lines.slice();
+  if (parser.skippedLines > 0) {
+    showToast(parser.skippedLines + ' lines skipped during parsing', 'warning');
+  }
+
+  holeDetector.clearCache();
+  viewer.clearBuffers();
+  insertManager.clear();
+  modifier.modifications = [];
+  undoStack.push(modifier.modifications);
+  holeDetectMode = false;
+  document.getElementById('holeDetectToggle').classList.remove('active');
+  document.getElementById('viewerCanvas').classList.remove('hole-mode');
+  pauseSelectMode = false;
+  selectedMove = null;
+  hoveredMove = null;
+  layerRangeStart = null;
+  layerRangeEnd = null;
+  document.getElementById('pauseSelectToggle').classList.remove('active');
+  document.getElementById('viewerCanvas').style.cursor = '';
+
+  // Update UI
+  document.getElementById('fileName').textContent = file.name;
+  const slicerName = parser.slicerType !== 'unknown' ? ` · ${parser.slicerType}` : '';
+  document.getElementById('fileMeta').textContent =
+    `${parser.layers.length} layers  ·  ${parser.lines.length.toLocaleString()} lines${slicerName}`;
+  document.getElementById('fileInfo').style.display = 'inline';
+  document.getElementById('exportBtn').style.display = 'inline-flex';
+  dropZone.innerHTML = `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg><span>Replace file</span>`;
+
+  renderLayerList();
+  // Setup viewer
+  viewer.resize();
+  viewer.fitBounds();
+  updateSlider();
+  buildSections();
+  initMotionTypeState();
+  // Analyze motion (infer profile from parsed lines, then analyze)
+  const inferredProfile = MotionAnalyzer.inferProfile(parser.lines);
+  Object.assign(motionAnalyzer.profile, inferredProfile);
+  motionAnalyzer.analyzeAllLayers(parser.layerMoves);
+  // Populate printer profile panel with inferred values
+  document.getElementById('profileAccel').value = motionAnalyzer.profile.acceleration;
+  document.getElementById('profileJerk').value = motionAnalyzer.profile.jerk;
+  document.getElementById('profileFirmware').value = motionAnalyzer.profile.firmwareType;
+
+  // Run eager analysis (motion + flow only; others run on demand)
+  runEagerAnalysis();
+
+  // Update analysis panel material dropdown
+  const inferredMaterial = inferMaterial(parser.lines);
+  const materialSelect = document.getElementById('analysisMaterialType');
+  if (materialSelect) materialSelect.value = inferredMaterial;
+  const inferredLabel = document.getElementById('analysisMaterialInferred');
+  if (inferredLabel) inferredLabel.textContent = '(inferred: ' + inferredMaterial + ')';
+  const printerInfo = document.getElementById('analysisPrinterInfo');
+  if (printerInfo) printerInfo.textContent = motionAnalyzer.profile.firmwareType + ' (inferred)';
+
+  renderMotionLegend();
+  if (parser.layers.length > 0) selectLayer(parser.layers[0].number);
+  else renderFullPreview();
+
+  showOnboardHint('visual', 'viewVisualBtn', 'Try the 3D Visual view');
+
+  // Trigger guided tour on first file load
+  if (!localStorage.getItem('gcode_tour_completed')) {
+    setTimeout(function() { Onboarding.start(); }, 600);
+  }
 }
 
 // ===== LAYER LIST =====
@@ -17368,15 +18007,14 @@ function addInsertsForSelection() {
 // ===== EXPORT =====
 function exportGcode() {
   if (parser.lines.length === 0) return;
+  openReview();
+}
 
-  const modifiedLines = modifier.applyAll(parser.lines, parser);
-  const text = modifiedLines.join('\n');
+// Writes exactly the lines/name the review showed; never re-derives from live state.
+function performExport(lines, baseName, suffix) {
+  const text = lines.join('\n');
   const blob = new Blob([text], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
-
-  const baseName = parser.fileName.replace(/\.gcode$/i, '');
-  const recoveryMod = modifier.modifications.find(m => m.type === 'recovery');
-  const suffix = recoveryMod ? `_recovery_L${recoveryMod.resumeLayer}` : '_modified';
   const a = document.createElement('a');
   a.href = url;
   a.download = baseName + suffix + '.gcode';
@@ -17968,6 +18606,7 @@ let layerRangeEnd = null;
 let crossSectionActive = false;
 let crossSectionFlipped = false;
 let reparsing = false;
+let loadInProgress = false; // true from file pick until loadFile finishes (any exit path)
 const _storedColor = localStorage.getItem('gcode_highlight_color');
 let highlightColor = /^#[0-9a-fA-F]{6}$/.test(_storedColor) ? _storedColor : '#ff3333';
 
@@ -18341,6 +18980,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 window.addEventListener('keydown', e => {
   const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT';
+
+  // Export review overlay: Esc closes without exporting; see reviewHandleKey: only review navigation and copy/select keys work, everything else is swallowed so the reviewed file cannot change
+  if (reviewIsOpen) {
+    reviewHandleKey(e);
+    return;
+  }
 
   // Undo/redo (works even in inputs)
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); performUndo(); return; }

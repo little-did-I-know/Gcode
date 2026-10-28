@@ -1,7 +1,12 @@
 // ===== GCODE VIEWER (old Canvas 2D removed — now using GcodeViewer3D) =====
 
 export class GcodeViewer3D {
-  constructor(canvasId) {
+  constructor(canvasId, opts = {}) {
+    // Own parser (e.g. before/after review viewers); null falls back to the global parser
+    this.parser = opts.parser || null;
+    // Review mode: motion-type colors only, no global overlays, no edit interaction
+    this.review = !!opts.review;
+    this._highlight = null; // { lines: Set<number>, color: [r, g, b] } or null
     this.canvas = document.getElementById(canvasId);
     this.gl = this.canvas.getContext('webgl2', { preserveDrawingBuffer: true });
     if (!this.gl) {
@@ -50,6 +55,17 @@ export class GcodeViewer3D {
     this._initShaders();
     if (this._broken) return;
     this._setupInteraction();
+  }
+
+  // Parser backing this viewer (own parser if given, else the global one)
+  _p() {
+    return this.parser || parser;
+  }
+
+  // Mark moves whose lineIndex is in lineIndices with color; null clears highlighting
+  setHighlight(lineIndices, color) {
+    this._highlight = lineIndices && lineIndices.size > 0 ? { lines: lineIndices, color } : null;
+    this.clearBuffers();
   }
 
   // --- Shader source ---
@@ -151,10 +167,10 @@ export class GcodeViewer3D {
   }
 
   _getMVP() {
-    const b = parser.bounds;
+    const b = this._p().bounds;
     const cx = (b.minX + b.maxX) / 2;
     const cy = (b.minY + b.maxY) / 2;
-    const maxLayer = parser.layers[parser.layers.length - 1];
+    const maxLayer = this._p().layers[this._p().layers.length - 1];
     const maxZ = maxLayer ? (maxLayer.zHeight || 0) : 0;
     const cz = maxZ / 2;
 
@@ -278,13 +294,13 @@ export class GcodeViewer3D {
     if (this.layerBuffers.has(layerNum)) return this.layerBuffers.get(layerNum);
 
     const gl = this.gl;
-    const moves = parser.layerMoves[layerNum];
+    const moves = this._p().layerMoves[layerNum];
     if (!moves || moves.length === 0) {
       this.layerBuffers.set(layerNum, null);
       return null;
     }
 
-    const layer = parser.getLayerByNumber(layerNum);
+    const layer = this._p().getLayerByNumber(layerNum);
     const z = layer?.zHeight || 0;
     const halfW = 0.2; // half ribbon width in mm
 
@@ -294,7 +310,7 @@ export class GcodeViewer3D {
     const travelVerts = [];
     // Per-move offset tracking for simulation
     const offsets = [];
-    const isHeatmap = colorMode !== 'motion-type';
+    const isHeatmap = !this.review && colorMode !== 'motion-type';
     const heatStats = isHeatmap ? getHeatmapLayerStats(layerNum) : null;
     const overlayDef = isHeatmap && typeof analysisManager !== 'undefined'
       ? analysisManager.getSupportedOverlays().find(o => o.id === colorMode)
@@ -306,7 +322,9 @@ export class GcodeViewer3D {
       // Skip hidden motion types (in motion-type mode) or non-extrusions (in heatmap mode)
       const moveTypeUpper = move.extrude ? move.type.toUpperCase() : 'TRAVEL';
       const normalizedMoveType = MOTION_TYPE_ALIASES[moveTypeUpper] || moveTypeUpper;
-      if (!isHeatmap && motionTypeVisibility[normalizedMoveType] === false) {
+      // Review mode: a highlighted (changed) move is always shown, even if its type is hidden
+      const isHighlighted = this._highlight !== null && this._highlight.lines.has(move.lineIndex);
+      if (!isHeatmap && !isHighlighted && motionTypeVisibility[normalizedMoveType] === false) {
         offsets.push({ triStart: ribbonVerts.length / 7, triCount: 0, lineStart: travelVerts.length / 7, lineCount: 0 });
         continue;
       }
@@ -315,7 +333,7 @@ export class GcodeViewer3D {
       const lineStart = travelVerts.length / 7;
 
       if (move.extrude) {
-        const color = isHeatmap
+        const color = isHighlighted ? this._highlight.color : isHeatmap
           ? this._getHeatmapColor(getHeatmapValue(move, layerNum, moveIndex), heatStats.min, heatStats.max, invertColor)
           : this._getTypeColor(move.type);
         const dx = move.x2 - move.x1;
@@ -347,10 +365,10 @@ export class GcodeViewer3D {
         }
       } else {
         // Travel move as a line (use custom color if set)
-        const tc = this._getTypeColor('TRAVEL');
+        const tc = isHighlighted ? this._highlight.color : this._getTypeColor('TRAVEL');
         travelVerts.push(
-          move.x1, move.y1, z, tc[0], tc[1], tc[2], 0.3,
-          move.x2, move.y2, z, tc[0], tc[1], tc[2], 0.3,
+          move.x1, move.y1, z, tc[0], tc[1], tc[2], isHighlighted ? 1.0 : 0.3,
+          move.x2, move.y2, z, tc[0], tc[1], tc[2], isHighlighted ? 1.0 : 0.3,
         );
       }
 
@@ -421,7 +439,7 @@ export class GcodeViewer3D {
     if (!compareMoves || compareMoves.length === 0) return;
 
     // Use the current layer's Z for overlay alignment so both layers appear at the same height
-    const layer = parser.getLayerByNumber(this.currentLayer);
+    const layer = this._p().getLayerByNumber(this.currentLayer);
     const z = layer ? layer.zHeight || 0 : 0;
     const halfW = 0.2;
     const tint = LayerComparison.compareTint;
@@ -528,7 +546,7 @@ export class GcodeViewer3D {
 
     // Get grid dimensions from any available warp grid (dimensions are identical
     // across all layers since the grid is computed from global extrusion bounds).
-    const layerNums = Object.keys(parser.layerMoves).map(Number).sort((a, b) => a - b);
+    const layerNums = Object.keys(this._p().layerMoves).map(Number).sort((a, b) => a - b);
     let refGrid = thermalEngine.getWarpGrid(layerNum);
     if (!refGrid) {
       for (const ln of layerNums) {
@@ -651,7 +669,7 @@ export class GcodeViewer3D {
         if (cumCount[i] > 0) avgWarp[i] = cumWarpSum[i] / cumCount[i];
       }
 
-      const layerInfo = parser.layers.find(l => l.number === ln);
+      const layerInfo = this._p().layers.find(l => l.number === ln);
       const z = layerInfo ? (layerInfo.zHeight || 0) : 0;
 
       // Build vertex grid: each corner averages warp from up to 4 surrounding cells
@@ -775,7 +793,7 @@ export class GcodeViewer3D {
 
   _drawGrid(mvp) {
     const gl = this.gl;
-    const b = parser.bounds;
+    const b = this._p().bounds;
     const verts = [];
     const step = 10; // 10mm grid
     const isLight = document.documentElement.getAttribute('data-theme') === 'light';
@@ -809,7 +827,7 @@ export class GcodeViewer3D {
 
   render(layerNum) {
     const gl = this.gl;
-    if (this._broken || !this._w || !this._h || !parser.bounds) return;
+    if (this._broken || !this._w || !this._h || !this._p().bounds) return;
 
     this.currentLayer = layerNum;
 
@@ -910,7 +928,7 @@ export class GcodeViewer3D {
         }
 
         // Draw leading highlight on the active move
-        const moves = parser.layerMoves[ln];
+        const moves = this._p().layerMoves[ln];
         if (moves && this.simMoveIndex < moves.length) {
           const activeMove = moves[this.simMoveIndex];
           if (activeMove) {
@@ -925,8 +943,8 @@ export class GcodeViewer3D {
 
       } else {
         // Normal rendering (no simulation)
-        const compareActive = typeof LayerComparison !== 'undefined' && LayerComparison.active;
-        const inRange = typeof layerRangeStart !== 'undefined' && layerRangeStart !== null &&
+        const compareActive = !this.review && typeof LayerComparison !== 'undefined' && LayerComparison.active;
+        const inRange = !this.review && typeof layerRangeStart !== 'undefined' && layerRangeStart !== null &&
                         typeof layerRangeEnd !== 'undefined' && layerRangeEnd !== null &&
                         ln >= layerRangeStart && ln <= layerRangeEnd;
         const layerAlpha = isCurrent ? (compareActive ? 0.5 : -1.0) : (inRange ? -1.0 : dimAlpha);
@@ -954,6 +972,12 @@ export class GcodeViewer3D {
       }
     }
 
+    // Review viewers show only the toolpath; skip the global overlays
+    if (this.review) {
+      this._drawClipPlaneQuad(mvp);
+      return;
+    }
+
     // Draw comparison overlay layer
     this._drawCompareLayer(mvp);
 
@@ -974,10 +998,10 @@ export class GcodeViewer3D {
 
     FlowArrows.setZoomLevel(this.cam.zoom);
 
-    const moves = parser.layerMoves[this.currentLayer];
+    const moves = this._p().layerMoves[this.currentLayer];
     if (!moves || moves.length === 0) return;
 
-    const layer = parser.layers[this.currentLayer];
+    const layer = this._p().layers[this.currentLayer];
     const z = layer ? layer.zHeight || 0 : 0;
 
     // Determine color function based on current color mode
@@ -1026,13 +1050,13 @@ export class GcodeViewer3D {
 
   _drawModMarkers(mvp) {
     const gl = this.gl;
-    const b = parser.bounds;
+    const b = this._p().bounds;
     const mods = modifier.modifications.filter(m => m.layer !== Infinity && m.layer !== 'end');
     if (mods.length === 0) return;
 
     const verts = [];
     for (const mod of mods) {
-      const layer = parser.getLayerByNumber(mod.layer);
+      const layer = this._p().getLayerByNumber(mod.layer);
       if (!layer || layer.zHeight == null) continue;
       const z = layer.zHeight + 0.05;
 
@@ -1087,7 +1111,7 @@ export class GcodeViewer3D {
     if (selected.length === 0) return;
 
     // Draw highlight at the currently viewed layer's Z height
-    const currentLayerData = parser.getLayerByNumber(this.currentLayer);
+    const currentLayerData = this._p().getLayerByNumber(this.currentLayer);
     if (!currentLayerData || currentLayerData.zHeight == null) return;
     const z = currentLayerData.zHeight + 0.2;
 
@@ -1215,7 +1239,7 @@ export class GcodeViewer3D {
   }
 
   findNearestMove(worldX, worldY, layerNum) {
-    const moves = parser.layerMoves[layerNum];
+    const moves = this._p().layerMoves[layerNum];
     if (!moves || moves.length === 0) return null;
     let best = null, bestDist = Infinity;
     for (const move of moves) {
@@ -1239,7 +1263,7 @@ export class GcodeViewer3D {
   _drawMeasurement(mvp) {
     if (!measureMode || MeasureTool.points.length === 0) return;
     const gl = this.gl;
-    const layer = parser.getLayerByNumber(this.currentLayer);
+    const layer = this._p().getLayerByNumber(this.currentLayer);
     const layerZ = layer?.zHeight || 0;
     const data = MeasureTool.getDrawData(layerZ);
     if (!data) return;
@@ -1263,7 +1287,7 @@ export class GcodeViewer3D {
 
   _drawMoveHighlight(mvp, move, color, alpha, lineOffset, crosshairSize) {
     const gl = this.gl;
-    const layer = parser.getLayerByNumber(this.currentLayer);
+    const layer = this._p().getLayerByNumber(this.currentLayer);
     const z = (layer?.zHeight || 0) + 0.1;
 
     const c = [...color.slice(0, 3), alpha];
@@ -1396,7 +1420,7 @@ export class GcodeViewer3D {
   }
 
   _getMovesWithSameLineIndex(move, layerNum) {
-    const moves = parser.layerMoves[layerNum];
+    const moves = this._p().layerMoves[layerNum];
     if (!moves) return [move];
     const target = move.lineIndex;
     const matches = moves.filter(m => m.lineIndex === target);
@@ -1429,8 +1453,8 @@ export class GcodeViewer3D {
     const bz = nx * ty - ny * tx;
 
     // Size the quad to cover the print bounds
-    const b = parser.bounds;
-    const maxLayer = parser.layers[parser.layers.length - 1];
+    const b = this._p().bounds;
+    const maxLayer = this._p().layers[this._p().layers.length - 1];
     const maxZ = maxLayer ? (maxLayer.zHeight || 0) : 0;
     const size = Math.max(b.maxX - b.minX, b.maxY - b.minY, maxZ || 50) * 1.2;
 
@@ -1517,12 +1541,12 @@ export class GcodeViewer3D {
 
     c.addEventListener('contextmenu', e => {
       e.preventDefault();
-      if (typeof ContextMenu === 'undefined') return;
+      if (this.review || typeof ContextMenu === 'undefined') return;
 
       const rect = c.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
-      const layer = parser.layers[this.currentLayer];
+      const layer = this._p().layers[this.currentLayer];
       const z = layer ? layer.zHeight || 0 : 0;
       const pt = this.screenToLayerPoint(sx, sy, z);
 
@@ -1572,7 +1596,7 @@ export class GcodeViewer3D {
     // Hover preview for pause select mode
     let hoverRafPending = false;
     c.addEventListener('mousemove', e => {
-      if (!pauseSelectMode || this._dragging) return;
+      if (this.review || !pauseSelectMode || this._dragging) return;
       if (hoverRafPending) return;
       hoverRafPending = true;
       requestAnimationFrame(() => {
@@ -1581,7 +1605,7 @@ export class GcodeViewer3D {
         const rect = c.getBoundingClientRect();
         const sx = e.clientX - rect.left;
         const sy = e.clientY - rect.top;
-        const layer = parser.getLayerByNumber(this.currentLayer);
+        const layer = this._p().getLayerByNumber(this.currentLayer);
         const z = layer?.zHeight || 0;
         const pt = this.screenToLayerPoint(sx, sy, z);
         if (!pt) { if (hoveredMove) { hoveredMove = null; this.render(this.currentLayer); } return; }
@@ -1596,7 +1620,7 @@ export class GcodeViewer3D {
     // Hover preview for edit mode
     let editHoverRaf = false;
     c.addEventListener('mousemove', e => {
-      if (!editMode || this._dragging) return;
+      if (this.review || !editMode || this._dragging) return;
       if (editHoverRaf) return;
       editHoverRaf = true;
       requestAnimationFrame(() => {
@@ -1605,7 +1629,7 @@ export class GcodeViewer3D {
         const rect = c.getBoundingClientRect();
         const sx = e.clientX - rect.left;
         const sy = e.clientY - rect.top;
-        const layer = parser.getLayerByNumber(this.currentLayer);
+        const layer = this._p().getLayerByNumber(this.currentLayer);
         const z = layer?.zHeight || 0;
         const pt = this.screenToLayerPoint(sx, sy, z);
         if (!pt) {
@@ -1624,7 +1648,7 @@ export class GcodeViewer3D {
     let heatmapTip = null;
     let heatmapHoverRaf = false;
     c.addEventListener('mousemove', e => {
-      if (colorMode === 'motion-type' || pauseSelectMode || this._dragging) {
+      if (this.review || colorMode === 'motion-type' || pauseSelectMode || this._dragging) {
         if (heatmapTip) heatmapTip.classList.remove('visible');
         return;
       }
@@ -1641,13 +1665,13 @@ export class GcodeViewer3D {
         }
         const rect = c.getBoundingClientRect();
         const sx = mx - rect.left, sy = my - rect.top;
-        const layer = parser.getLayerByNumber(this.currentLayer);
+        const layer = this._p().getLayerByNumber(this.currentLayer);
         const z = layer?.zHeight || 0;
         const pt = this.screenToLayerPoint(sx, sy, z);
         if (!pt) { heatmapTip.classList.remove('visible'); return; }
         const move = this.findNearestMove(pt.x, pt.y, this.currentLayer);
         if (!move) { heatmapTip.classList.remove('visible'); return; }
-        const moves = parser.layerMoves[this.currentLayer];
+        const moves = this._p().layerMoves[this.currentLayer];
         const moveIndex = moves ? moves.indexOf(move) : -1;
         if (colorMode === 'actual-speed' || colorMode === 'speed-delta') {
           const result = motionAnalyzer.getResult(this.currentLayer, moveIndex);
@@ -1687,7 +1711,7 @@ export class GcodeViewer3D {
     // Stats hover — active when visual view is showing and no special mode is active
     let statsHoverRaf = false;
     c.addEventListener('mousemove', e => {
-      if (this._dragging) return;
+      if (this.review || this._dragging) return;
       if (pauseSelectMode || editMode) return;
       if (statsHoverRaf) return;
       statsHoverRaf = true;
@@ -1698,7 +1722,7 @@ export class GcodeViewer3D {
         const rect = c.getBoundingClientRect();
         const sx = e.clientX - rect.left;
         const sy = e.clientY - rect.top;
-        const layer = parser.getLayerByNumber(this.currentLayer);
+        const layer = this._p().getLayerByNumber(this.currentLayer);
         if (!layer) return;
         const z = layer.zHeight || 0;
         const pt = this.screenToLayerPoint(sx, sy, z);
@@ -1717,7 +1741,7 @@ export class GcodeViewer3D {
           dist = Math.hypot(pt.x - (move.x1 + t * dx), pt.y - (move.y1 + t * dy));
         }
         if (dist < 2) {
-          const moves = parser.layerMoves[this.currentLayer];
+          const moves = this._p().layerMoves[this.currentLayer];
           const moveIndex = moves ? moves.indexOf(move) : -1;
           StatsOverlay.showHoverInfo(move, this.currentLayer, moveIndex);
         } else {
@@ -1727,6 +1751,7 @@ export class GcodeViewer3D {
     });
 
     c.addEventListener('mouseleave', () => {
+      if (this.review) return;
       if (editHoveredMove) {
         editHoveredMove = null;
         if (editMode) this.render(this.currentLayer);
@@ -1817,11 +1842,11 @@ export class GcodeViewer3D {
 
 
     c.addEventListener('click', e => {
-      if (this._mouseMoved) return;
+      if (this.review || this._mouseMoved) return;
       const rect = c.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
-      const layer = parser.getLayerByNumber(this.currentLayer);
+      const layer = this._p().getLayerByNumber(this.currentLayer);
       const z = layer?.zHeight || 0;
 
       // Measurement mode click
