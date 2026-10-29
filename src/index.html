@@ -229,6 +229,38 @@ main { display: flex; flex: 1; overflow: hidden; }
   background: rgba(255,255,255,0.85);
   color: #333;
 }
+/* VORTEK TOOLHEAD HUD */
+.toolhead-hud {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0,0,0,0.75);
+  color: #e0e0e0;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+  align-self: flex-start;
+}
+[data-theme="light"] .toolhead-hud {
+  background: rgba(255,255,255,0.85);
+  color: #333;
+}
+.toolhead-hud .th-nozzle { font-weight: bold; }
+.toolhead-hud .th-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(128,128,128,0.6);
+}
+.toolhead-hud.th-flip { animation: th-flip 0.4s ease-out; }
+@keyframes th-flip {
+  0%   { transform: scaleY(0); box-shadow: 0 0 0 0 var(--accent, #4a9eff); }
+  60%  { transform: scaleY(1); box-shadow: 0 0 0 4px var(--accent, #4a9eff); }
+  100% { transform: scaleY(1); box-shadow: 0 0 0 0 transparent; }
+}
 .stats-overlay .stat-label { color: #888; margin-right: 6px; }
 [data-theme="light"] .stats-overlay .stat-label { color: #666; }
 .stats-overlay .stat-value { color: #fff; font-weight: bold; }
@@ -1253,6 +1285,7 @@ main { display: flex; flex: 1; overflow: hidden; }
             <div id="statsHoverInfo" style="display:none;"></div>
           </div>
           <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
+          <div id="toolheadHud" class="toolhead-hud" style="display:none;"><span class="th-nozzle"></span><span class="th-swatch"></span><span class="th-type"></span></div>
         </div>
         <div id="compareControls" class="compare-controls" style="display:none;">
           <label>Compare layer: <input type="number" id="compareLayerInput" min="0" style="width:60px;"></label>

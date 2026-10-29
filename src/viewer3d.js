@@ -845,11 +845,19 @@ export class GcodeViewer3D {
     if (this.onCameraChange) this.onCameraChange(this);
   }
 
+  // Feed the Vortek HUD the tool active at the current layer / simulated move.
+  _updateToolheadHud() {
+    const p = this._p();
+    if (typeof ToolheadHUD === 'undefined' || !p.vortek || !p.vortek.detected) return;
+    ToolheadHUD.update(p.activeToolInLayer(this.currentLayer, this.simulating ? this.simMoveIndex : null));
+  }
+
   render(layerNum) {
     const gl = this.gl;
     if (this._broken || !this._w || !this._h || !this._p().bounds) return;
 
     this.currentLayer = layerNum;
+    if (!this.review) this._updateToolheadHud();
 
     this.clearBackground();
 
