@@ -1110,6 +1110,7 @@ async function loadFileFromReader(e, file, isBgcode) {
     document.getElementById('gcodePreview').innerHTML =
       '<div class="empty-state"><p style="color:var(--red)">No layers detected in this file. It may not be a valid G-code file, or the slicer format is not yet supported.</p></div>';
     document.getElementById('parseProgress').style.display = 'none';
+    updateVortekUI(); // parser was already overwritten; drop the previous file's badge/HUD
     return;
   }
   originalLines = parser.lines.slice();
