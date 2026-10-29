@@ -162,6 +162,30 @@ function toggleFlowArrows() {
 
 // ===== Comparison mode =====
 
+function toggleVortekHud(checked) {
+  ToolheadHUD.setVisible(checked);
+}
+
+// Sync the Vortek toggle/badge with the freshly parsed file and forget the previous HUD tool.
+function updateVortekUI() {
+  ToolheadHUD.reset();
+  const controls = document.getElementById('vortekControls');
+  const toggle = document.getElementById('vortekHudToggle');
+  const badge = document.getElementById('vortekBadge');
+  if (!controls || !toggle || !badge) return;
+  const vortek = parser.vortek;
+  if (vortek && vortek.detected) {
+    const n = vortek.changeCount;
+    badge.textContent = 'Vortek detected · ' + n + (n === 1 ? ' change' : ' changes');
+    controls.style.display = '';
+    ToolheadHUD.setVisible(toggle.checked);
+  } else {
+    controls.style.display = 'none';
+    toggle.checked = true;
+    ToolheadHUD.setVisible(true);
+  }
+}
+
 function toggleCompareMode() {
   if (typeof LayerComparison === 'undefined') return;
   if (LayerComparison.active) {
@@ -834,6 +858,7 @@ async function reparseAndRender(targetLayer, toastMsg) {
     await parser.parseAsync(text, parser.fileName);
     initMotionTypeState();
     viewer.clearBuffers();
+    updateVortekUI();
     buildSections();
     renderLayerList();
     updateSlider();
@@ -1094,6 +1119,7 @@ async function loadFileFromReader(e, file, isBgcode) {
 
   holeDetector.clearCache();
   viewer.clearBuffers();
+  updateVortekUI();
   insertManager.clear();
   modifier.modifications = [];
   undoStack.push(modifier.modifications);

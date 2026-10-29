@@ -248,6 +248,15 @@ main { display: flex; flex: 1; overflow: hidden; }
   background: rgba(255,255,255,0.85);
   color: #333;
 }
+.vortek-toggle { font-size: 11px; cursor: pointer; white-space: nowrap; }
+.vortek-badge {
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
 .toolhead-hud .th-nozzle { font-weight: bold; }
 .toolhead-hud .th-swatch {
   width: 14px;
@@ -1237,6 +1246,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="hole-detect-btn" id="editModeToggle" onclick="toggleEditMode()" title="Select and delete moves">Edit</button>
         <button class="hole-detect-btn" id="crossSectionToggle" onclick="toggleCrossSection()" title="Cross-section view (X)">Cross-Section</button>
         <button class="hole-detect-btn" id="flowArrowsToggle" onclick="toggleFlowArrows()" title="Flow direction arrows (D)" data-tooltip="Show directional arrows along print paths (D)">Arrows</button>
+        <span id="vortekControls" style="display:none;"><label class="vortek-toggle"><input type="checkbox" id="vortekHudToggle" checked onchange="toggleVortekHud(this.checked)"> Vortek toolhead</label> <span id="vortekBadge" class="vortek-badge"></span></span>
         <button class="hole-detect-btn" id="compareToggle" onclick="toggleCompareMode()" title="Layer comparison (C)" data-tooltip="Compare current layer with another layer or file (C)">Compare</button>
         <div class="color-picker-row" id="colorPickerRow">
           <button class="color-swatch active" data-color="#ff3333" style="background:#ff3333" onclick="setHighlightColor('#ff3333')" title="Red"></button>
