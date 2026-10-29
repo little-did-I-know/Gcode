@@ -177,10 +177,10 @@ function updateVortekUI() {
   if (vortek && vortek.detected) {
     const n = vortek.changeCount;
     badge.textContent = 'Vortek detected · ' + n + (n === 1 ? ' change' : ' changes');
-    controls.style.display = '';
+    controls.classList.remove('is-off');
     ToolheadHUD.setVisible(toggle.checked);
   } else {
-    controls.style.display = 'none';
+    controls.classList.add('is-off');
     toggle.checked = true;
     ToolheadHUD.setVisible(true);
   }

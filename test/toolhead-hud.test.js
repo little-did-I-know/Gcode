@@ -1,4 +1,4 @@
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import { ToolheadHUD } from '../src/toolhead-hud.js';
 
@@ -47,6 +47,51 @@ describe('ToolheadHUD.update', () => {
       ToolheadHUD.setVisible(true);
       ToolheadHUD.reset();
     });
+  });
+});
+
+// Minimal stand-in for the HUD element (the suite has no DOM).
+function fakeHudEl() {
+  const classes = new Set();
+  const child = () => ({ textContent: '', style: {} });
+  const kids = { '.th-nozzle': child(), '.th-swatch': child(), '.th-type': child() };
+  return {
+    style: {},
+    offsetWidth: 0,
+    classList: {
+      add: c => classes.add(c),
+      remove: c => classes.delete(c),
+      contains: c => classes.has(c),
+    },
+    addEventListener() {},
+    querySelector: sel => kids[sel],
+  };
+}
+
+describe('ToolheadHUD with a bound element', () => {
+  afterEach(() => {
+    ToolheadHUD.setVisible(true);
+    ToolheadHUD.el = null;
+    ToolheadHUD.reset();
+  });
+
+  it('hiding mid-flip does not replay the flip when shown again', () => {
+    const el = fakeHudEl();
+    ToolheadHUD.init(el);
+    ToolheadHUD.update(A);
+    ToolheadHUD.update(B); // flip starts; display:none would cancel it without animationend
+    ToolheadHUD.setVisible(false);
+    ToolheadHUD.setVisible(true);
+    assert.strictEqual(el.classList.contains('th-flip'), false);
+    assert.strictEqual(el.style.display, 'flex');
+  });
+
+  it('flips when visible and the tool changes', () => {
+    const el = fakeHudEl();
+    ToolheadHUD.init(el);
+    ToolheadHUD.update(A);
+    ToolheadHUD.update(B);
+    assert.strictEqual(el.classList.contains('th-flip'), true);
   });
 });
 

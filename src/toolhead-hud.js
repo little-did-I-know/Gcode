@@ -55,6 +55,8 @@ export const ToolheadHUD = {
     const tool = this._last;
     if (!tool || !this.visible) {
       el.style.display = 'none';
+      // display:none cancels a running animation without animationend, so clear the class here
+      el.classList.remove('th-flip');
       return;
     }
     // textContent / style only: color and type originate from the G-code header.
