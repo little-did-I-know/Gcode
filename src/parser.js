@@ -30,6 +30,35 @@ function sanitizeTypeName(raw) {
   return cleaned || 'CUSTOM';
 }
 
+// Bambu H2C / Vortek: header colours are "#RRGGBB" (sometimes with an alpha byte).
+const HEX_COLOR_RE = /^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i;
+
+// Deterministic, well-spread color for filament slots the header does not describe.
+function fallbackFilamentColor(index) {
+  const hue = (index * 137.508) % 360; // golden-angle steps keep neighbours distinct
+  const s = 0.65, l = 0.55;
+  const a = s * Math.min(l, 1 - l);
+  const channel = n => {
+    const k = (n + hue / 30) % 12;
+    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  const hex = v => Math.round(v * 255).toString(16).padStart(2, '0');
+  return '#' + hex(channel(0)) + hex(channel(8)) + hex(channel(4));
+}
+
+// Header values are ";"-separated and indexed by filament slot. Anything that reaches the DOM
+// is validated here: colors must be hex, types go through sanitizeTypeName.
+function parseFilamentLists(colourValue, typeValue) {
+  const colours = colourValue ? colourValue.split(';').map(s => s.trim()) : [];
+  const types = typeValue ? typeValue.split(';').map(s => s.trim()) : [];
+  const count = Math.max(colours.length, types.length);
+  return Array.from({ length: count }, (_, index) => ({
+    index,
+    color: HEX_COLOR_RE.test(colours[index] || '') ? colours[index].slice(0, 7) : fallbackFilamentColor(index),
+    type: types[index] ? sanitizeTypeName(types[index]) : ''
+  }));
+}
+
 export class GcodeParser {
   constructor() {
     this.lines = [];
@@ -38,6 +67,50 @@ export class GcodeParser {
     this.fileName = '';
     this.warnings = [];
     this.skippedLines = 0;
+    this.vortek = { detected: false, changeCount: 0, filaments: [] };
+    this.toolChanges = [];
+  }
+
+  // Collects Bambu H2C / Vortek signals into the per-parse state `vs` and records tool changes
+  // at the head position (x, y, z) the main loop is tracking.
+  _scanVortekLine(line, i, vs, currentLayer, x, y, z) {
+    const at = {
+      lineIndex: i,
+      layer: currentLayer ? currentLayer.number : 0,
+      x, y,
+      z: currentLayer && currentLayer.zHeight != null ? currentLayer.zHeight : z
+    };
+    const first = line.charCodeAt(0);
+    if (first === 84) { // 'T': the initial load is the first "T<n> H-1"; later ones are re-selects
+      const t = this.toolChanges.length === 0 && line.match(/^T(\d+) H-1\b/);
+      if (t) {
+        const filament = parseInt(t[1], 10);
+        const nozzle = vs.nozzleMap && Number.isInteger(vs.nozzleMap[filament]) ? vs.nozzleMap[filament] : null;
+        this.toolChanges.push({ ...at, fromFilament: null, toFilament: filament, fromNozzle: null, toNozzle: nozzle });
+      }
+      return;
+    }
+    if (first === 59) { // ';'
+      const ev = line.match(/^; NOZZLE_CHANGE_START OF(\d+) NF(\d+) ON(\d+) NN(\d+)/);
+      if (ev) {
+        this.toolChanges.push({
+          ...at,
+          fromFilament: parseInt(ev[1], 10), toFilament: parseInt(ev[2], 10),
+          fromNozzle: parseInt(ev[3], 10), toNozzle: parseInt(ev[4], 10)
+        });
+        return;
+      }
+      const m = line.match(/^;\s*(printer_model|filament_colour|filament_type|filament_nozzle_map)\s*=\s*(.*)$/);
+      if (!m) return;
+      const value = m[2];
+      if (m[1] === 'printer_model') { if (/H2C/i.test(value)) vs.h2cHeader = true; }
+      else if (m[1] === 'filament_colour') { if (vs.colours === null) vs.colours = value; }
+      else if (m[1] === 'filament_type') { if (vs.types === null) vs.types = value; }
+      else if (vs.nozzleMap === null) vs.nozzleMap = value.split(/[;,]/).map(s => parseInt(s, 10));
+      return;
+    }
+    if (/^M620 N\b/.test(line)) vs.m620N = true;
+    else if (/^M632\b/.test(line) || /^M640\.8\b/.test(line)) vs.m632 = true;
   }
 
   _detectSlicer(lines) {
@@ -66,6 +139,9 @@ export class GcodeParser {
     this.headerEnd = 0;
     this.warnings = [];
     this.skippedLines = 0;
+    this.vortek = { detected: false, changeCount: 0, filaments: [] };
+    this.toolChanges = [];
+    const vs ={ h2cHeader: false, m620N: false, m632: false, colours: null, types: null, nozzleMap: null };
 
     let currentLayer = null;
     let foundFirstLayer = false;
@@ -285,6 +361,12 @@ export class GcodeParser {
         }
       }
 
+      // Bambu H2C / Vortek signals (header keys and tool-changer commands)
+      const firstChar = line.charCodeAt(0);
+      if (firstChar === 59 || firstChar === 77 || firstChar === 84) { // ';', 'M' or 'T'
+        this._scanVortekLine(line, i, vs, currentLayer, curX, curY, curZ);
+      }
+
       // Track extrusion mode
       if (/^M83(\s|;|$)/.test(line)) relativeE = true;
       if (/^M82(\s|;|$)/.test(line)) relativeE = false;
@@ -434,6 +516,11 @@ export class GcodeParser {
       currentLayer.lineCount = currentLayer.endLine - currentLayer.startLine + 1;
     }
 
+    this.vortek.detected = vs.h2cHeader || (vs.m620N && vs.m632);
+    if (this.vortek.detected) this.vortek.filaments = parseFilamentLists(vs.colours, vs.types);
+    else this.toolChanges = [];
+    this.vortek.changeCount = this.toolChanges.length;
+
     // Sanitize bounds
     if (!isFinite(this.bounds.minX)) this.bounds = { minX: 0, maxX: 256, minY: 0, maxY: 256 };
 
@@ -442,5 +529,30 @@ export class GcodeParser {
 
   getLayerByNumber(num) {
     return this.layers.find(l => l.number === num);
+  }
+
+  // The tool established by the latest tool change at or before `lineIndex`, or null.
+  activeToolAt(lineIndex) {
+    const events = this.toolChanges;
+    if (!this.vortek.detected || events.length === 0 || events[0].lineIndex > lineIndex) return null;
+    let lo = 0, hi = events.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (events[mid].lineIndex <= lineIndex) lo = mid; else hi = mid - 1;
+    }
+    const filament = events[lo].toFilament;
+    const info = this.vortek.filaments[filament] || { color: fallbackFilamentColor(filament), type: '' };
+    return { filament, nozzle: events[lo].toNozzle, color: info.color, type: info.type };
+  }
+
+  // Active tool for what the viewer shows: the move at `moveIndex` (clamped) while simulating,
+  // otherwise the end of the layer.
+  activeToolInLayer(layerNum, moveIndex = null) {
+    const layer = this.getLayerByNumber(layerNum);
+    if (!layer) return null;
+    const moves = this.layerMoves[layerNum] || [];
+    if (moves.length === 0) return this.activeToolAt(layer.endLine);
+    const mi = moveIndex === null ? moves.length - 1 : Math.max(0, Math.min(moveIndex, moves.length - 1));
+    return this.activeToolAt(moves[mi].lineIndex);
   }
 }

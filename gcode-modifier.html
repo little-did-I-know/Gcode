@@ -229,6 +229,49 @@ main { display: flex; flex: 1; overflow: hidden; }
   background: rgba(255,255,255,0.85);
   color: #333;
 }
+/* VORTEK TOOLHEAD HUD */
+.toolhead-hud {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0,0,0,0.75);
+  color: #e0e0e0;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+  align-self: flex-start;
+}
+[data-theme="light"] .toolhead-hud {
+  background: rgba(255,255,255,0.85);
+  color: #333;
+}
+/* a class, not inline display: setView() resets every .preview-toolbar > span's inline display */
+#vortekControls.is-off { display: none; }
+.vortek-toggle { font-size: 11px; cursor: pointer; white-space: nowrap; }
+.vortek-badge {
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.toolhead-hud .th-nozzle { font-weight: bold; }
+.toolhead-hud .th-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(128,128,128,0.6);
+}
+.toolhead-hud.th-flip { animation: th-flip 0.4s ease-out; }
+@keyframes th-flip {
+  0%   { transform: scaleY(0); box-shadow: 0 0 0 0 var(--accent, #4a9eff); }
+  60%  { transform: scaleY(1); box-shadow: 0 0 0 4px var(--accent, #4a9eff); }
+  100% { transform: scaleY(1); box-shadow: 0 0 0 0 transparent; }
+}
 .stats-overlay .stat-label { color: #888; margin-right: 6px; }
 [data-theme="light"] .stats-overlay .stat-label { color: #666; }
 .stats-overlay .stat-value { color: #fff; font-weight: bold; }
@@ -1205,6 +1248,7 @@ main { display: flex; flex: 1; overflow: hidden; }
         <button class="hole-detect-btn" id="editModeToggle" onclick="toggleEditMode()" title="Select and delete moves">Edit</button>
         <button class="hole-detect-btn" id="crossSectionToggle" onclick="toggleCrossSection()" title="Cross-section view (X)">Cross-Section</button>
         <button class="hole-detect-btn" id="flowArrowsToggle" onclick="toggleFlowArrows()" title="Flow direction arrows (D)" data-tooltip="Show directional arrows along print paths (D)">Arrows</button>
+        <span id="vortekControls" class="is-off"><label class="vortek-toggle"><input type="checkbox" id="vortekHudToggle" checked onchange="toggleVortekHud(this.checked)"> Vortek toolhead</label> <span id="vortekBadge" class="vortek-badge"></span></span>
         <button class="hole-detect-btn" id="compareToggle" onclick="toggleCompareMode()" title="Layer comparison (C)" data-tooltip="Compare current layer with another layer or file (C)">Compare</button>
         <div class="color-picker-row" id="colorPickerRow">
           <button class="color-swatch active" data-color="#ff3333" style="background:#ff3333" onclick="setHighlightColor('#ff3333')" title="Red"></button>
@@ -1253,6 +1297,7 @@ main { display: flex; flex: 1; overflow: hidden; }
             <div id="statsHoverInfo" style="display:none;"></div>
           </div>
           <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
+          <div id="toolheadHud" class="toolhead-hud" style="display:none;"><span class="th-nozzle"></span><span class="th-swatch"></span><span class="th-type"></span></div>
         </div>
         <div id="compareControls" class="compare-controls" style="display:none;">
           <label>Compare layer: <input type="number" id="compareLayerInput" min="0" style="width:60px;"></label>
@@ -4139,6 +4184,35 @@ function sanitizeTypeName(raw) {
   return cleaned || 'CUSTOM';
 }
 
+// Bambu H2C / Vortek: header colours are "#RRGGBB" (sometimes with an alpha byte).
+const HEX_COLOR_RE = /^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i;
+
+// Deterministic, well-spread color for filament slots the header does not describe.
+function fallbackFilamentColor(index) {
+  const hue = (index * 137.508) % 360; // golden-angle steps keep neighbours distinct
+  const s = 0.65, l = 0.55;
+  const a = s * Math.min(l, 1 - l);
+  const channel = n => {
+    const k = (n + hue / 30) % 12;
+    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  const hex = v => Math.round(v * 255).toString(16).padStart(2, '0');
+  return '#' + hex(channel(0)) + hex(channel(8)) + hex(channel(4));
+}
+
+// Header values are ";"-separated and indexed by filament slot. Anything that reaches the DOM
+// is validated here: colors must be hex, types go through sanitizeTypeName.
+function parseFilamentLists(colourValue, typeValue) {
+  const colours = colourValue ? colourValue.split(';').map(s => s.trim()) : [];
+  const types = typeValue ? typeValue.split(';').map(s => s.trim()) : [];
+  const count = Math.max(colours.length, types.length);
+  return Array.from({ length: count }, (_, index) => ({
+    index,
+    color: HEX_COLOR_RE.test(colours[index] || '') ? colours[index].slice(0, 7) : fallbackFilamentColor(index),
+    type: types[index] ? sanitizeTypeName(types[index]) : ''
+  }));
+}
+
 class GcodeParser {
   constructor() {
     this.lines = [];
@@ -4147,6 +4221,50 @@ class GcodeParser {
     this.fileName = '';
     this.warnings = [];
     this.skippedLines = 0;
+    this.vortek = { detected: false, changeCount: 0, filaments: [] };
+    this.toolChanges = [];
+  }
+
+  // Collects Bambu H2C / Vortek signals into the per-parse state `vs` and records tool changes
+  // at the head position (x, y, z) the main loop is tracking.
+  _scanVortekLine(line, i, vs, currentLayer, x, y, z) {
+    const at = {
+      lineIndex: i,
+      layer: currentLayer ? currentLayer.number : 0,
+      x, y,
+      z: currentLayer && currentLayer.zHeight != null ? currentLayer.zHeight : z
+    };
+    const first = line.charCodeAt(0);
+    if (first === 84) { // 'T': the initial load is the first "T<n> H-1"; later ones are re-selects
+      const t = this.toolChanges.length === 0 && line.match(/^T(\d+) H-1\b/);
+      if (t) {
+        const filament = parseInt(t[1], 10);
+        const nozzle = vs.nozzleMap && Number.isInteger(vs.nozzleMap[filament]) ? vs.nozzleMap[filament] : null;
+        this.toolChanges.push({ ...at, fromFilament: null, toFilament: filament, fromNozzle: null, toNozzle: nozzle });
+      }
+      return;
+    }
+    if (first === 59) { // ';'
+      const ev = line.match(/^; NOZZLE_CHANGE_START OF(\d+) NF(\d+) ON(\d+) NN(\d+)/);
+      if (ev) {
+        this.toolChanges.push({
+          ...at,
+          fromFilament: parseInt(ev[1], 10), toFilament: parseInt(ev[2], 10),
+          fromNozzle: parseInt(ev[3], 10), toNozzle: parseInt(ev[4], 10)
+        });
+        return;
+      }
+      const m = line.match(/^;\s*(printer_model|filament_colour|filament_type|filament_nozzle_map)\s*=\s*(.*)$/);
+      if (!m) return;
+      const value = m[2];
+      if (m[1] === 'printer_model') { if (/H2C/i.test(value)) vs.h2cHeader = true; }
+      else if (m[1] === 'filament_colour') { if (vs.colours === null) vs.colours = value; }
+      else if (m[1] === 'filament_type') { if (vs.types === null) vs.types = value; }
+      else if (vs.nozzleMap === null) vs.nozzleMap = value.split(/[;,]/).map(s => parseInt(s, 10));
+      return;
+    }
+    if (/^M620 N\b/.test(line)) vs.m620N = true;
+    else if (/^M632\b/.test(line) || /^M640\.8\b/.test(line)) vs.m632 = true;
   }
 
   _detectSlicer(lines) {
@@ -4175,6 +4293,9 @@ class GcodeParser {
     this.headerEnd = 0;
     this.warnings = [];
     this.skippedLines = 0;
+    this.vortek = { detected: false, changeCount: 0, filaments: [] };
+    this.toolChanges = [];
+    const vs ={ h2cHeader: false, m620N: false, m632: false, colours: null, types: null, nozzleMap: null };
 
     let currentLayer = null;
     let foundFirstLayer = false;
@@ -4394,6 +4515,12 @@ class GcodeParser {
         }
       }
 
+      // Bambu H2C / Vortek signals (header keys and tool-changer commands)
+      const firstChar = line.charCodeAt(0);
+      if (firstChar === 59 || firstChar === 77 || firstChar === 84) { // ';', 'M' or 'T'
+        this._scanVortekLine(line, i, vs, currentLayer, curX, curY, curZ);
+      }
+
       // Track extrusion mode
       if (/^M83(\s|;|$)/.test(line)) relativeE = true;
       if (/^M82(\s|;|$)/.test(line)) relativeE = false;
@@ -4543,6 +4670,11 @@ class GcodeParser {
       currentLayer.lineCount = currentLayer.endLine - currentLayer.startLine + 1;
     }
 
+    this.vortek.detected = vs.h2cHeader || (vs.m620N && vs.m632);
+    if (this.vortek.detected) this.vortek.filaments = parseFilamentLists(vs.colours, vs.types);
+    else this.toolChanges = [];
+    this.vortek.changeCount = this.toolChanges.length;
+
     // Sanitize bounds
     if (!isFinite(this.bounds.minX)) this.bounds = { minX: 0, maxX: 256, minY: 0, maxY: 256 };
 
@@ -4551,6 +4683,31 @@ class GcodeParser {
 
   getLayerByNumber(num) {
     return this.layers.find(l => l.number === num);
+  }
+
+  // The tool established by the latest tool change at or before `lineIndex`, or null.
+  activeToolAt(lineIndex) {
+    const events = this.toolChanges;
+    if (!this.vortek.detected || events.length === 0 || events[0].lineIndex > lineIndex) return null;
+    let lo = 0, hi = events.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (events[mid].lineIndex <= lineIndex) lo = mid; else hi = mid - 1;
+    }
+    const filament = events[lo].toFilament;
+    const info = this.vortek.filaments[filament] || { color: fallbackFilamentColor(filament), type: '' };
+    return { filament, nozzle: events[lo].toNozzle, color: info.color, type: info.type };
+  }
+
+  // Active tool for what the viewer shows: the move at `moveIndex` (clamped) while simulating,
+  // otherwise the end of the layer.
+  activeToolInLayer(layerNum, moveIndex = null) {
+    const layer = this.getLayerByNumber(layerNum);
+    if (!layer) return null;
+    const moves = this.layerMoves[layerNum] || [];
+    if (moves.length === 0) return this.activeToolAt(layer.endLine);
+    const mi = moveIndex === null ? moves.length - 1 : Math.max(0, Math.min(moveIndex, moves.length - 1));
+    return this.activeToolAt(moves[mi].lineIndex);
   }
 }
 
@@ -11586,6 +11743,80 @@ class PaTuner {
 }
 
 
+// ===== VORTEK TOOLHEAD HUD =====
+// Corner badge showing the active tool (nozzle, filament swatch, filament type).
+// Purely presentational: callers pass in the resolved tool, it never reads the parser or viewer.
+
+const ToolheadHUD = {
+  el: null,
+  nozzleEl: null,
+  swatchEl: null,
+  typeEl: null,
+  visible: true,
+  _last: null,
+
+  init(el) {
+    this.el = el || null;
+    this._last = null;
+    if (el) {
+      this.nozzleEl = el.querySelector('.th-nozzle');
+      this.swatchEl = el.querySelector('.th-swatch');
+      this.typeEl = el.querySelector('.th-type');
+      el.addEventListener('animationend', () => el.classList.remove('th-flip'));
+    }
+    this._render(false);
+  },
+
+  // Two tools are the same when they share filament and nozzle (color/type derive from filament).
+  toolsEqual(a, b) {
+    if (!a || !b) return a === b;
+    return a.filament === b.filament && a.nozzle === b.nozzle;
+  },
+
+  // Returns true when this call animated: both the previous and new tool exist and differ.
+  update(tool) {
+    const next = tool || null;
+    if (this.toolsEqual(this._last, next)) return false;
+    const animate = this._last !== null && next !== null;
+    this._last = next;
+    this._render(animate);
+    return animate;
+  },
+
+  setVisible(visible) {
+    this.visible = !!visible;
+    this._render(false);
+  },
+
+  // Forget the current tool (new file loaded) without animating.
+  reset() {
+    this._last = null;
+    this._render(false);
+  },
+
+  _render(animate) {
+    const el = this.el;
+    if (!el) return;
+    const tool = this._last;
+    if (!tool || !this.visible) {
+      el.style.display = 'none';
+      // display:none cancels a running animation without animationend, so clear the class here
+      el.classList.remove('th-flip');
+      return;
+    }
+    // textContent / style only: color and type originate from the G-code header.
+    this.nozzleEl.textContent = tool.nozzle === null ? 'N–' : 'N' + tool.nozzle;
+    this.swatchEl.style.background = tool.color;
+    this.typeEl.textContent = tool.type;
+    el.style.display = 'flex';
+    if (animate) {
+      el.classList.remove('th-flip');
+      void el.offsetWidth; // force reflow so the animation restarts on back-to-back changes
+      el.classList.add('th-flip');
+    }
+  }
+};
+
 // ===== GCODE VIEWER (old Canvas 2D removed — now using GcodeViewer3D) =====
 
 class GcodeViewer3D {
@@ -12433,11 +12664,19 @@ class GcodeViewer3D {
     if (this.onCameraChange) this.onCameraChange(this);
   }
 
+  // Feed the Vortek HUD the tool active at the current layer / simulated move.
+  _updateToolheadHud() {
+    const p = this._p();
+    if (typeof ToolheadHUD === 'undefined' || !p.vortek || !p.vortek.detected) return;
+    ToolheadHUD.update(p.activeToolInLayer(this.currentLayer, this.simulating ? this.simMoveIndex : null));
+  }
+
   render(layerNum) {
     const gl = this.gl;
     if (this._broken || !this._w || !this._h || !this._p().bounds) return;
 
     this.currentLayer = layerNum;
+    if (!this.review) this._updateToolheadHud();
 
     this.clearBackground();
 
@@ -14510,6 +14749,30 @@ function toggleFlowArrows() {
 
 // ===== Comparison mode =====
 
+function toggleVortekHud(checked) {
+  ToolheadHUD.setVisible(checked);
+}
+
+// Sync the Vortek toggle/badge with the freshly parsed file and forget the previous HUD tool.
+function updateVortekUI() {
+  ToolheadHUD.reset();
+  const controls = document.getElementById('vortekControls');
+  const toggle = document.getElementById('vortekHudToggle');
+  const badge = document.getElementById('vortekBadge');
+  if (!controls || !toggle || !badge) return;
+  const vortek = parser.vortek;
+  if (vortek && vortek.detected) {
+    const n = vortek.changeCount;
+    badge.textContent = 'Vortek detected · ' + n + (n === 1 ? ' change' : ' changes');
+    controls.classList.remove('is-off');
+    ToolheadHUD.setVisible(toggle.checked);
+  } else {
+    controls.classList.add('is-off');
+    toggle.checked = true;
+    ToolheadHUD.setVisible(true);
+  }
+}
+
 function toggleCompareMode() {
   if (typeof LayerComparison === 'undefined') return;
   if (LayerComparison.active) {
@@ -15182,6 +15445,7 @@ async function reparseAndRender(targetLayer, toastMsg) {
     await parser.parseAsync(text, parser.fileName);
     initMotionTypeState();
     viewer.clearBuffers();
+    updateVortekUI();
     buildSections();
     renderLayerList();
     updateSlider();
@@ -15433,6 +15697,7 @@ async function loadFileFromReader(e, file, isBgcode) {
     document.getElementById('gcodePreview').innerHTML =
       '<div class="empty-state"><p style="color:var(--red)">No layers detected in this file. It may not be a valid G-code file, or the slicer format is not yet supported.</p></div>';
     document.getElementById('parseProgress').style.display = 'none';
+    updateVortekUI(); // parser was already overwritten; drop the previous file's badge/HUD
     return;
   }
   originalLines = parser.lines.slice();
@@ -15442,6 +15707,7 @@ async function loadFileFromReader(e, file, isBgcode) {
 
   holeDetector.clearCache();
   viewer.clearBuffers();
+  updateVortekUI();
   insertManager.clear();
   modifier.modifications = [];
   undoStack.push(modifier.modifications);
@@ -18939,6 +19205,7 @@ let dragModId = null;
 let currentView = 'code';
 
 const viewer = new GcodeViewer3D('viewerCanvas');
+ToolheadHUD.init(document.getElementById('toolheadHud'));
 
 // Update computed info when insert height changes
 document.addEventListener('DOMContentLoaded', () => {

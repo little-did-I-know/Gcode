@@ -162,6 +162,30 @@ function toggleFlowArrows() {
 
 // ===== Comparison mode =====
 
+function toggleVortekHud(checked) {
+  ToolheadHUD.setVisible(checked);
+}
+
+// Sync the Vortek toggle/badge with the freshly parsed file and forget the previous HUD tool.
+function updateVortekUI() {
+  ToolheadHUD.reset();
+  const controls = document.getElementById('vortekControls');
+  const toggle = document.getElementById('vortekHudToggle');
+  const badge = document.getElementById('vortekBadge');
+  if (!controls || !toggle || !badge) return;
+  const vortek = parser.vortek;
+  if (vortek && vortek.detected) {
+    const n = vortek.changeCount;
+    badge.textContent = 'Vortek detected · ' + n + (n === 1 ? ' change' : ' changes');
+    controls.classList.remove('is-off');
+    ToolheadHUD.setVisible(toggle.checked);
+  } else {
+    controls.classList.add('is-off');
+    toggle.checked = true;
+    ToolheadHUD.setVisible(true);
+  }
+}
+
 function toggleCompareMode() {
   if (typeof LayerComparison === 'undefined') return;
   if (LayerComparison.active) {
@@ -834,6 +858,7 @@ async function reparseAndRender(targetLayer, toastMsg) {
     await parser.parseAsync(text, parser.fileName);
     initMotionTypeState();
     viewer.clearBuffers();
+    updateVortekUI();
     buildSections();
     renderLayerList();
     updateSlider();
@@ -1085,6 +1110,7 @@ async function loadFileFromReader(e, file, isBgcode) {
     document.getElementById('gcodePreview').innerHTML =
       '<div class="empty-state"><p style="color:var(--red)">No layers detected in this file. It may not be a valid G-code file, or the slicer format is not yet supported.</p></div>';
     document.getElementById('parseProgress').style.display = 'none';
+    updateVortekUI(); // parser was already overwritten; drop the previous file's badge/HUD
     return;
   }
   originalLines = parser.lines.slice();
@@ -1094,6 +1120,7 @@ async function loadFileFromReader(e, file, isBgcode) {
 
   holeDetector.clearCache();
   viewer.clearBuffers();
+  updateVortekUI();
   insertManager.clear();
   modifier.modifications = [];
   undoStack.push(modifier.modifications);

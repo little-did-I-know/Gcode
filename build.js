@@ -33,6 +33,7 @@ const FILES = [
   'comparison.js',
   'context-menu.js',
   'pa-tuner.js',
+  'toolhead-hud.js',
   'viewer3d.js',
   'review.js',
   'tooltips.js',

@@ -381,6 +381,7 @@ let dragModId = null;
 let currentView = 'code';
 
 const viewer = new GcodeViewer3D('viewerCanvas');
+ToolheadHUD.init(document.getElementById('toolheadHud'));
 
 // Update computed info when insert height changes
 document.addEventListener('DOMContentLoaded', () => {
