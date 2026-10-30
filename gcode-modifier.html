@@ -11318,9 +11318,9 @@ const LayerComparison = {
 
   loadCompareFile(file, callback) {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const p = new GcodeParser();
-      p.parse(e.target.result);
+      await p.parseAsync(e.target.result, file.name);
       this.compareParser = p;
       if (callback) callback(p);
     };

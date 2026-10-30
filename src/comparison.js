@@ -1,7 +1,7 @@
 // Layer & File Comparison Mode
 // Allows comparing two layers side-by-side or comparing against a second file.
 
-const LayerComparison = {
+export const LayerComparison = {
   active: false,
   compareLayerNum: null,
   compareParser: null,  // For file comparison (second parsed file)
@@ -20,9 +20,9 @@ const LayerComparison = {
 
   loadCompareFile(file, callback) {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const p = new GcodeParser();
-      p.parse(e.target.result);
+      await p.parseAsync(e.target.result, file.name);
       this.compareParser = p;
       if (callback) callback(p);
     };
